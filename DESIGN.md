@@ -1,5 +1,5 @@
 ---
-name: Mintlify Study OS
+name: Gontobbo UI
 colors:
   surface: '#f3fcf3'
   surface-dim: '#d3dcd4'

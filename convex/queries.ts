@@ -1,6 +1,7 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 
+// ── List all subjects (ordered) ──────────────────────────────────
 export const getSubjects = query({
   args: {},
   handler: async (ctx) => {
@@ -8,6 +9,18 @@ export const getSubjects = query({
   },
 });
 
+// ── Get a subject by slug ────────────────────────────────────────
+export const getSubjectBySlug = query({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("subjects")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+  },
+});
+
+// ── Get subject by ID ────────────────────────────────────────────
 export const getSubjectDetails = query({
   args: { subjectId: v.id("subjects") },
   handler: async (ctx, args) => {
@@ -15,98 +28,203 @@ export const getSubjectDetails = query({
   },
 });
 
+// ── Chapters for a subject ───────────────────────────────────────
 export const getChaptersBySubject = query({
   args: { subjectId: v.id("subjects") },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("chapters")
-      .filter((q) => q.eq(q.field("subjectId"), args.subjectId))
+      .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
       .collect();
   },
 });
 
+// ── Concepts for a chapter ───────────────────────────────────────
 export const getConceptsByChapter = query({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("concepts")
-      .filter((q) => q.eq(q.field("chapterId"), args.chapterId))
+      .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
       .collect();
   },
 });
 
-export const getChapterProgress = query({
+// ── StudyItems for a chapter (chapter-level only: no conceptId) ──
+export const getChapterStudyItems = query({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("chapterProgress")
-      .filter((q) => q.eq(q.field("chapterId"), args.chapterId))
+    const items = await ctx.db
+      .query("studyItems")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
       .collect();
+    // Return only chapter-level items (conceptId is undefined)
+    return items.filter((item) => item.conceptId === undefined);
   },
 });
 
-export const getConceptProgress = query({
+// ── StudyItems for a concept ─────────────────────────────────────
+export const getConceptStudyItems = query({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query("conceptProgress")
-      .filter((q) => q.eq(q.field("conceptId"), args.conceptId))
+      .query("studyItems")
+      .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
       .collect();
   },
 });
 
+// ── Full subject page data ───────────────────────────────────────
+// Returns subject + chapters + all studyItems + concept counts
+// Used by /subjects/[slug] page
+export const getSubjectPageData = query({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const subject = await ctx.db
+      .query("subjects")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+
+    if (!subject) return null;
+
+    const chapters = await ctx.db
+      .query("chapters")
+      .withIndex("by_subject", (q) => q.eq("subjectId", subject._id))
+      .collect();
+
+    // Sort chapters by order
+    chapters.sort((a, b) => a.order - b.order);
+
+    // For each chapter, get studyItems + concept count
+    const chaptersWithData = await Promise.all(
+      chapters.map(async (chapter) => {
+        // All studyItems for this chapter (both chapter-level and concept-level)
+        const allStudyItems = await ctx.db
+          .query("studyItems")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .collect();
+
+        // Chapter-level items (no conceptId)
+        const chapterLevelItems = allStudyItems.filter(
+          (si) => si.conceptId === undefined
+        );
+
+        // Concept-level items (has conceptId)
+        const conceptLevelItems = allStudyItems.filter(
+          (si) => si.conceptId !== undefined
+        );
+
+        // Count concepts for this chapter
+        const concepts = await ctx.db
+          .query("concepts")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .collect();
+
+        // Concept completion: a concept is "done" when all its studyItems are completed
+        const conceptTrackerCount = subject.conceptTrackers.length;
+        let completedConceptCount = 0;
+        if (conceptTrackerCount > 0) {
+          for (const concept of concepts) {
+            const conceptItems = conceptLevelItems.filter(
+              (si) => si.conceptId === concept._id
+            );
+            const allDone =
+              conceptItems.length >= conceptTrackerCount &&
+              conceptItems.every((si) => si.isCompleted);
+            if (allDone) completedConceptCount++;
+          }
+        }
+
+        // Build tracker data: for each chapterTracker key, find matching studyItem
+        const trackerData: Record<string, { isCompleted: boolean; score?: number; studyItemId?: string }> = {};
+        for (const tracker of subject.chapterTrackers) {
+          const matchingItem = chapterLevelItems.find(
+            (si) => si.type === tracker.key
+          );
+          trackerData[tracker.key] = {
+            isCompleted: matchingItem?.isCompleted ?? false,
+            score: matchingItem?.completionScore ?? undefined,
+            studyItemId: matchingItem?._id,
+          };
+        }
+
+        // Overall chapter status
+        const totalItems = chapterLevelItems.length + conceptLevelItems.length;
+        const completedItems =
+          chapterLevelItems.filter((si) => si.isCompleted).length +
+          conceptLevelItems.filter((si) => si.isCompleted).length;
+
+        let status: "NOT_STARTED" | "IN_PROGRESS" | "READY" = "NOT_STARTED";
+        if (totalItems > 0 && completedItems === totalItems) {
+          status = "READY";
+        } else if (completedItems > 0) {
+          status = "IN_PROGRESS";
+        }
+
+        return {
+          ...chapter,
+          totalConcepts: concepts.length,
+          completedConcepts: completedConceptCount,
+          trackerData,
+          status,
+          totalItems,
+          completedItems,
+        };
+      })
+    );
+
+    // Overall subject progress
+    const totalAllItems = chaptersWithData.reduce((sum, ch) => sum + ch.totalItems, 0);
+    const completedAllItems = chaptersWithData.reduce((sum, ch) => sum + ch.completedItems, 0);
+    const progressPercentage = totalAllItems === 0 ? 0 : Math.round((completedAllItems / totalAllItems) * 100);
+
+    return {
+      subject,
+      chapters: chaptersWithData,
+      progressPercentage,
+      totalItems: totalAllItems,
+      completedItems: completedAllItems,
+    };
+  },
+});
+
+// ── Subjects with aggregated stats (for home page grid) ──────────
 export const getSubjectsWithStats = query({
   args: {},
   handler: async (ctx) => {
     const subjects = await ctx.db.query("subjects").collect();
-    
+
     const subjectsWithStats = await Promise.all(
       subjects.map(async (subject) => {
         const chapters = await ctx.db
           .query("chapters")
-          .filter((q) => q.eq(q.field("subjectId"), subject._id))
+          .withIndex("by_subject", (q) => q.eq("subjectId", subject._id))
           .collect();
-        
-        let totalTasks = 0;
-        let completedTasks = 0;
+
+        let totalItems = 0;
+        let completedItems = 0;
         let completedChaptersCount = 0;
 
         for (const chapter of chapters) {
-          const chapterTasks = subject.chapterTrackerConfig.length;
-          totalTasks += chapterTasks;
-
-          const chapterProgress = await ctx.db
-            .query("chapterProgress")
-            .filter((q) => q.eq(q.field("chapterId"), chapter._id))
+          const studyItems = await ctx.db
+            .query("studyItems")
+            .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
             .collect();
-          
-          const completedChapterTasks = chapterProgress.filter(p => p.status === true || p.status === "true").length;
-          completedTasks += completedChapterTasks;
 
-          if (chapterTasks > 0 && completedChapterTasks === chapterTasks) {
+          const chapterTotal = studyItems.length;
+          const chapterCompleted = studyItems.filter((si) => si.isCompleted).length;
+
+          totalItems += chapterTotal;
+          completedItems += chapterCompleted;
+
+          if (chapterTotal > 0 && chapterCompleted === chapterTotal) {
             completedChaptersCount++;
-          }
-
-          const concepts = await ctx.db
-            .query("concepts")
-            .filter((q) => q.eq(q.field("chapterId"), chapter._id))
-            .collect();
-          
-          const conceptTasks = chapter.conceptTrackerConfig.length;
-          totalTasks += concepts.length * conceptTasks;
-
-          for (const concept of concepts) {
-            const conceptProgress = await ctx.db
-              .query("conceptProgress")
-              .filter((q) => q.eq(q.field("conceptId"), concept._id))
-              .collect();
-            
-            completedTasks += conceptProgress.filter(p => p.status === true || p.status === "true").length;
           }
         }
 
-        const tasksPending = totalTasks - completedTasks;
-        const progressPercentage = totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
+        const tasksPending = totalItems - completedItems;
+        const progressPercentage =
+          totalItems === 0 ? 0 : Math.round((completedItems / totalItems) * 100);
 
         return {
           ...subject,
@@ -115,7 +233,7 @@ export const getSubjectsWithStats = query({
             completedChapters: completedChaptersCount,
             tasksPending,
             progressPercentage,
-          }
+          },
         };
       })
     );
