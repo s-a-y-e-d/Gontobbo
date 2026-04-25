@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>StudyOS - Subjects</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "border-medium": "rgba(0,0,0,0.08)",
+                        "on-secondary-container": "#656464",
+                        "outline": "#6b7b70",
+                        "primary-fixed-dim": "#17e299",
+                        "brand-green": "#18E299",
+                        "tertiary-fixed-dim": "#ffb962",
+                        "secondary-container": "#e5e2e1",
+                        "on-surface": "#151d18",
+                        "surface-bright": "#f3fcf3",
+                        "error-container": "#ffdad6",
+                        "error-red": "#d45656",
+                        "background": "#f3fcf3",
+                        "secondary-fixed": "#e5e2e1",
+                        "on-primary-fixed-variant": "#005234",
+                        "tertiary-container": "#ffb962",
+                        "tertiary-fixed": "#ffddb9",
+                        "gray-400": "#888888",
+                        "on-secondary": "#ffffff",
+                        "primary": "#006c47",
+                        "primary-container": "#18e299",
+                        "secondary-fixed-dim": "#c9c6c5",
+                        "warm-amber": "#c37d0d",
+                        "primary-fixed": "#4dffb3",
+                        "on-primary": "#ffffff",
+                        "surface-variant": "#dce5dc",
+                        "surface-dim": "#d3dcd4",
+                        "on-tertiary": "#ffffff",
+                        "inverse-primary": "#17e299",
+                        "outline-variant": "#bacbbe",
+                        "on-tertiary-fixed-variant": "#663e00",
+                        "on-primary-fixed": "#002112",
+                        "on-secondary-fixed": "#1c1b1b",
+                        "gray-500": "#666666",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-fixed-variant": "#474646",
+                        "tertiary": "#865300",
+                        "on-error-container": "#93000a",
+                        "gray-700": "#333333",
+                        "brand-green-light": "#d4fae8",
+                        "surface-container-low": "#edf6ed",
+                        "on-primary-container": "#005f3d",
+                        "inverse-on-surface": "#eaf3ea",
+                        "surface": "#f3fcf3",
+                        "surface-container-high": "#e1ebe2",
+                        "on-surface-variant": "#3b4a41",
+                        "surface-container-highest": "#dce5dc",
+                        "on-tertiary-fixed": "#2b1700",
+                        "on-error": "#ffffff",
+                        "inverse-surface": "#2a322d",
+                        "on-tertiary-container": "#764900",
+                        "border-subtle": "rgba(0,0,0,0.05)",
+                        "secondary": "#5f5e5e",
+                        "pure-white": "#ffffff",
+                        "gray-100": "#f5f5f5",
+                        "surface-tint": "#006c47",
+                        "surface-container": "#e7f0e8",
+                        "error": "#ba1a1a",
+                        "near-black": "#0d0d0d",
+                        "brand-green-deep": "#0fa76e",
+                        "on-background": "#151d18",
+                        "soft-blue": "#3772cf"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px",
+                        "2xl": "1rem"
+                    },
+                    "spacing": {
+                        "section-y-sm": "48px",
+                        "card-padding": "24px",
+                        "gap-component": "16px",
+                        "section-x": "32px",
+                        "section-y-lg": "96px",
+                        "base": "8px"
+                    },
+                    "fontFamily": {
+                        "display-hero": ["Inter"],
+                        "mono-code": ["Geist Mono"],
+                        "label-uppercase": ["Inter"],
+                        "card-title": ["Inter"],
+                        "body-large": ["Inter"],
+                        "body": ["Inter"],
+                        "section-heading": ["Inter"],
+                        "sub-heading": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-hero": ["64px", { "lineHeight": "1.15", "letterSpacing": "-1.28px", "fontWeight": "600" }],
+                        "mono-code": ["12px", { "lineHeight": "1.50", "letterSpacing": "0.6px", "fontWeight": "500" }],
+                        "label-uppercase": ["13px", { "lineHeight": "1.50", "letterSpacing": "0.65px", "fontWeight": "500" }],
+                        "card-title": ["20px", { "lineHeight": "1.30", "letterSpacing": "-0.2px", "fontWeight": "600" }],
+                        "body-large": ["18px", { "lineHeight": "1.50", "letterSpacing": "normal", "fontWeight": "400" }],
+                        "body": ["16px", { "lineHeight": "1.50", "letterSpacing": "normal", "fontWeight": "400" }],
+                        "section-heading": ["40px", { "lineHeight": "1.10", "letterSpacing": "-0.8px", "fontWeight": "600" }],
+                        "sub-heading": ["24px", { "lineHeight": "1.30", "letterSpacing": "-0.24px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen pb-24 md:pb-0 md:pl-64 flex flex-col">
+<!-- SideNavBar (Web) -->
+<nav class="bg-white dark:bg-slate-900 font-['Inter'] text-sm font-medium h-screen w-64 border-r border-black/5 dark:border-white/5 shadow-none flex flex-col gap-1 p-4 fixed left-0 top-0 h-full hidden md:flex z-50">
+<div class="flex items-center gap-3 px-4 py-6 mb-4">
+<span class="material-symbols-outlined text-brand-green" data-weight="fill" style="font-variation-settings: 'FILL' 1;">menu_book</span>
+<div>
+<div class="text-lg font-black text-slate-900 dark:text-white leading-tight">StudyOS</div>
+<div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-0.5">Productivity Suite</div>
+</div>
+</div>
+<div class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-lg">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-3 px-4 py-2.5 text-[#18E299] bg-emerald-50/50 dark:bg-emerald-900/10 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-lg">auto_stories</span>
+                Subjects
+            </a>
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-lg">psychology</span>
+                AI Planner
+            </a>
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-lg">calendar_today</span>
+                Today Plan
+            </a>
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-lg">query_stats</span>
+                Progress
+            </a>
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-lg">history_edu</span>
+                Revision
+            </a>
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-lg">format_list_bulleted</span>
+                Logs
+            </a>
+<a class="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-lg">settings</span>
+                Settings
+            </a>
+</div>
+<div class="mt-auto px-4 py-4">
+<button class="w-full bg-near-black text-white rounded-full py-2.5 font-medium text-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">add</span>
+                New Study Session
+            </button>
+</div>
+</nav>
+<!-- TopNavBar -->
+<header class="bg-white/80 dark:bg-slate-950/80 backdrop-blur-md font-['Inter'] text-[15px] font-medium tracking-tight docked full-width top-0 sticky z-40 border-b border-black/5 dark:border-white/5 shadow-none flex justify-between items-center w-full px-6 h-16 max-w-[1200px] mx-auto hidden md:flex">
+<div class="flex items-center gap-4 text-xl font-bold text-slate-900 dark:text-white tracking-tighter">
+<span class="material-symbols-outlined text-brand-green" data-weight="fill" style="font-variation-settings: 'FILL' 1;">search</span>
+<span class="text-sm font-normal text-slate-400">Search subjects, logs...</span>
+</div>
+<div class="flex items-center gap-6">
+<span class="text-sm text-slate-500">May 24, 2024</span>
+<div class="flex items-center gap-3 text-slate-500">
+<button class="hover:text-[#18E299] transition-colors duration-200 opacity-90 hover:opacity-100"><span class="material-symbols-outlined">local_fire_department</span></button>
+<button class="hover:text-[#18E299] transition-colors duration-200 opacity-90 hover:opacity-100"><span class="material-symbols-outlined">dark_mode</span></button>
+<button class="hover:text-[#18E299] transition-colors duration-200 opacity-90 hover:opacity-100"><span class="material-symbols-outlined">notifications</span></button>
+</div>
+<div class="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 overflow-hidden flex items-center justify-center">
+<img alt="Student Profile Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQHSCY5tzAn6ImxgAIUrvnBxTsfM4WmTIphkFjmEaY2epp7zaC9Y2wlcbffnn5OloFCXiSqmPi2bqza_G6nGrJqxpKlH7T-SEc74gcMiT7kZJ-EtwbqhvCSdcEHq13HqO6-Brm36_rAcQ6JTcrhe2JMiD8i6eC0NVeexm11d7JRwOSEV90OXqNTAH3HvP2rt5RmtHv-XAu-ZeDHWWx5THNCewM5F12i2jmu282tM6IuoC_47guCRzdAIL7uAi_oYGY0siibrFvnyu0"/>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 w-full max-w-[1200px] mx-auto px-6 py-section-y-sm">
+<!-- Header -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-4">
+<div>
+<h1 class="font-section-heading text-section-heading text-on-surface mb-2">Subjects</h1>
+<p class="font-body text-body text-gray-500">Track your progress across all your courses.</p>
+</div>
+<button class="bg-pure-white border border-border-medium rounded-full px-6 py-2.5 font-label-uppercase text-label-uppercase text-on-surface hover:opacity-90 transition-opacity flex items-center gap-2 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+<span class="material-symbols-outlined text-sm">add</span>
+                Add Subject
+            </button>
+</div>
+<!-- Subjects Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-gap-component">
+<!-- Physics Card -->
+<div class="bg-pure-white border border-border-subtle rounded-[24px] p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-brand-green-light flex items-center justify-center">
+<span class="material-symbols-outlined text-brand-green-deep">rocket_launch</span>
+</div>
+<div>
+<h2 class="font-card-title text-card-title text-on-surface">Physics</h2>
+<p class="font-mono-code text-mono-code text-gray-400">Advanced Mechanics</p>
+</div>
+</div>
+<button class="text-gray-400 hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+<div class="grid grid-cols-3 gap-4 py-4 border-y border-border-subtle">
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">CHAPTERS</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">12<span class="text-sm text-gray-400 font-normal">/15</span></span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">TASKS PENDING</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">4</span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">HOURS LOGGED</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">42<span class="text-sm text-gray-400 font-normal">h</span></span>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<div class="flex justify-between items-center">
+<span class="font-label-uppercase text-label-uppercase text-on-surface">Overall Progress</span>
+<span class="font-mono-code text-mono-code text-brand-green-deep bg-brand-green-light px-2 py-0.5 rounded-full">80%</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-brand-green h-full rounded-full" style="width: 80%"></div>
+</div>
+</div>
+</div>
+<!-- Biology Card -->
+<div class="bg-pure-white border border-border-subtle rounded-[24px] p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-[#fef2f2] flex items-center justify-center">
+<span class="material-symbols-outlined text-[#dc2626]">biotech</span>
+</div>
+<div>
+<h2 class="font-card-title text-card-title text-on-surface">Biology</h2>
+<p class="font-mono-code text-mono-code text-gray-400">Genetics &amp; Evolution</p>
+</div>
+</div>
+<button class="text-gray-400 hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+<div class="grid grid-cols-3 gap-4 py-4 border-y border-border-subtle">
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">CHAPTERS</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">4<span class="text-sm text-gray-400 font-normal">/10</span></span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">TASKS PENDING</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">12</span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">HOURS LOGGED</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">18<span class="text-sm text-gray-400 font-normal">h</span></span>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<div class="flex justify-between items-center">
+<span class="font-label-uppercase text-label-uppercase text-on-surface">Overall Progress</span>
+<span class="font-mono-code text-mono-code text-[#991b1b] bg-[#fee2e2] px-2 py-0.5 rounded-full">40%</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-[#ef4444] h-full rounded-full" style="width: 40%"></div>
+</div>
+</div>
+</div>
+<!-- Math Card -->
+<div class="bg-pure-white border border-border-subtle rounded-[24px] p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-[#eff6ff] flex items-center justify-center">
+<span class="material-symbols-outlined text-[#2563eb]">calculate</span>
+</div>
+<div>
+<h2 class="font-card-title text-card-title text-on-surface">Math</h2>
+<p class="font-mono-code text-mono-code text-gray-400">Calculus II</p>
+</div>
+</div>
+<button class="text-gray-400 hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+<div class="grid grid-cols-3 gap-4 py-4 border-y border-border-subtle">
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">CHAPTERS</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">8<span class="text-sm text-gray-400 font-normal">/12</span></span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">TASKS PENDING</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">2</span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">HOURS LOGGED</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">56<span class="text-sm text-gray-400 font-normal">h</span></span>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<div class="flex justify-between items-center">
+<span class="font-label-uppercase text-label-uppercase text-on-surface">Overall Progress</span>
+<span class="font-mono-code text-mono-code text-[#1e40af] bg-[#dbeafe] px-2 py-0.5 rounded-full">66%</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-[#3b82f6] h-full rounded-full" style="width: 66%"></div>
+</div>
+</div>
+</div>
+<!-- Chemistry Card -->
+<div class="bg-pure-white border border-border-subtle rounded-[24px] p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] opacity-80">
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-gray-500">science</span>
+</div>
+<div>
+<h2 class="font-card-title text-card-title text-on-surface">Chemistry</h2>
+<p class="font-mono-code text-mono-code text-gray-400">Organic Chem 101</p>
+</div>
+</div>
+<button class="text-gray-400 hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+<div class="grid grid-cols-3 gap-4 py-4 border-y border-border-subtle">
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">CHAPTERS</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">0<span class="text-sm text-gray-400 font-normal">/8</span></span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">TASKS PENDING</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">0</span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-mono-code text-mono-code text-gray-500">HOURS LOGGED</span>
+<span class="font-sub-heading text-sub-heading text-on-surface">0<span class="text-sm text-gray-400 font-normal">h</span></span>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<div class="flex justify-between items-center">
+<span class="font-label-uppercase text-label-uppercase text-on-surface">Overall Progress</span>
+<span class="font-mono-code text-mono-code text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">0%</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-gray-300 h-full rounded-full" style="width: 0%"></div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile) -->
+<nav class="bg-white dark:bg-slate-950 font-['Inter'] text-[10px] font-medium docked full-width bottom-0 md:hidden border-t border-black/5 dark:border-white/5 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe">
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 tap-highlight-transparent transition-all p-2 rounded-xl" href="#">
+<span class="material-symbols-outlined text-2xl mb-1">home</span>
+            Home
+        </a>
+<a class="flex flex-col items-center justify-center text-[#18E299] bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl px-3 py-1 tap-highlight-transparent transition-all" href="#">
+<span class="material-symbols-outlined text-2xl mb-1" data-weight="fill" style="font-variation-settings: 'FILL' 1;">book</span>
+            Subjects
+        </a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 tap-highlight-transparent transition-all p-2 rounded-xl" href="#">
+<span class="material-symbols-outlined text-2xl mb-1">event_note</span>
+            Planner
+        </a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 tap-highlight-transparent transition-all p-2 rounded-xl" href="#">
+<span class="material-symbols-outlined text-2xl mb-1">bar_chart</span>
+            Progress
+        </a>
+</nav>
+</body></html>
