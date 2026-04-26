@@ -9,6 +9,7 @@ type ConceptModalProps = {
   isOpen: boolean;
   onClose: () => void;
   chapterId: Id<"chapters">;
+  suggestedOrder?: number;
   initialData?: {
     _id: Id<"concepts">;
     name: string;
@@ -17,7 +18,7 @@ type ConceptModalProps = {
   };
 };
 
-export default function ConceptModal({ isOpen, onClose, chapterId, initialData }: ConceptModalProps) {
+export default function ConceptModal({ isOpen, onClose, chapterId, suggestedOrder, initialData }: ConceptModalProps) {
   const createConcept = useMutation(api.mutations.createConcept);
   const updateConcept = useMutation(api.mutations.updateConcept);
   
@@ -33,10 +34,10 @@ export default function ConceptModal({ isOpen, onClose, chapterId, initialData }
       setDifficulty(initialData.difficulty || 1);
     } else {
       setName("");
-      setOrder(Date.now()); // Temporary order, can be refined
+      setOrder(suggestedOrder || 1);
       setDifficulty(1);
     }
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, suggestedOrder]);
 
   if (!isOpen) return null;
 

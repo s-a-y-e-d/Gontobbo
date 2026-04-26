@@ -44,6 +44,7 @@ export default function SubjectPage() {
 
   const nextTermChapters = chapters.filter((ch) => ch.inNextTerm);
   const allChapters = chapters;
+  const nextOrder = chapters.length > 0 ? Math.max(...chapters.map((c) => c.order)) + 1 : 1;
 
   return (
     <div className="w-full">
@@ -83,6 +84,7 @@ export default function SubjectPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         subjectId={subject._id}
+        suggestedOrder={nextOrder}
       />
     </div>
   );

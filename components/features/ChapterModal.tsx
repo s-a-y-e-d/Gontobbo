@@ -9,6 +9,7 @@ type ChapterModalProps = {
   isOpen: boolean;
   onClose: () => void;
   subjectId: Id<"subjects">;
+  suggestedOrder?: number;
   initialData?: {
     _id: Id<"chapters">;
     name: string;
@@ -28,7 +29,7 @@ function slugify(text: string): string {
     .trim();
 }
 
-export default function ChapterModal({ isOpen, onClose, subjectId, initialData }: ChapterModalProps) {
+export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrder, initialData }: ChapterModalProps) {
   const createChapter = useMutation(api.mutations.createChapter);
   const updateChapter = useMutation(api.mutations.updateChapter);
   
@@ -46,13 +47,11 @@ export default function ChapterModal({ isOpen, onClose, subjectId, initialData }
       setPriorityBoost(initialData.priorityBoost || 0);
     } else {
       setName("");
-      // Default order to current timestamp if not provided, or better, 
-      // let it be manageable. For now Date.now() is fine for new ones.
-      setOrder(Date.now());
+      setOrder(suggestedOrder || 1);
       setInNextTerm(false);
       setPriorityBoost(0);
     }
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, suggestedOrder]);
 
   if (!isOpen) return null;
 

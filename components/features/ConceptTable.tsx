@@ -168,6 +168,8 @@ export default function ConceptTable({
   const [editingConcept, setEditingConcept] = React.useState<ConceptRowData | null>(null);
   const deleteConcept = useMutation(api.mutations.deleteConcept);
 
+  const nextOrder = concepts.length > 0 ? Math.max(...concepts.map((c) => c.order)) + 1 : 1;
+
   const handleEdit = (concept: ConceptRowData) => {
     setEditingConcept(concept);
     setIsModalOpen(true);
@@ -202,12 +204,11 @@ export default function ConceptTable({
             setEditingConcept(null);
           }}
           chapterId={chapterId}
+          suggestedOrder={nextOrder}
           initialData={editingConcept ? {
             _id: editingConcept._id,
             name: editingConcept.name,
             order: editingConcept.order,
-            // Assuming difficulty might be in concept row data if we added it to query
-            // but for now let's keep it simple.
           } : undefined}
         />
       </section>
@@ -297,6 +298,7 @@ export default function ConceptTable({
           setEditingConcept(null);
         }}
         chapterId={chapterId}
+        suggestedOrder={nextOrder}
         initialData={editingConcept ? {
           _id: editingConcept._id,
           name: editingConcept.name,
