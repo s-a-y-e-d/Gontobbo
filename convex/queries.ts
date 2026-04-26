@@ -241,3 +241,100 @@ export const getSubjectsWithStats = query({
     return subjectsWithStats;
   },
 });
+
+// ── Count studyItems by type ─────────────────────────────────────
+export const countStudyItemsByType = query({
+  args: { subjectId: v.id("subjects"), type: v.string() },
+  handler: async (ctx, args) => {
+    const items = await ctx.db
+      .query("studyItems")
+      .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
+      .filter((q) => q.eq(q.field("type"), args.type))
+      .collect();
+    return items.length;
+  },
+});
+// ── Full chapter page data ───────────────────────────────────────
+// Returns subject + chapter + concepts with studyItems
+// Used by /subjects/[slug]/[chapterSlug] page
+export const getChapterPageData = query({
+  args: { subjectSlug: v.string(), chapterSlug: v.string() },
+  handler: async (ctx, args) => {
+    const subject = await ctx.db
+      .query("subjects")
+      .withIndex("by_slug", (q) => q.eq("slug", args.subjectSlug))
+      .unique();
+
+    if (!subject) return null;
+
+    const chapter = await ctx.db
+      .query("chapters")
+      .withIndex("by_subject_slug", (q) =>
+        q.eq("subjectId", subject._id).eq("slug", args.chapterSlug)
+      )
+      .unique();
+
+    if (!chapter) return null;
+
+    const concepts = await ctx.db
+      .query("concepts")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+      .collect();
+
+    // Sort concepts by order
+    concepts.sort((a, b) => a.order - b.order);
+
+    const conceptsWithData = await Promise.all(
+      concepts.map(async (concept) => {
+        const studyItems = await ctx.db
+          .query("studyItems")
+          .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
+          .collect();
+
+        // Build tracker data
+        const trackerData: Record<
+          string,
+          { isCompleted: boolean; score?: number; studyItemId?: string }
+        > = {};
+        for (const tracker of subject.conceptTrackers) {
+          const matchingItem = studyItems.find((si) => si.type === tracker.key);
+          trackerData[tracker.key] = {
+            isCompleted: matchingItem?.isCompleted ?? false,
+            score: matchingItem?.completionScore ?? undefined,
+            studyItemId: matchingItem?._id,
+          };
+        }
+
+        // Concept status
+        const totalItems = subject.conceptTrackers.length;
+        const completedItems = studyItems.filter((si) => si.isCompleted).length;
+        let status: "NOT_STARTED" | "IN_PROGRESS" | "READY" = "NOT_STARTED";
+        if (totalItems > 0 && completedItems === totalItems) {
+          status = "READY";
+        } else if (completedItems > 0) {
+          status = "IN_PROGRESS";
+        }
+
+        return {
+          ...concept,
+          trackerData,
+          status,
+          totalItems,
+          completedItems,
+        };
+      })
+    );
+
+    // Chapter progress
+    const totalAllItems = conceptsWithData.reduce((sum, c) => sum + c.totalItems, 0);
+    const completedAllItems = conceptsWithData.reduce((sum, c) => sum + c.completedItems, 0);
+    const progressPercentage = totalAllItems === 0 ? 0 : Math.round((completedAllItems / totalAllItems) * 100);
+
+    return {
+      subject,
+      chapter,
+      concepts: conceptsWithData,
+      progressPercentage,
+    };
+  },
+});

@@ -1,15 +1,25 @@
 "use client";
 
-import React, { useState } from "react";
-import { useMutation } from "convex/react";
+import React, { useState, useEffect } from "react";
+import { useMutation, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 
-type AddSubjectModalProps = {
+type EditSubjectModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  subject: {
+    _id: Id<"subjects">;
+    name: string;
+    icon?: string;
+    color?: string;
+    chapterTrackers: { key: string; label: string; avgMinutes: number }[];
+    conceptTrackers: { key: string; label: string; avgMinutes: number }[];
+  };
 };
 
 type TrackerEntry = {
+  key?: string;
   label: string;
   avgMinutes: number;
 };
@@ -31,10 +41,10 @@ function toKey(label: string): string {
     .trim() || `tracker-${Date.now()}`;
 }
 
-function ensureUniqueKeys(trackers: { label: string; avgMinutes: number }[]) {
+function ensureUniqueKeys(trackers: TrackerEntry[]) {
   const keys = new Set<string>();
   return trackers.map((t) => {
-    let key = toKey(t.label);
+    let key = t.key || toKey(t.label);
     let originalKey = key;
     let counter = 2;
     while (keys.has(key)) {
@@ -42,7 +52,11 @@ function ensureUniqueKeys(trackers: { label: string; avgMinutes: number }[]) {
       counter++;
     }
     keys.add(key);
-    return { ...t, key };
+    return { 
+        key,
+        label: t.label,
+        avgMinutes: t.avgMinutes
+    };
   });
 }
 
@@ -69,22 +83,28 @@ const ICON_OPTIONS = [
   { label: "Social", value: "groups" },
 ];
 
-export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProps) {
-  const createSubject = useMutation(api.mutations.createSubject);
+export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubjectModalProps) {
+  const convex = useConvex();
+  const updateSubject = useMutation(api.mutations.updateSubject);
   
-  const [name, setName] = useState("");
-  const [icon, setIcon] = useState("menu_book");
-  const [color, setColor] = useState("green");
-  const [chapterTrackers, setChapterTrackers] = useState<TrackerEntry[]>([
-    { label: "MCQ", avgMinutes: 30 },
-    { label: "বোর্ড", avgMinutes: 45 }
-  ]);
-  const [conceptTrackers, setConceptTrackers] = useState<TrackerEntry[]>([
-    { label: "ক্লাস ", avgMinutes: 20 },
-    { label: "বই", avgMinutes: 25 }
-  ]);
+  const [name, setName] = useState(subject.name);
+  const [icon, setIcon] = useState(subject.icon || "menu_book");
+  const [color, setColor] = useState(subject.color || "green");
+  const [chapterTrackers, setChapterTrackers] = useState<TrackerEntry[]>(subject.chapterTrackers);
+  const [conceptTrackers, setConceptTrackers] = useState<TrackerEntry[]>(subject.conceptTrackers);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isIconDropdownOpen, setIsIconDropdownOpen] = useState(false);
+  
+  const [pendingRemoval, setPendingRemoval] = useState<{ type: "chapter" | "concept", index: number } | null>(null);
+  const [isCheckingRemoval, setIsCheckingRemoval] = useState(false);
+
+  useEffect(() => {
+    setName(subject.name);
+    setIcon(subject.icon || "menu_book");
+    setColor(subject.color || "green");
+    setChapterTrackers(subject.chapterTrackers);
+    setConceptTrackers(subject.conceptTrackers);
+  }, [subject]);
 
   if (!isOpen) return null;
 
@@ -97,21 +117,18 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
 
     setIsSubmitting(true);
     try {
-      await createSubject({
+      await updateSubject({
+        subjectId: subject._id,
         name,
         slug: slugify(name),
         icon,
         color,
-        order: Date.now(),
         chapterTrackers: ensureUniqueKeys(chapterTrackers),
         conceptTrackers: ensureUniqueKeys(conceptTrackers),
       });
-      setName("");
-      setChapterTrackers([]);
-      setConceptTrackers([]);
       onClose();
     } catch (error) {
-      console.error("Failed to create subject:", error);
+      console.error("Failed to update subject:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -126,12 +143,42 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
     }
   };
 
-  const removeTracker = (type: "chapter" | "concept", index: number) => {
+  const initiateRemoval = async (type: "chapter" | "concept", index: number) => {
+    const tracker = type === "chapter" ? chapterTrackers[index] : conceptTrackers[index];
+    
+    if (!tracker.key) {
+      // New tracker, just remove it
+      performRemoval(type, index);
+      return;
+    }
+
+    setIsCheckingRemoval(true);
+    try {
+      const count = await convex.query(api.queries.countStudyItemsByType, {
+        subjectId: subject._id,
+        type: tracker.key
+      });
+
+      if (count > 0) {
+        setPendingRemoval({ type, index });
+      } else {
+        performRemoval(type, index);
+      }
+    } catch (error) {
+      console.error("Error checking study items:", error);
+      performRemoval(type, index);
+    } finally {
+      setIsCheckingRemoval(false);
+    }
+  };
+
+  const performRemoval = (type: "chapter" | "concept", index: number) => {
     if (type === "chapter") {
       setChapterTrackers(chapterTrackers.filter((_, i) => i !== index));
     } else {
       setConceptTrackers(conceptTrackers.filter((_, i) => i !== index));
     }
+    setPendingRemoval(null);
   };
 
   const updateTracker = (type: "chapter" | "concept", index: number, field: keyof TrackerEntry, value: string | number) => {
@@ -150,7 +197,7 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 overflow-y-auto">
       <div className="bg-pure-white rounded-xl shadow-xl w-full max-w-2xl my-8">
         <div className="flex justify-between items-center p-6 border-b border-border-subtle sticky top-0 bg-pure-white z-10">
-          <h2 className="font-card-title text-card-title text-on-surface">নতুন বিষয় যোগ করুন</h2>
+          <h2 className="font-card-title text-card-title text-on-surface">বিষয় এডিট করুন</h2>
           <button 
             onClick={onClose}
             className="text-gray-400 hover:text-gray-700 transition-colors"
@@ -170,7 +217,6 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
-                placeholder="যেমন: পদার্থবিজ্ঞান ১ম পত্র"
               />
             </div>
 
@@ -249,35 +295,59 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
             </div>
             <div className="flex flex-col gap-3">
               {chapterTrackers.map((tracker, index) => (
-                <div key={index} className="flex gap-3 items-center">
-                  <input 
-                    type="text" 
-                    placeholder="লেবেল (যেমন: MCQ)"
-                    required
-                    value={tracker.label}
-                    onChange={(e) => updateTracker("chapter", index, "label", e.target.value)}
-                    className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
-                  />
-                  <input 
-                    type="number" 
-                    placeholder="মিনিট"
-                    required
-                    value={tracker.avgMinutes}
-                    onChange={(e) => updateTracker("chapter", index, "avgMinutes", parseInt(e.target.value) || 0)}
-                    className="w-24 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green text-center"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => removeTracker("chapter", index)}
-                    className="p-2 text-error-red hover:bg-red-50 rounded-full transition-colors"
-                  >
-                    <span className="material-symbols-outlined">delete</span>
-                  </button>
+                <div key={index} className="flex flex-col gap-2">
+                  <div className="flex gap-3 items-center">
+                    <input 
+                      type="text" 
+                      placeholder="লেবেল"
+                      required
+                      value={tracker.label}
+                      onChange={(e) => updateTracker("chapter", index, "label", e.target.value)}
+                      className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
+                    />
+                    <input 
+                      type="number" 
+                      placeholder="মিনিট"
+                      required
+                      value={tracker.avgMinutes}
+                      onChange={(e) => updateTracker("chapter", index, "avgMinutes", parseInt(e.target.value) || 0)}
+                      className="w-24 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green text-center"
+                    />
+                    <button 
+                      type="button" 
+                      disabled={isCheckingRemoval}
+                      onClick={() => initiateRemoval("chapter", index)}
+                      className="p-2 text-error-red hover:bg-red-50 rounded-full transition-colors disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined">delete</span>
+                    </button>
+                  </div>
+                  {pendingRemoval?.type === "chapter" && pendingRemoval?.index === index && (
+                    <div className="bg-amber-50 border border-warm-amber/20 p-3 rounded-2xl flex flex-col gap-2">
+                      <p className="text-sm text-warm-amber font-medium flex items-center gap-1">
+                        <span className="material-symbols-outlined text-sm">warning</span>
+                        এই কলামে ইতোমধ্যে ডেটা আছে। মুছলে সব প্রগ্রেস হারিয়ে যাবে।
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <button 
+                          type="button"
+                          onClick={() => setPendingRemoval(null)}
+                          className="px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-full"
+                        >
+                          বাতিল
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => performRemoval("chapter", index)}
+                          className="px-3 py-1 text-xs font-medium text-error-red hover:bg-red-100 rounded-full"
+                        >
+                          তবুও মুছুন
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
-              {chapterTrackers.length === 0 && (
-                <p className="text-sm text-gray-400 italic text-center py-4 border border-dashed border-border-medium rounded-xl">কোনো ট্র্যাকার নেই</p>
-              )}
             </div>
           </div>
 
@@ -296,35 +366,59 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
             </div>
             <div className="flex flex-col gap-3">
               {conceptTrackers.map((tracker, index) => (
-                <div key={index} className="flex gap-3 items-center">
-                  <input 
-                    type="text" 
-                    placeholder="লেবেল (যেমন: ক্লাস নোট)"
-                    required
-                    value={tracker.label}
-                    onChange={(e) => updateTracker("concept", index, "label", e.target.value)}
-                    className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
-                  />
-                  <input 
-                    type="number" 
-                    placeholder="মিনিট"
-                    required
-                    value={tracker.avgMinutes}
-                    onChange={(e) => updateTracker("concept", index, "avgMinutes", parseInt(e.target.value) || 0)}
-                    className="w-24 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green text-center"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => removeTracker("concept", index)}
-                    className="p-2 text-error-red hover:bg-red-50 rounded-full transition-colors"
-                  >
-                    <span className="material-symbols-outlined">delete</span>
-                  </button>
+                <div key={index} className="flex flex-col gap-2">
+                  <div className="flex gap-3 items-center">
+                    <input 
+                      type="text" 
+                      placeholder="লেবেল"
+                      required
+                      value={tracker.label}
+                      onChange={(e) => updateTracker("concept", index, "label", e.target.value)}
+                      className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
+                    />
+                    <input 
+                      type="number" 
+                      placeholder="মিনিট"
+                      required
+                      value={tracker.avgMinutes}
+                      onChange={(e) => updateTracker("concept", index, "avgMinutes", parseInt(e.target.value) || 0)}
+                      className="w-24 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green text-center"
+                    />
+                    <button 
+                      type="button" 
+                      disabled={isCheckingRemoval}
+                      onClick={() => initiateRemoval("concept", index)}
+                      className="p-2 text-error-red hover:bg-red-50 rounded-full transition-colors disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined">delete</span>
+                    </button>
+                  </div>
+                  {pendingRemoval?.type === "concept" && pendingRemoval?.index === index && (
+                    <div className="bg-amber-50 border border-warm-amber/20 p-3 rounded-2xl flex flex-col gap-2">
+                      <p className="text-sm text-warm-amber font-medium flex items-center gap-1">
+                        <span className="material-symbols-outlined text-sm">warning</span>
+                        এই কলামে ইতোমধ্যে ডেটা আছে। মুছলে সব প্রগ্রেস হারিয়ে যাবে।
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <button 
+                          type="button"
+                          onClick={() => setPendingRemoval(null)}
+                          className="px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-full"
+                        >
+                          বাতিল
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => performRemoval("concept", index)}
+                          className="px-3 py-1 text-xs font-medium text-error-red hover:bg-red-100 rounded-full"
+                        >
+                          তবুও মুছুন
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
-              {conceptTrackers.length === 0 && (
-                <p className="text-sm text-gray-400 italic text-center py-4 border border-dashed border-border-medium rounded-xl">কোনো ট্র্যাকার নেই</p>
-              )}
             </div>
           </div>
 
@@ -341,7 +435,7 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
               disabled={isSubmitting}
               className="px-8 py-2.5 rounded-full font-label-uppercase text-label-uppercase text-pure-white bg-on-surface hover:bg-brand-green transition-colors disabled:opacity-50"
             >
-              {isSubmitting ? "যুক্ত হচ্ছে..." : "বিষয় যোগ করুন"}
+              {isSubmitting ? "আপডেট হচ্ছে..." : "পরিবর্তন সংরক্ষণ করুন"}
             </button>
           </div>
         </form>

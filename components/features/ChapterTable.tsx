@@ -91,7 +91,8 @@ function ConceptBar({ completed, total }: { completed: number; total: number }) 
 
 function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; studyItemId?: string }) {
   const toggle = useMutation(api.mutations.toggleStudyItemCompletion);
-  const id = `cbx-${studyItemId || Math.random().toString(36).substring(2, 9)}`;
+  const generatedId = React.useId();
+  const id = `cbx-${studyItemId || generatedId}`;
 
   return (
     <div 
@@ -125,11 +126,15 @@ function ActionMenu({
   inNextTerm,
   subjectSlug,
   chapterSlug,
+  onEdit,
+  onDelete,
 }: {
   chapterId: Id<"chapters">;
   inNextTerm: boolean;
   subjectSlug: string;
   chapterSlug: string;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -179,6 +184,19 @@ function ActionMenu({
             <span className="material-symbols-outlined text-lg text-gray-500">visibility</span>
             অধ্যায় দেখুন
           </button>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+              setOpen(false);
+            }}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-on-surface hover:bg-gray-100 transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg text-gray-500">edit</span>
+            এডিট করুন
+          </button>
+
           <button
             onClick={async (e) => {
               e.stopPropagation();
@@ -196,16 +214,31 @@ function ActionMenu({
           <div className="border-t border-border-subtle my-1" />
 
           {!showConfirm ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowConfirm(true);
-              }}
-              className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-error-red hover:bg-red-50 transition-colors"
-            >
-              <span className="material-symbols-outlined text-lg">restart_alt</span>
-              প্রগ্রেস রিসেট
-            </button>
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowConfirm(true);
+                }}
+                className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-warm-amber hover:bg-amber-50 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">restart_alt</span>
+                প্রগ্রেস রিসেট
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (confirm("আপনি কি নিশ্চিতভাবে এই অধ্যায়টি মুছতে চান? এর সকল কনসেপ্ট এবং প্রগ্রেস মুছে যাবে।")) {
+                    await onDelete();
+                  }
+                  setOpen(false);
+                }}
+                className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-error-red hover:bg-red-50 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">delete</span>
+                মুছে ফেলুন
+              </button>
+            </>
           ) : (
             <div className="px-4 py-2.5">
               <p className="text-xs text-gray-500 mb-2">নিশ্চিত? সব প্রগ্রেস মুছে যাবে।</p>
@@ -239,6 +272,8 @@ function ActionMenu({
   );
 }
 
+import ChapterModal from "./ChapterModal";
+
 export default function ChapterTable({
   title,
   chapters,
@@ -246,6 +281,8 @@ export default function ChapterTable({
   subjectSlug,
 }: ChapterTableProps) {
   const router = useRouter();
+  const [editingChapter, setEditingChapter] = useState<ChapterRowData | null>(null);
+  const deleteChapter = useMutation(api.mutations.deleteChapter);
 
   if (chapters.length === 0) {
     return (
@@ -261,11 +298,11 @@ export default function ChapterTable({
   return (
     <section className="mb-12">
       <h2 className="font-sub-heading text-sub-heading text-on-surface mb-6">{title}</h2>
-      <div className="bg-pure-white border border-border-subtle rounded-2xl overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-        <table className="w-full">
+      <div className="bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+        <table className="w-full border-separate border-spacing-0">
           <thead>
             <tr className="border-b border-border-subtle">
-              <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+              <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
                 অধ্যায়
               </th>
               <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
@@ -282,7 +319,7 @@ export default function ChapterTable({
               <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
                 স্ট্যাটাস
               </th>
-              <th className="text-right py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+              <th className="text-right py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase last:rounded-tr-2xl">
                 অ্যাকশন
               </th>
             </tr>
@@ -291,14 +328,14 @@ export default function ChapterTable({
             {chapters.map((chapter, idx) => (
               <tr
                 key={chapter._id}
-                className={`transition-colors hover:bg-surface-container/20 ${
+                className={`transition-colors hover:bg-surface-container/20 group ${
                   idx < chapters.length - 1 ? "border-b border-border-subtle" : ""
                 }`}
               >
-                <td className="py-4 px-5">
+                <td className={`py-4 px-5 ${idx === chapters.length - 1 ? "rounded-bl-2xl" : ""}`}>
                   <div className="flex items-center gap-3">
                     <span className="font-mono-code text-mono-code text-gray-400 bg-surface-container w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0">
-                      {String(chapter.order).padStart(2, "0")}
+                      {String(chapter.order).length > 2 ? String(idx + 1).padStart(2, "0") : String(chapter.order).padStart(2, "0")}
                     </span>
                     <button
                       onClick={() => router.push(`/subjects/${subjectSlug}/${chapter.slug}`)}
@@ -325,12 +362,14 @@ export default function ChapterTable({
                 <td className="py-4 px-5">
                   <StatusBadge status={chapter.status} />
                 </td>
-                <td className="py-4 px-5 text-right">
+                <td className={`py-4 px-5 text-right ${idx === chapters.length - 1 ? "rounded-br-2xl" : ""}`}>
                   <ActionMenu
                     chapterId={chapter._id}
                     inNextTerm={chapter.inNextTerm}
                     subjectSlug={subjectSlug}
                     chapterSlug={chapter.slug}
+                    onEdit={() => setEditingChapter(chapter)}
+                    onDelete={() => deleteChapter({ chapterId: chapter._id })}
                   />
                 </td>
               </tr>
@@ -338,6 +377,21 @@ export default function ChapterTable({
           </tbody>
         </table>
       </div>
+
+      {editingChapter && (
+        <ChapterModal
+          isOpen={!!editingChapter}
+          onClose={() => setEditingChapter(null)}
+          subjectId={chapters[0].subjectId} // All chapters in this table share same subjectId
+          initialData={{
+            _id: editingChapter._id,
+            name: editingChapter.name,
+            slug: editingChapter.slug,
+            order: editingChapter.order,
+            inNextTerm: editingChapter.inNextTerm,
+          }}
+        />
+      )}
     </section>
   );
 }

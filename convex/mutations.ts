@@ -2,6 +2,7 @@ import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 // ── Create a subject ─────────────────────────────────────────────
+// ... (rest of the file)
 export const createSubject = mutation({
   args: {
     name: v.string(),
@@ -30,6 +31,69 @@ export const createSubject = mutation({
   },
 });
 
+// ── Update a subject ─────────────────────────────────────────────
+// Updates subject metadata and tracker configs
+// Deletes orphaned studyItems when trackers are removed
+export const updateSubject = mutation({
+  args: {
+    subjectId: v.id("subjects"),
+    name: v.optional(v.string()),
+    slug: v.optional(v.string()),
+    icon: v.optional(v.string()),
+    color: v.optional(v.string()),
+    chapterTrackers: v.optional(v.array(v.object({
+      key: v.string(),
+      label: v.string(),
+      avgMinutes: v.number(),
+    }))),
+    conceptTrackers: v.optional(v.array(v.object({
+      key: v.string(),
+      label: v.string(),
+      avgMinutes: v.number(),
+    }))),
+  },
+  handler: async (ctx, args) => {
+    const { subjectId, ...updates } = args;
+
+    const oldSubject = await ctx.db.get(subjectId);
+    if (!oldSubject) throw new Error("Subject not found");
+
+    if (updates.chapterTrackers) {
+      const newKeys = new Set(updates.chapterTrackers.map(t => t.key));
+      const removedKeys = oldSubject.chapterTrackers.filter(t => !newKeys.has(t.key)).map(t => t.key);
+
+      for (const key of removedKeys) {
+        const studyItems = await ctx.db.query("studyItems")
+          .withIndex("by_subject", q => q.eq("subjectId", subjectId))
+          .filter(q => q.eq(q.field("type"), key))
+          .collect();
+
+        for (const item of studyItems) {
+          await ctx.db.delete(item._id);
+        }
+      }
+    }
+
+    if (updates.conceptTrackers) {
+      const newKeys = new Set(updates.conceptTrackers.map(t => t.key));
+      const removedKeys = oldSubject.conceptTrackers.filter(t => !newKeys.has(t.key)).map(t => t.key);
+
+      for (const key of removedKeys) {
+        const studyItems = await ctx.db.query("studyItems")
+          .withIndex("by_subject", q => q.eq("subjectId", subjectId))
+          .filter(q => q.eq(q.field("type"), key))
+          .collect();
+
+        for (const item of studyItems) {
+          await ctx.db.delete(item._id);
+        }
+      }
+    }
+
+    await ctx.db.patch(subjectId, updates);
+  },
+});
+
 // ── Toggle chapter inNextTerm ────────────────────────────────────
 export const toggleChapterInNextTerm = mutation({
   args: { chapterId: v.id("chapters") },
@@ -39,6 +103,142 @@ export const toggleChapterInNextTerm = mutation({
     await ctx.db.patch(args.chapterId, {
       inNextTerm: !chapter.inNextTerm,
     });
+  },
+});
+
+// ── Create a chapter ─────────────────────────────────────────────
+export const createChapter = mutation({
+  args: {
+    subjectId: v.id("subjects"),
+    name: v.string(),
+    slug: v.string(),
+    order: v.number(),
+    inNextTerm: v.boolean(),
+    priorityBoost: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("chapters", args);
+  },
+});
+
+// ── Update a chapter ─────────────────────────────────────────────
+export const updateChapter = mutation({
+  args: {
+    chapterId: v.id("chapters"),
+    name: v.string(),
+    slug: v.string(),
+    order: v.number(),
+    inNextTerm: v.boolean(),
+    priorityBoost: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { chapterId, ...updates } = args;
+    await ctx.db.patch(chapterId, updates);
+  },
+});
+
+// ── Delete a chapter ─────────────────────────────────────────────
+export const deleteChapter = mutation({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, args) => {
+    // Also delete associated concepts and studyItems
+    const concepts = await ctx.db
+      .query("concepts")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
+      .collect();
+    
+    for (const concept of concepts) {
+      const studyItems = await ctx.db
+        .query("studyItems")
+        .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
+        .collect();
+      for (const item of studyItems) {
+        await ctx.db.delete(item._id);
+      }
+      await ctx.db.delete(concept._id);
+    }
+
+    const chapterItems = await ctx.db
+      .query("studyItems")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
+      .collect();
+    for (const item of chapterItems) {
+      await ctx.db.delete(item._id);
+    }
+
+    await ctx.db.delete(args.chapterId);
+  },
+});
+
+// ── Create a concept ─────────────────────────────────────────────
+export const createConcept = mutation({
+  args: {
+    chapterId: v.id("chapters"),
+    name: v.string(),
+    order: v.number(),
+    difficulty: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("concepts", args);
+  },
+});
+
+// ── Update a concept ─────────────────────────────────────────────
+export const updateConcept = mutation({
+  args: {
+    conceptId: v.id("concepts"),
+    name: v.string(),
+    order: v.number(),
+    difficulty: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { conceptId, ...updates } = args;
+    
+    // Update the concept itself
+    await ctx.db.patch(conceptId, updates);
+
+    // Also update titles of associated studyItems to keep them in sync
+    // Pattern: "${concept.name} — ${tracker.label}"
+    const concept = await ctx.db.get(conceptId);
+    if (!concept) return;
+
+    const chapter = await ctx.db.get(concept.chapterId);
+    if (!chapter) return;
+
+    const subject = await ctx.db.get(chapter.subjectId);
+    if (!subject) return;
+
+    const studyItems = await ctx.db
+      .query("studyItems")
+      .withIndex("by_concept", (q) => q.eq("conceptId", conceptId))
+      .collect();
+
+    for (const item of studyItems) {
+      const tracker = subject.conceptTrackers.find(t => t.key === item.type);
+      if (tracker) {
+        await ctx.db.patch(item._id, {
+          title: `${concept.name} — ${tracker.label}`
+        });
+      }
+    }
+  },
+});
+
+// ── Delete a concept ─────────────────────────────────────────────
+export const deleteConcept = mutation({
+  args: { conceptId: v.id("concepts") },
+  handler: async (ctx, args) => {
+    // Delete associated studyItems first
+    const studyItems = await ctx.db
+      .query("studyItems")
+      .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
+      .collect();
+    
+    for (const item of studyItems) {
+      await ctx.db.delete(item._id);
+    }
+
+    await ctx.db.delete(args.conceptId);
   },
 });
 
@@ -266,3 +466,76 @@ export const migrateAndSeed = mutation({
     return chemId;
   },
 });
+// ── Seed Chemistry Concepts ─────────────────────────────────────
+export const seedChemistryConcepts = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const chemistry = await ctx.db
+      .query("subjects")
+      .withIndex("by_slug", (q) => q.eq("slug", "chemistry"))
+      .unique();
+
+    if (!chemistry) throw new Error("Chemistry subject not found. Run migrateAndSeed first.");
+
+    const chapters = await ctx.db
+      .query("chapters")
+      .withIndex("by_subject", (q) => q.eq("subjectId", chemistry._id))
+      .collect();
+
+    const conceptData: Record<string, string[]> = {
+      "safe-use-of-laboratory": [
+        "ল্যাবরেটরির ব্যবহার বিধি",
+        "ল্যাবরেটরিতে ব্যালেন্স ব্যবহার ও পরিমাণ কৌশল",
+        "ল্যাবরেটরিতে বিভিন্ন পরীক্ষায় তাপ দেওয়ার কৌশল, বিশ্লেষণ পদ্ধতি ও হ্যাজার্ড সিম্বল",
+      ],
+      "qualitative-chemistry": [
+        "পরমাণু ও পরমাণু মডেল",
+        "কোয়ান্টাম সংখ্যা ও ইলেকট্রন বিন্যাস",
+        "তড়িৎ চুম্বকীয় বর্ণালি",
+        "দ্রাব্যতা, দ্রাব্যতা নীতি ও দ্রাব্যতা গুণফল",
+        "শিখা পরীক্ষা ও আয়ন শনাক্তকরণ",
+      ],
+      "periodic-properties-and-bonding": [
+        "পর্যায় সারণি ও বিভিন্ন মৌলের অবস্থান",
+        "মৌলের পর্যায়বৃত্ত ধর্ম",
+        "রাসায়নিক বন্ধন",
+      ],
+      "chemical-change": [
+        "রাসায়নিক বিক্রিয়া, বিক্রিয়ার হার ও সক্রিয়ণ শক্তি",
+        "রাসায়নিক সাম্যাবস্থা",
+        "আয়নিক গুণফল, বাফার দ্রবণ, pH",
+        "বিক্রিয়া তাপ",
+      ],
+      "vocational-chemistry": [
+        "খাদ্য নিরাপত্তা ও খাদ্য সংরক্ষণ",
+        "সাসপেনশন ও কোয়াগুলেশন",
+        "টয়লেট্রিজ ও পারফিউমারি",
+        "ভিনেগার ও ভিনেগারের ক্রিয়া কৌশল",
+      ],
+    };
+
+    for (const chapter of chapters) {
+      const concepts = conceptData[chapter.slug];
+      if (concepts) {
+        // Clear existing concepts for this chapter to avoid duplicates if re-run
+        const existingConcepts = await ctx.db
+          .query("concepts")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .collect();
+        for (const ec of existingConcepts) {
+          await ctx.db.delete(ec._id);
+        }
+
+        // Insert new concepts
+        for (let i = 0; i < concepts.length; i++) {
+          await ctx.db.insert("concepts", {
+            chapterId: chapter._id,
+            name: concepts[i],
+            order: i + 1,
+          });
+        }
+      }
+    }
+  },
+});
+

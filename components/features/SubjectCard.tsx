@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Id } from "@/convex/_generated/dataModel";
+import EditSubjectModal from "./EditSubjectModal";
 
 export type SubjectStats = {
   totalChapters: number;
@@ -10,11 +13,13 @@ export type SubjectStats = {
 };
 
 export type SubjectCardProps = {
-  _id: string;
+  _id: Id<"subjects">;
   name: string;
   slug: string;
   icon?: string;
   color?: string;
+  chapterTrackers: { key: string; label: string; avgMinutes: number }[];
+  conceptTrackers: { key: string; label: string; avgMinutes: number }[];
   stats?: SubjectStats;
 };
 
@@ -55,14 +60,20 @@ const themeMap: Record<string, {
   },
 };
 
-export default function SubjectCard({
-  name,
-  slug,
-  icon,
-  color,
-  stats,
-}: SubjectCardProps) {
+export default function SubjectCard(props: SubjectCardProps) {
+  const {
+    _id,
+    name,
+    slug,
+    icon,
+    color,
+    chapterTrackers,
+    conceptTrackers,
+    stats,
+  } = props;
+  
   const router = useRouter();
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const theme = themeMap[color || "gray"] || themeMap.gray;
 
   // Default stats if not loaded yet
@@ -74,58 +85,76 @@ export default function SubjectCard({
   };
 
   return (
-    <div
-      onClick={() => router.push(`/subjects/${slug}`)}
-      className="bg-pure-white border border-border-subtle rounded-[24px] p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] transition-all hover:border-border-medium hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] cursor-pointer active:scale-[0.99]"
-    >
-      <div className="flex justify-between items-start">
-        <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${theme.iconBg}`}>
-            <span className={`material-symbols-outlined ${theme.iconColor}`}>{icon || "book"}</span>
+    <>
+      <div
+        onClick={() => router.push(`/subjects/${slug}`)}
+        className="group bg-pure-white border border-border-subtle rounded-[24px] p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] transition-all hover:border-border-medium hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] cursor-pointer active:scale-[0.99]"
+      >
+        <div className="flex justify-between items-start">
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${theme.iconBg}`}>
+              <span className={`material-symbols-outlined ${theme.iconColor}`}>{icon || "book"}</span>
+            </div>
+            <div>
+              <h2 className="font-card-title text-card-title text-on-surface">{name}</h2>
+              <p className="font-mono-code text-mono-code text-gray-400">
+                {displayStats.totalChapters} অধ্যায়
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-card-title text-card-title text-on-surface">{name}</h2>
-            <p className="font-mono-code text-mono-code text-gray-400">
-              {displayStats.totalChapters} অধ্যায়
-            </p>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditModalOpen(true);
+            }}
+            className="text-gray-400 hover:text-on-surface transition-colors p-2 hover:bg-gray-50 rounded-full"
+          >
+            <span className="material-symbols-outlined">more_horiz</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 py-4 border-y border-border-subtle">
+          <div className="flex flex-col gap-1">
+            <span className="font-mono-code text-mono-code text-gray-500 uppercase">Chapters</span>
+            <span className="font-sub-heading text-sub-heading text-on-surface">
+              {displayStats.completedChapters}
+              <span className="text-sm text-gray-400 font-normal">/{displayStats.totalChapters}</span>
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="font-mono-code text-mono-code text-gray-500 uppercase">Tasks Pending</span>
+            <span className="font-sub-heading text-sub-heading text-on-surface">{displayStats.tasksPending}</span>
           </div>
         </div>
-        <button
-          onClick={(e) => e.stopPropagation()}
-          className="text-gray-400 hover:text-on-surface transition-colors"
-        >
-          <span className="material-symbols-outlined">more_horiz</span>
-        </button>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <span className="font-label-uppercase text-label-uppercase text-on-surface">Overall Progress</span>
+            <span className={`font-mono-code text-mono-code px-2 py-0.5 rounded-full ${theme.progressBadgeBg} ${theme.progressBadgeText}`}>
+              {displayStats.progressPercentage}%
+            </span>
+          </div>
+          <div className="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${theme.progressBarBg}`}
+              style={{ width: `${displayStats.progressPercentage}%` }}
+            ></div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 py-4 border-y border-border-subtle">
-        <div className="flex flex-col gap-1">
-          <span className="font-mono-code text-mono-code text-gray-500">CHAPTERS</span>
-          <span className="font-sub-heading text-sub-heading text-on-surface">
-            {displayStats.completedChapters}
-            <span className="text-sm text-gray-400 font-normal">/{displayStats.totalChapters}</span>
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="font-mono-code text-mono-code text-gray-500">TASKS PENDING</span>
-          <span className="font-sub-heading text-sub-heading text-on-surface">{displayStats.tasksPending}</span>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="flex justify-between items-center">
-          <span className="font-label-uppercase text-label-uppercase text-on-surface">Overall Progress</span>
-          <span className={`font-mono-code text-mono-code px-2 py-0.5 rounded-full ${theme.progressBadgeBg} ${theme.progressBadgeText}`}>
-            {displayStats.progressPercentage}%
-          </span>
-        </div>
-        <div className="w-full bg-surface-container h-2 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${theme.progressBarBg}`}
-            style={{ width: `${displayStats.progressPercentage}%` }}
-          ></div>
-        </div>
-      </div>
-    </div>
+      <EditSubjectModal 
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        subject={{
+            _id,
+            name,
+            icon,
+            color,
+            chapterTrackers,
+            conceptTrackers
+        }}
+      />
+    </>
   );
 }

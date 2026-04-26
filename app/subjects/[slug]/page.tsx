@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import SubjectHeader from "@/components/features/SubjectHeader";
 import ChapterTable from "@/components/features/ChapterTable";
+import ChapterModal from "@/components/features/ChapterModal";
 
 export default function SubjectPage() {
   const params = useParams();
   const slug = params.slug as string;
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const data = useQuery(api.queries.getSubjectPageData, { slug });
   const ensureItems = useMutation(api.mutations.ensureChapterStudyItems);
@@ -51,6 +53,16 @@ export default function SubjectPage() {
         progressPercentage={progressPercentage}
       />
 
+      <div className="flex justify-end mb-8 -mt-4">
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 px-6 py-2.5 bg-on-surface text-pure-white rounded-full font-label-uppercase text-label-uppercase hover:bg-brand-green transition-all shadow-sm hover:shadow-md"
+        >
+          <span className="material-symbols-outlined text-lg">add</span>
+          নতুন অধ্যায় যোগ
+        </button>
+      </div>
+
       {/* Next Term Chapters Table */}
       <ChapterTable
         title="পরীক্ষার সিলেবাস"
@@ -65,6 +77,12 @@ export default function SubjectPage() {
         chapters={allChapters}
         trackerConfigs={subject.chapterTrackers}
         subjectSlug={subject.slug}
+      />
+
+      <ChapterModal 
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        subjectId={subject._id}
       />
     </div>
   );
