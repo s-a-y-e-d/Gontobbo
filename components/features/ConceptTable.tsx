@@ -5,6 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import ConceptModal from "./ConceptModal";
+import ConceptReviewModal from "./ConceptReviewModal";
 
 type TrackerConfig = {
   key: string;
@@ -16,6 +17,9 @@ type ConceptRowData = {
   _id: Id<"concepts">;
   name: string;
   order: number;
+  reviewCount?: number;
+  nextReviewAt?: number;
+  repetitionLevel?: number;
   trackerData: Record<string, { isCompleted: boolean; score?: number; studyItemId?: string }>;
   status: "NOT_STARTED" | "IN_PROGRESS" | "READY";
   totalItems: number;
@@ -32,11 +36,14 @@ type ConceptTableProps = {
 function ActionMenu({
   onEdit,
   onDelete,
+  onReset,
 }: {
   onEdit: () => void;
   onDelete: () => void;
+  onReset: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [showConfirm, setShowConfirm] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
   // Close menu on outside click
@@ -44,6 +51,7 @@ function ActionMenu({
     function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpen(false);
+        setShowConfirm(false);
       }
     }
     if (open) {
@@ -58,6 +66,7 @@ function ActionMenu({
         onClick={(e) => {
           e.stopPropagation();
           setOpen(!open);
+          setShowConfirm(false);
         }}
         className="text-gray-400 hover:text-on-surface transition-colors p-1 rounded-lg hover:bg-gray-100"
       >
@@ -65,7 +74,7 @@ function ActionMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 bg-pure-white border border-border-subtle rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] py-1.5 z-50 min-w-[160px] animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="absolute right-0 top-full mt-1 bg-pure-white border border-border-subtle rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] py-1.5 z-50 min-w-[200px] animate-in fade-in slide-in-from-top-1 duration-150">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -78,19 +87,61 @@ function ActionMenu({
             এডিট করুন
           </button>
 
-          <button
-            onClick={async (e) => {
-              e.stopPropagation();
-              if (confirm("আপনি কি নিশ্চিতভাবে এই কনসেপ্টটি মুছতে চান?")) {
-                await onDelete();
-              }
-              setOpen(false);
-            }}
-            className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-error-red hover:bg-red-50 transition-colors"
-          >
-            <span className="material-symbols-outlined text-lg">delete</span>
-            মুছে ফেলুন
-          </button>
+          <div className="border-t border-border-subtle my-1" />
+
+          {!showConfirm ? (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowConfirm(true);
+                }}
+                className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-warm-amber hover:bg-amber-50 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">restart_alt</span>
+                প্রগ্রেস রিসেট
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (confirm("আপনি কি নিশ্চিতভাবে এই কনসেপ্টটি মুছতে চান?")) {
+                    await onDelete();
+                  }
+                  setOpen(false);
+                }}
+                className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-error-red hover:bg-red-50 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">delete</span>
+                মুছে ফেলুন
+              </button>
+            </>
+          ) : (
+            <div className="px-4 py-2.5">
+              <p className="text-xs text-gray-500 mb-2">নিশ্চিত? সব প্রগ্রেস মুছে যাবে।</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    onReset();
+                    setOpen(false);
+                    setShowConfirm(false);
+                  }}
+                  className="px-3 py-1.5 bg-error-red text-white text-xs rounded-full hover:opacity-90 transition-opacity"
+                >
+                  হ্যাঁ, রিসেট
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowConfirm(false);
+                  }}
+                  className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  বাতিল
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -166,7 +217,10 @@ export default function ConceptTable({
 }: ConceptTableProps) {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingConcept, setEditingConcept] = React.useState<ConceptRowData | null>(null);
+  const [reviewingConcept, setReviewingConcept] = React.useState<ConceptRowData | null>(null);
+  
   const deleteConcept = useMutation(api.mutations.deleteConcept);
+  const resetConcept = useMutation(api.mutations.resetConceptProgress);
 
   const nextOrder = concepts.length > 0 ? Math.max(...concepts.map((c) => c.order)) + 1 : 1;
 
@@ -178,6 +232,10 @@ export default function ConceptTable({
   const handleAdd = () => {
     setEditingConcept(null);
     setIsModalOpen(true);
+  };
+
+  const handleReview = (concept: ConceptRowData) => {
+    setReviewingConcept(concept);
   };
 
   if (concepts.length === 0) {
@@ -237,12 +295,15 @@ export default function ConceptTable({
               {trackerConfigs.map((t) => (
                 <th
                   key={t.key}
-                  className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase text-center"
+                  className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
                 >
                   {t.label}
                 </th>
               ))}
-              <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase text-right">
+              <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+                রিভিশন
+              </th>
+              <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
                 স্ট্যাটাস
               </th>
               <th className="text-right py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase last:rounded-tr-2xl">
@@ -251,42 +312,66 @@ export default function ConceptTable({
             </tr>
           </thead>
           <tbody>
-            {concepts.map((concept, idx) => (
-              <tr
-                key={concept._id}
-                className={`transition-colors hover:bg-surface-container/20 ${
-                  idx < concepts.length - 1 ? "border-b border-border-subtle" : ""
-                }`}
-              >
-                <td className={`py-4 px-5 ${idx === concepts.length - 1 ? "rounded-bl-2xl" : ""}`}>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono-code text-mono-code text-gray-400 bg-surface-container w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0">
-                      {String(concept.order).padStart(2, "0")}
-                    </span>
-                    <span className="font-body text-body text-on-surface leading-tight">
-                      {concept.name}
-                    </span>
-                  </div>
-                </td>
-                {trackerConfigs.map((t) => (
-                  <td key={t.key} className="py-4 px-5 text-center">
-                    <TrackerCell
-                      isCompleted={concept.trackerData[t.key]?.isCompleted ?? false}
-                      studyItemId={concept.trackerData[t.key]?.studyItemId}
+            {concepts.map((concept, idx) => {
+              const isUnlocked = concept.completedItems === concept.totalItems && concept.totalItems > 0;
+              const isDue = concept.nextReviewAt ? concept.nextReviewAt <= Date.now() : false;
+
+              return (
+                <tr
+                  key={concept._id}
+                  className={`transition-colors hover:bg-surface-container/20 ${
+                    idx < concepts.length - 1 ? "border-b border-border-subtle" : ""
+                  }`}
+                >
+                  <td className={`py-4 px-5 ${idx === concepts.length - 1 ? "rounded-bl-2xl" : ""}`}>
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono-code text-mono-code text-gray-400 bg-surface-container w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0">
+                        {String(concept.order).padStart(2, "0")}
+                      </span>
+                      <span className="font-body text-body text-on-surface leading-tight">
+                        {concept.name}
+                      </span>
+                    </div>
+                  </td>
+                  {trackerConfigs.map((t) => (
+                    <td key={t.key} className="py-4 px-5 text-center">
+                      <TrackerCell
+                        isCompleted={concept.trackerData[t.key]?.isCompleted ?? false}
+                        studyItemId={concept.trackerData[t.key]?.studyItemId}
+                      />
+                    </td>
+                  ))}
+                  <td className="py-4 px-5 text-center">
+                    <div className="flex justify-center">
+                      <button
+                        disabled={!isUnlocked}
+                        onClick={() => handleReview(concept)}
+                        title={!isUnlocked ? "সবগুলো ট্র্যাকার শেষ করুন" : ""}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                          !isUnlocked
+                            ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                            : isDue
+                              ? "bg-brand-green text-pure-white shadow-md hover:shadow-lg active:scale-95"
+                              : "bg-surface-container text-gray-400 hover:bg-gray-200"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-xl">refresh</span>
+                      </button>
+                    </div>
+                  </td>
+                  <td className="py-4 px-5 text-center">
+                    <StatusBadge status={concept.status} />
+                  </td>
+                  <td className={`py-4 px-5 text-right ${idx === concepts.length - 1 ? "rounded-br-2xl" : ""}`}>
+                    <ActionMenu 
+                      onEdit={() => handleEdit(concept)}
+                      onDelete={() => deleteConcept({ conceptId: concept._id })}
+                      onReset={() => resetConcept({ conceptId: concept._id })}
                     />
                   </td>
-                ))}
-                <td className="py-4 px-5 text-right">
-                  <StatusBadge status={concept.status} />
-                </td>
-                <td className={`py-4 px-5 text-right ${idx === concepts.length - 1 ? "rounded-br-2xl" : ""}`}>
-                  <ActionMenu 
-                    onEdit={() => handleEdit(concept)}
-                    onDelete={() => deleteConcept({ conceptId: concept._id })}
-                  />
-                </td>
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -305,6 +390,14 @@ export default function ConceptTable({
           order: editingConcept.order,
         } : undefined}
       />
+
+      {reviewingConcept && (
+        <ConceptReviewModal
+          isOpen={!!reviewingConcept}
+          onClose={() => setReviewingConcept(null)}
+          concept={reviewingConcept}
+        />
+      )}
     </section>
   );
 }

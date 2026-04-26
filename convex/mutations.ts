@@ -242,14 +242,15 @@ export const deleteConcept = mutation({
   },
 });
 
-// ── Reset all studyItems for a chapter ───────────────────────────
+// ── Reset all studyItems and concept revisions for a chapter ──────
 export const resetChapterProgress = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
+    // 1. Reset all studyItems for this chapter
     const studyItems = await ctx.db
       .query("studyItems")
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-      .take(500);
+      .collect();
 
     for (const item of studyItems) {
       await ctx.db.patch(item._id, {
@@ -258,7 +259,23 @@ export const resetChapterProgress = mutation({
         lastStudiedAt: undefined,
         nextReviewAt: undefined,
         repetitionLevel: undefined,
+        easeFactor: undefined,
         weaknessScore: undefined,
+      });
+    }
+
+    // 2. Reset all concepts for this chapter (SR fields)
+    const concepts = await ctx.db
+      .query("concepts")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
+      .collect();
+
+    for (const concept of concepts) {
+      await ctx.db.patch(concept._id, {
+        reviewCount: undefined,
+        lastReviewedAt: undefined,
+        nextReviewAt: undefined,
+        repetitionLevel: undefined,
       });
     }
   },
@@ -357,10 +374,100 @@ export const toggleStudyItemCompletion = mutation({
   handler: async (ctx, args) => {
     const item = await ctx.db.get(args.studyItemId);
     if (!item) throw new Error("StudyItem not found");
+    
+    const newIsCompleted = !item.isCompleted;
     await ctx.db.patch(args.studyItemId, {
-      isCompleted: !item.isCompleted,
+      isCompleted: newIsCompleted,
       lastStudiedAt: Date.now(),
     });
+
+    // Auto-unlock logic for Concepts
+    if (newIsCompleted && item.conceptId) {
+      const conceptItems = await ctx.db
+        .query("studyItems")
+        .withIndex("by_concept", (q) => q.eq("conceptId", item.conceptId))
+        .collect();
+      
+      const allDone = conceptItems.every(si => si.isCompleted);
+      
+      if (allDone) {
+        const concept = await ctx.db.get(item.conceptId);
+        if (concept && concept.nextReviewAt === undefined) {
+          await ctx.db.patch(item.conceptId, {
+            repetitionLevel: 0,
+            nextReviewAt: Date.now() + 86400000, // 1 day
+          });
+        }
+      }
+    }
+  },
+});
+
+// ── Review a concept (Spaced Repetition) ─────────────────────────
+export const reviewConcept = mutation({
+  args: {
+    conceptId: v.id("concepts"),
+    rating: v.union(v.literal("hard"), v.literal("medium"), v.literal("easy")),
+  },
+  handler: async (ctx, args) => {
+    const concept = await ctx.db.get(args.conceptId);
+    if (!concept) throw new Error("Concept not found");
+
+    let level = concept.repetitionLevel ?? 0;
+    
+    if (args.rating === "hard") {
+      level = Math.max(0, level - 1);
+    } else if (args.rating === "medium") {
+      level += 1;
+    } else if (args.rating === "easy") {
+      level += 2;
+    }
+
+    // Bound level to [0, 5]
+    level = Math.min(Math.max(0, level), 5);
+    
+    const intervals = [1, 3, 7, 14, 30, 60]; // days
+    const daysToAdd = intervals[level];
+    
+    const now = Date.now();
+    await ctx.db.patch(args.conceptId, {
+      repetitionLevel: level,
+      nextReviewAt: now + (daysToAdd * 86400000),
+      lastReviewedAt: now,
+      reviewCount: (concept.reviewCount || 0) + 1,
+    });
+  },
+});
+
+// ── Reset concept progress ───────────────────────────────────────
+export const resetConceptProgress = mutation({
+  args: { conceptId: v.id("concepts") },
+  handler: async (ctx, args) => {
+    // 1. Reset Concept SR fields
+    await ctx.db.patch(args.conceptId, {
+      reviewCount: undefined,
+      lastReviewedAt: undefined,
+      nextReviewAt: undefined,
+      repetitionLevel: undefined,
+    });
+
+    // 2. Reset associated StudyItems
+    const studyItems = await ctx.db
+      .query("studyItems")
+      .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
+      .collect();
+
+    for (const item of studyItems) {
+      await ctx.db.patch(item._id, {
+        isCompleted: false,
+        completionScore: undefined,
+        lastStudiedAt: undefined,
+        nextReviewAt: undefined,
+        repetitionLevel: undefined,
+        easeFactor: undefined,
+        weaknessScore: undefined,
+      });
+    }
   },
 });
 

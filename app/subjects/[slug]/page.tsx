@@ -70,6 +70,7 @@ export default function SubjectPage() {
         chapters={nextTermChapters}
         trackerConfigs={subject.chapterTrackers}
         subjectSlug={subject.slug}
+        subjectId={subject._id}
       />
 
       {/* Full Syllabus Table */}
@@ -78,6 +79,7 @@ export default function SubjectPage() {
         chapters={allChapters}
         trackerConfigs={subject.chapterTrackers}
         subjectSlug={subject.slug}
+        subjectId={subject._id}
       />
 
       <ChapterModal 

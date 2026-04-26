@@ -14,6 +14,7 @@ type TrackerConfig = {
 
 type ChapterRowData = {
   _id: Id<"chapters">;
+  subjectId: Id<"subjects">;
   name: string;
   slug: string;
   order: number;
@@ -31,6 +32,7 @@ type ChapterTableProps = {
   chapters: ChapterRowData[];
   trackerConfigs: TrackerConfig[];
   subjectSlug: string;
+  subjectId?: Id<"subjects">;
 };
 
 function StatusBadge({ status }: { status: "NOT_STARTED" | "IN_PROGRESS" | "READY" }) {
@@ -279,6 +281,7 @@ export default function ChapterTable({
   chapters,
   trackerConfigs,
   subjectSlug,
+  subjectId,
 }: ChapterTableProps) {
   const router = useRouter();
   const [editingChapter, setEditingChapter] = useState<ChapterRowData | null>(null);
@@ -295,6 +298,8 @@ export default function ChapterTable({
     );
   }
 
+  const finalSubjectId = subjectId || chapters[0]?.subjectId;
+
   return (
     <section className="mb-12">
       <h2 className="font-sub-heading text-sub-heading text-on-surface mb-6">{title}</h2>
@@ -305,18 +310,18 @@ export default function ChapterTable({
               <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
                 অধ্যায়
               </th>
-              <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+              <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
                 কনসেপ্ট
               </th>
               {trackerConfigs.map((t) => (
                 <th
                   key={t.key}
-                  className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
+                  className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
                 >
                   {t.label}
                 </th>
               ))}
-              <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+              <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
                 স্ট্যাটাস
               </th>
               <th className="text-right py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase last:rounded-tr-2xl">
@@ -346,20 +351,22 @@ export default function ChapterTable({
                   </div>
                 </td>
                 <td className="py-4 px-5">
-                  <ConceptBar
-                    completed={chapter.completedConcepts}
-                    total={chapter.totalConcepts}
-                  />
+                  <div className="flex justify-center">
+                    <ConceptBar
+                      completed={chapter.completedConcepts}
+                      total={chapter.totalConcepts}
+                    />
+                  </div>
                 </td>
                 {trackerConfigs.map((t) => (
-                  <td key={t.key} className="py-4 px-5">
+                  <td key={t.key} className="py-4 px-5 text-center">
                     <TrackerCell
                       isCompleted={chapter.trackerData[t.key]?.isCompleted ?? false}
                       studyItemId={chapter.trackerData[t.key]?.studyItemId}
                     />
                   </td>
                 ))}
-                <td className="py-4 px-5">
+                <td className="py-4 px-5 text-center">
                   <StatusBadge status={chapter.status} />
                 </td>
                 <td className={`py-4 px-5 text-right ${idx === chapters.length - 1 ? "rounded-br-2xl" : ""}`}>
@@ -382,7 +389,7 @@ export default function ChapterTable({
         <ChapterModal
           isOpen={!!editingChapter}
           onClose={() => setEditingChapter(null)}
-          subjectId={chapters[0].subjectId} // All chapters in this table share same subjectId
+          subjectId={finalSubjectId}
           initialData={{
             _id: editingChapter._id,
             name: editingChapter.name,

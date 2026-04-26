@@ -54,17 +54,6 @@ export default function ChapterPage() {
 
   return (
     <div className="w-full">
-      {/* Breadcrumb - Optional but good for UX */}
-      <div className="flex items-center gap-2 mb-4 text-xs font-mono-code text-gray-400">
-        <Link href="/" className="hover:text-on-surface transition-colors">HOME</Link>
-        <span>/</span>
-        <Link href={`/subjects/${subject.slug}`} className="hover:text-on-surface transition-colors uppercase">
-          {subject.name}
-        </Link>
-        <span>/</span>
-        <span className="text-gray-500 uppercase">{chapter.name.split(":")[0]}</span>
-      </div>
-
       {/* Chapter Header (Reusing SubjectHeader for consistent UI) */}
       <SubjectHeader
         name={chapter.name}

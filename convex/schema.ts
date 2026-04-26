@@ -55,7 +55,14 @@ export default defineSchema({
     name: v.string(),
     order: v.number(),
     difficulty: v.optional(v.number()), // 1-5
+
+    // Spaced Repetition
+    reviewCount: v.optional(v.number()),
+    lastReviewedAt: v.optional(v.number()),
+    nextReviewAt: v.optional(v.number()),
+    repetitionLevel: v.optional(v.number()),
   }).index("by_chapter", ["chapterId"]),
+
 
   // ======================================
   // STUDY ITEMS — single source of truth
@@ -77,6 +84,7 @@ export default defineSchema({
     lastStudiedAt: v.optional(v.number()),   // unix ms
     nextReviewAt: v.optional(v.number()),    // unix ms
     repetitionLevel: v.optional(v.number()), // spaced repetition stage
+    easeFactor: v.optional(v.number()),      // SM-2 style ease factor
     weaknessScore: v.optional(v.number()),   // 0-100
   })
     .index("by_subject", ["subjectId"])
