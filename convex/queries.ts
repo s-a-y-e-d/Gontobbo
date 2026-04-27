@@ -1,5 +1,75 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
+
+// ── List study logs feed ─────────────────────────────────────────
+export const getStudyLogsFeed = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    subjectId: v.optional(v.id("subjects")),
+    eventType: v.optional(v.union(
+      v.literal("study_item_completed"),
+      v.literal("study_item_uncompleted"),
+      v.literal("concept_review")
+    )),
+    editableOnly: v.optional(v.boolean()),
+    dayBucket: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    let q = ctx.db.query("studyLogs");
+
+    // Choose best index based on provided filters
+    if (args.subjectId && args.eventType) {
+      q = q.withIndex("by_subjectId_and_eventType_and_loggedAt", (q) =>
+        q.eq("subjectId", args.subjectId!).eq("eventType", args.eventType!)
+      );
+    } else if (args.subjectId) {
+      q = q.withIndex("by_subjectId_and_loggedAt", (q) =>
+        q.eq("subjectId", args.subjectId!)
+      );
+    } else if (args.eventType) {
+      q = q.withIndex("by_eventType_and_loggedAt", (q) =>
+        q.eq("eventType", args.eventType!)
+      );
+    } else if (args.dayBucket) {
+      q = q.withIndex("by_dayBucket", (q) =>
+        q.eq("dayBucket", args.dayBucket!)
+      );
+    } else if (args.editableOnly) {
+      q = q.withIndex("by_isEditable_and_loggedAt", (q) =>
+        q.eq("isEditable", true)
+      );
+    } else {
+      q = q.withIndex("by_loggedAt");
+    }
+
+    // Apply remaining filters in-query (better for pagination than in-memory)
+    if (args.editableOnly && !args.editableOnly) { // already indexed
+    } else if (args.editableOnly) {
+      q = q.filter((q) => q.eq(q.field("isEditable"), true));
+    }
+
+    if (args.eventType && args.subjectId) { // already indexed
+    } else if (args.eventType) {
+      // already indexed unless dayBucket or editableOnly was chosen
+      q = q.filter((q) => q.eq(q.field("eventType"), args.eventType));
+    }
+
+    return await q.order("desc").paginate(args.paginationOpts);
+  },
+});
+
+// ── Get subjects for logs filter ─────────────────────────────────
+export const getStudyLogSubjectsFilterData = query({
+  args: {},
+  handler: async (ctx) => {
+    const subjects = await ctx.db.query("subjects").collect();
+    return subjects.map(s => ({
+      _id: s._id,
+      name: s.name,
+    }));
+  },
+});
 
 // ── List all subjects (ordered) ──────────────────────────────────
 export const getSubjects = query({
@@ -136,17 +206,17 @@ export const getSubjectPageData = query({
         }
 
         // Build tracker data: for each chapterTracker key, find matching studyItem
-        const trackerData: Record<string, { isCompleted: boolean; score?: number; studyItemId?: string }> = {};
-        for (const tracker of subject.chapterTrackers) {
+        const trackerData = subject.chapterTrackers.map((tracker) => {
           const matchingItem = chapterLevelItems.find(
             (si) => si.type === tracker.key
           );
-          trackerData[tracker.key] = {
+          return {
+            key: tracker.key,
             isCompleted: matchingItem?.isCompleted ?? false,
             score: matchingItem?.completionScore ?? undefined,
             studyItemId: matchingItem?._id,
           };
-        }
+        });
 
         // Overall chapter status
         const totalItems = chapterLevelItems.length + conceptLevelItems.length;
@@ -292,18 +362,15 @@ export const getChapterPageData = query({
           .collect();
 
         // Build tracker data
-        const trackerData: Record<
-          string,
-          { isCompleted: boolean; score?: number; studyItemId?: string }
-        > = {};
-        for (const tracker of subject.conceptTrackers) {
+        const trackerData = subject.conceptTrackers.map((tracker) => {
           const matchingItem = studyItems.find((si) => si.type === tracker.key);
-          trackerData[tracker.key] = {
+          return {
+            key: tracker.key,
             isCompleted: matchingItem?.isCompleted ?? false,
             score: matchingItem?.completionScore ?? undefined,
             studyItemId: matchingItem?._id,
           };
-        }
+        });
 
         // Concept status
         const totalItems = subject.conceptTrackers.length;

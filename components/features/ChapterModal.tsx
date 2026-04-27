@@ -20,38 +20,25 @@ type ChapterModalProps = {
   };
 };
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .trim();
-}
-
 export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrder, initialData }: ChapterModalProps) {
   const createChapter = useMutation(api.mutations.createChapter);
   const updateChapter = useMutation(api.mutations.updateChapter);
   
-  const [name, setName] = useState("");
-  const [order, setOrder] = useState<number>(0);
-  const [inNextTerm, setInNextTerm] = useState(false);
-  const [priorityBoost, setPriorityBoost] = useState<number>(0);
+  const [name, setName] = useState(initialData?.name || "");
+  const [order, setOrder] = useState(initialData?.order || suggestedOrder || 1);
+  const [inNextTerm, setInNextTerm] = useState(initialData?.inNextTerm ?? false);
+  const [priorityBoost, setPriorityBoost] = useState(initialData?.priorityBoost || 0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (initialData) {
-      setName(initialData.name);
-      setOrder(initialData.order);
-      setInNextTerm(initialData.inNextTerm);
-      setPriorityBoost(initialData.priorityBoost || 0);
-    } else {
-      setName("");
-      setOrder(suggestedOrder || 1);
-      setInNextTerm(false);
-      setPriorityBoost(0);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
     }
-  }, [initialData, isOpen, suggestedOrder]);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -63,7 +50,6 @@ export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrde
         await updateChapter({
           chapterId: initialData._id,
           name,
-          slug: slugify(name),
           order,
           inNextTerm,
           priorityBoost: priorityBoost || undefined,
@@ -72,7 +58,6 @@ export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrde
         await createChapter({
           subjectId,
           name,
-          slug: slugify(name),
           order,
           inNextTerm,
           priorityBoost: priorityBoost || undefined,
@@ -87,8 +72,14 @@ export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrde
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-pure-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-pure-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center p-6 border-b border-border-subtle">
           <h2 className="font-card-title text-card-title text-on-surface">
             {initialData ? "অধ্যায় পরিবর্তন" : "নতুন অধ্যায় যোগ"}

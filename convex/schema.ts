@@ -93,18 +93,52 @@ export default defineSchema({
     .index("by_next_review", ["nextReviewAt"]),
 
   // ======================================
-  // STUDY LOGS — immutable history
+  // STUDY LOGS — explicit event records
   // ======================================
   studyLogs: defineTable({
-    studyItemId: v.id("studyItems"),
-    date: v.number(),              // unix ms
+    eventType: v.union(
+      v.literal("study_item_completed"),
+      v.literal("study_item_uncompleted"),
+      v.literal("concept_review")
+    ),
+    loggedAt: v.number(),           // unix ms
+    dayBucket: v.number(),          // unix ms (start of day in Dhaka time)
+    
+    // Ancestry for filtering
+    subjectId: v.id("subjects"),
+    chapterId: v.id("chapters"),
+    conceptId: v.optional(v.id("concepts")),
+    studyItemId: v.optional(v.id("studyItems")),
+    trackerType: v.optional(v.string()), // e.g. "mcq", "class"
+
+    // Time tracking
     minutesSpent: v.number(),
-    completed: v.boolean(),
-    rating: v.optional(v.number()),
-    note: v.optional(v.string()),
+    originalMinutesSpent: v.number(),
+    minutesSource: v.union(
+      v.literal("estimated_tracker"),
+      v.literal("default_revision"),
+      v.literal("user_edited")
+    ),
+
+    // Metadata
+    rating: v.optional(v.union(v.literal("hard"), v.literal("medium"), v.literal("easy"))),
+    isEditable: v.boolean(),
+    editedAt: v.optional(v.number()),
+
+    // Snapshots for durable display
+    titleSnapshot: v.string(),
+    subjectNameSnapshot: v.string(),
+    chapterNameSnapshot: v.string(),
+    conceptNameSnapshot: v.optional(v.string()),
   })
-    .index("by_item", ["studyItemId"])
-    .index("by_date", ["date"]),
+    .index("by_loggedAt", ["loggedAt"])
+    .index("by_dayBucket", ["dayBucket"])
+    .index("by_eventType_and_loggedAt", ["eventType", "loggedAt"])
+    .index("by_isEditable_and_loggedAt", ["isEditable", "loggedAt"])
+    .index("by_subjectId_and_loggedAt", ["subjectId", "loggedAt"])
+    .index("by_subjectId_and_eventType_and_loggedAt", ["subjectId", "eventType", "loggedAt"])
+    .index("by_studyItemId_and_loggedAt", ["studyItemId", "loggedAt"])
+    .index("by_conceptId_and_loggedAt", ["conceptId", "loggedAt"]),
 
   // ======================================
   // DAILY AI PLANS

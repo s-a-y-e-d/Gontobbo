@@ -64,43 +64,43 @@ colors:
   gray-100: '#f5f5f5'
 typography:
   display-hero:
-    fontFamily: Inter
+    fontFamily: Inter, Baloo Da 2
     fontSize: 64px
-    fontWeight: '600'
+    fontWeight: '700'
     lineHeight: '1.15'
     letterSpacing: -1.28px
   section-heading:
-    fontFamily: Inter
+    fontFamily: Inter, Baloo Da 2
     fontSize: 40px
-    fontWeight: '600'
+    fontWeight: '700'
     lineHeight: '1.10'
     letterSpacing: -0.8px
   sub-heading:
-    fontFamily: Inter
+    fontFamily: Inter, Baloo Da 2
     fontSize: 24px
     fontWeight: '500'
     lineHeight: '1.30'
     letterSpacing: -0.24px
   card-title:
-    fontFamily: Inter
+    fontFamily: Inter, Baloo Da 2
     fontSize: 20px
-    fontWeight: '600'
+    fontWeight: '700'
     lineHeight: '1.30'
     letterSpacing: -0.2px
   body-large:
-    fontFamily: Inter
+    fontFamily: Inter, Baloo Da 2
     fontSize: 18px
     fontWeight: '400'
     lineHeight: '1.50'
     letterSpacing: normal
   body:
-    fontFamily: Inter
+    fontFamily: Inter, Baloo Da 2
     fontSize: 16px
     fontWeight: '400'
     lineHeight: '1.50'
     letterSpacing: normal
   label-uppercase:
-    fontFamily: Inter
+    fontFamily: Inter, Baloo Da 2
     fontSize: 13px
     fontWeight: '500'
     lineHeight: '1.50'
@@ -133,7 +133,7 @@ spacing:
 
 Mintlify's website is a study in documentation-as-product design — a white, airy, information-rich surface that treats clarity as its highest aesthetic value. The page opens with a luminous white (`#ffffff`) background, near-black (`#0d0d0d`) text, and a signature green brand accent (`#18E299`) that signals freshness and intelligence without dominating the palette. The overall mood is calm, confident, and engineered for legibility — a design system that whispers "we care about your developer experience" in every pixel.
 
-The Inter font family carries the entire typographic load. At display sizes (40–64px), it uses tight negative letter-spacing (-0.8px to -1.28px) and semibold weight (600), creating headlines that feel focused and compressed like well-written documentation headers. Body text at 16–18px with 150% line-height provides generous reading comfort. Geist Mono appears exclusively for code and technical labels — uppercase, tracked-out, small — the voice of the terminal inside the marketing page.
+The typography system is bilingual, engineered for legibility and clarity in both English and Bengali. The Inter font family carries the Latin typographic load, while Baloo Da 2 serves as the intentional fallback for all Bengali content. At display sizes (40–64px), headlines use tight negative letter-spacing (-0.8px to -1.28px) and bold weight (700), creating a focused, compressed aesthetic. Body text at 16–18px with 150% line-height provides generous reading comfort. Geist Mono appears exclusively for code and technical labels — uppercase, tracked-out, small — the voice of the terminal inside the academic OS.
 
 What distinguishes Mintlify from other documentation platforms is its atmospheric gradient hero. A soft, cloud-like green-to-white gradient wash behind the hero content creates a sense of ethereal intelligence — documentation that floats above the noise. Below the hero, the page settles into a disciplined alternation of white sections separated by subtle 5% opacity borders. Cards use generous padding (24px+) with large radii (16px–24px) and whisper-thin borders, creating containers that feel open rather than boxed.
 
@@ -189,36 +189,26 @@ What distinguishes Mintlify from other documentation platforms is its atmospheri
 ## 3. Typography Rules
 
 ### Font Family
-- **Primary**: `Inter`, with fallback: `Inter Fallback, system-ui, -apple-system, sans-serif`
-- **Monospace**: `Geist Mono`, with fallback: `Geist Mono Fallback, ui-monospace, SFMono-Regular, monospace`
+- **Primary**: `Inter` (Latin), with fallback: `Baloo Da 2` (Bengali), `system-ui, sans-serif`
+- **Monospace**: `Geist Mono`, with fallback: `ui-monospace, monospace`
 
 ### Hierarchy
 
 | Role | Font | Size | Weight | Line Height | Letter Spacing | Notes |
 |------|------|------|--------|-------------|----------------|-------|
-| Display Hero | Inter | 64px (4.00rem) | 600 | 1.15 (tight) | -1.28px | Maximum impact, hero headlines |
-| Section Heading | Inter | 40px (2.50rem) | 600 | 1.10 (tight) | -0.8px | Feature section titles |
-| Sub-heading | Inter | 24px (1.50rem) | 500 | 1.30 (tight) | -0.24px | Card headings, sub-sections |
-| Card Title | Inter | 20px (1.25rem) | 600 | 1.30 (tight) | -0.2px | Feature card titles |
-| Card Title Light | Inter | 20px (1.25rem) | 500 | 1.30 (tight) | -0.2px | Secondary card headings |
-| Body Large | Inter | 18px (1.13rem) | 400 | 1.50 | normal | Hero descriptions, introductions |
-| Body | Inter | 16px (1.00rem) | 400 | 1.50 | normal | Standard reading text |
-| Body Medium | Inter | 16px (1.00rem) | 500 | 1.50 | normal | Navigation, emphasized text |
-| Button | Inter | 15px (0.94rem) | 500 | 1.50 | normal | Button labels |
-| Link | Inter | 14px (0.88rem) | 500 | 1.50 | normal | Navigation links, small CTAs |
-| Caption | Inter | 14px (0.88rem) | 400–500 | 1.50–1.71 | normal | Metadata, descriptions |
-| Label Uppercase | Inter | 13px (0.81rem) | 500 | 1.50 | 0.65px | `text-transform: uppercase`, section labels |
-| Small | Inter | 13px (0.81rem) | 400–500 | 1.50 | -0.26px | Small body text |
-| Mono Code | Geist Mono | 12px (0.75rem) | 500 | 1.50 | 0.6px | `text-transform: uppercase`, technical labels |
-| Mono Badge | Geist Mono | 12px (0.75rem) | 600 | 1.50 | 0.6px | `text-transform: uppercase`, status badges |
-| Mono Micro | Geist Mono | 10px (0.63rem) | 500 | 1.50 | normal | `text-transform: uppercase`, tiny labels |
+| Display Hero | Inter, Baloo Da 2 | 64px | 700 | 1.15 | -1.28px | Hero headlines |
+| Section Heading | Inter, Baloo Da 2 | 40px | 700 | 1.10 | -0.8px | Feature section titles |
+| Sub-heading | Inter, Baloo Da 2 | 24px | 500 | 1.30 | -0.24px | Card headings |
+| Card Title | Inter, Baloo Da 2 | 20px | 700 | 1.30 | -0.2px | Feature card titles |
+| Body Large | Inter, Baloo Da 2 | 18px | 400 | 1.50 | normal | Introductions |
+| Body | Inter, Baloo Da 2 | 16px | 400 | 1.50 | normal | Standard reading text |
+| Label Uppercase | Inter, Baloo Da 2 | 13px | 500 | 1.50 | 0.65px | Section labels |
 
 ### Principles
-- **Tight tracking at display sizes**: Inter at 40–64px uses -0.8px to -1.28px letter-spacing. This compression creates headlines that feel deliberate and space-efficient — documentation headings, not billboard copy.
-- **Relaxed reading at body sizes**: 16–18px body text uses normal tracking with 150% line-height, creating generous reading lanes. Documentation demands comfort.
-- **Two-font system**: Inter for all human-readable content, Geist Mono exclusively for technical/code contexts. The boundary is strict — no mixing.
-- **Uppercase as hierarchy signal**: Section labels and technical tags use uppercase + positive tracking (0.6px–0.65px) as a clear visual delimiter between content types.
-- **Three weights**: 400 (body/reading), 500 (UI/navigation/emphasis), 600 (headings/titles). No bold (700) in the system.
+- **Bilingual Fallback Strategy**: `Inter` is the primary font for English/UI text to maintain a technical, professional feel. `Baloo Da 2` is used for Bengali characters to ensure clean, friendly, and intentional rendering.
+- **Tight tracking at display sizes**: Headlines at 40–64px use negative letter-spacing for a compressed, deliberate feel.
+- **Four weights**: 400 (body/reading), 500 (UI/navigation), 600 (emphasis), 700 (headings/titles).
+- **Two-font system**: Inter/Baloo for all human-readable content, Geist Mono exclusively for technical contexts.
 
 ## 4. Component Stylings
 
@@ -448,7 +438,7 @@ What distinguishes Mintlify from other documentation platforms is its atmospheri
 1. Always use full-pill radius (9999px) for buttons and inputs — this is Mintlify's signature shape
 2. Keep borders at 5% opacity (`rgba(0,0,0,0.05)`) — stronger borders break the airy feeling
 3. Letter-spacing scales with font size: -1.28px at 64px, -0.8px at 40px, -0.24px at 24px, normal at 16px
-4. Three weights only: 400 (read), 500 (interact), 600 (announce)
+4. Four weights: 400 (read), 500 (interact), 600 (announce), 700 (headings)
 5. Brand green (`#18E299`) is used sparingly — CTAs and hover states only, never for decorative fills
 6. Geist Mono uppercase for technical labels, Inter for everything else
 7. Section padding is generous: 64px–96px on desktop, 48px on mobile

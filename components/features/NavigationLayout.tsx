@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -38,6 +38,8 @@ function Breadcrumbs() {
         href: `/subjects/${subjectSlug}/${chapterSlug}`,
       });
     }
+  } else if (segments[0] === "logs") {
+    crumbs.push({ label: "Logs", href: "/logs" });
   }
 
   return (
@@ -70,21 +72,26 @@ function Breadcrumbs() {
 export default function NavigationLayout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const [currentDate, setCurrentDate] = useState("");
   const pathname = usePathname();
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
-    setCurrentDate(new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }));
   }, []);
+
+  const currentDate = useMemo(() => {
+    if (!mounted) return "";
+    return new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  }, [mounted]);
 
   // Determine active nav item
   const isSubjectsActive = pathname === "/" || pathname.startsWith("/subjects");
+  const isLogsActive = pathname === "/logs" || pathname.startsWith("/logs");
 
   return (
     <div className="antialiased min-h-screen pb-24 md:pb-0 md:pl-64 flex flex-col">
       {/* SideNavBar (Web) */}
-      <nav className="bg-white dark:bg-slate-900 font-['Inter'] text-sm font-medium w-64 border-r border-black/5 dark:border-white/5 shadow-none flex-col gap-1 p-4 fixed left-0 top-0 h-full hidden md:flex z-50">
+      <nav className="bg-white dark:bg-slate-900 font-body text-sm font-medium w-64 border-r border-black/5 dark:border-white/5 shadow-none flex-col gap-1 p-4 fixed left-0 top-0 h-full hidden md:flex z-50">
         <div className="flex items-center gap-3 px-4 py-6 mb-4">
           <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
           <div>
@@ -125,7 +132,14 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
             <span className="material-symbols-outlined text-lg">history_edu</span>
             Revision
           </Link>
-          <Link className="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+          <Link
+            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
+              isLogsActive
+                ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10"
+                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
+            }`}
+            href="/logs"
+          >
             <span className="material-symbols-outlined text-lg">format_list_bulleted</span>
             Logs
           </Link>
@@ -144,7 +158,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
       </nav>
 
       {/* TopNavBar */}
-      <header className="bg-white/80 dark:bg-slate-950/80 backdrop-blur-md font-['Inter'] text-[15px] font-medium tracking-tight sticky top-0 z-40 border-b border-black/5 dark:border-white/5 shadow-none flex justify-between items-center w-full px-6 h-16 hidden md:flex">
+      <header className="bg-white/80 dark:bg-slate-950/80 backdrop-blur-md font-body text-[15px] font-medium tracking-tight sticky top-0 z-40 border-b border-black/5 dark:border-white/5 shadow-none flex justify-between items-center w-full px-6 h-16 hidden md:flex">
         <Breadcrumbs />
         <div className="flex items-center gap-6">
           <span className="text-sm text-slate-500">{currentDate}</span>
@@ -172,7 +186,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
       </main>
 
       {/* BottomNavBar (Mobile) */}
-      <nav className="bg-white dark:bg-slate-950 font-['Inter'] text-[10px] font-medium md:hidden border-t border-black/5 dark:border-white/5 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe">
+      <nav className="bg-white dark:bg-slate-950 font-body text-[10px] font-medium md:hidden border-t border-black/5 dark:border-white/5 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe">
         <Link className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 transition-all p-2 rounded-xl" href="#">
           <span className="material-symbols-outlined text-2xl mb-1">home</span>
           Home

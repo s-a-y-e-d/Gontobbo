@@ -22,22 +22,20 @@ export default function ConceptModal({ isOpen, onClose, chapterId, suggestedOrde
   const createConcept = useMutation(api.mutations.createConcept);
   const updateConcept = useMutation(api.mutations.updateConcept);
   
-  const [name, setName] = useState("");
-  const [order, setOrder] = useState<number>(0);
-  const [difficulty, setDifficulty] = useState<number>(1);
+  const [name, setName] = useState(initialData?.name || "");
+  const [order, setOrder] = useState(initialData?.order || suggestedOrder || 1);
+  const [difficulty, setDifficulty] = useState(initialData?.difficulty || 1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (initialData) {
-      setName(initialData.name);
-      setOrder(initialData.order);
-      setDifficulty(initialData.difficulty || 1);
-    } else {
-      setName("");
-      setOrder(suggestedOrder || 1);
-      setDifficulty(1);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
     }
-  }, [initialData, isOpen, suggestedOrder]);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -69,8 +67,14 @@ export default function ConceptModal({ isOpen, onClose, chapterId, suggestedOrde
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-pure-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-pure-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center p-6 border-b border-border-subtle">
           <h2 className="font-card-title text-card-title text-on-surface">
             {initialData ? "কনসেপ্ট এডিট" : "নতুন কনসেপ্ট যোগ"}

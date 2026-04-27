@@ -58,6 +58,41 @@ const themeMap: Record<string, {
     progressBadgeText: "text-gray-600",
     progressBarBg: "bg-gray-300",
   },
+  amber: {
+    iconBg: "bg-orange-50",
+    iconColor: "text-orange-600",
+    progressBadgeBg: "bg-orange-100",
+    progressBadgeText: "text-orange-700",
+    progressBarBg: "bg-orange-500",
+  },
+  purple: {
+    iconBg: "bg-purple-50",
+    iconColor: "text-purple-600",
+    progressBadgeBg: "bg-purple-100",
+    progressBadgeText: "text-purple-700",
+    progressBarBg: "bg-purple-500",
+  },
+  teal: {
+    iconBg: "bg-teal-50",
+    iconColor: "text-teal-600",
+    progressBadgeBg: "bg-teal-100",
+    progressBadgeText: "text-teal-700",
+    progressBarBg: "bg-teal-500",
+  },
+  indigo: {
+    iconBg: "bg-indigo-50",
+    iconColor: "text-indigo-600",
+    progressBadgeBg: "bg-indigo-100",
+    progressBadgeText: "text-indigo-700",
+    progressBarBg: "bg-indigo-500",
+  },
+  pink: {
+    iconBg: "bg-pink-50",
+    iconColor: "text-pink-600",
+    progressBadgeBg: "bg-pink-100",
+    progressBadgeText: "text-pink-700",
+    progressBarBg: "bg-pink-500",
+  },
 };
 
 export default function SubjectCard(props: SubjectCardProps) {
@@ -144,6 +179,7 @@ export default function SubjectCard(props: SubjectCardProps) {
       </div>
 
       <EditSubjectModal 
+        key={_id}
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         subject={{
@@ -152,7 +188,8 @@ export default function SubjectCard(props: SubjectCardProps) {
             icon,
             color,
             chapterTrackers,
-            conceptTrackers
+            conceptTrackers,
+            slug // Pass slug
         }}
       />
     </>

@@ -21,7 +21,7 @@ type ChapterRowData = {
   inNextTerm: boolean;
   totalConcepts: number;
   completedConcepts: number;
-  trackerData: Record<string, { isCompleted: boolean; score?: number; studyItemId?: string }>;
+  trackerData: Array<{ key: string; isCompleted: boolean; score?: number; studyItemId?: string }>;
   status: "NOT_STARTED" | "IN_PROGRESS" | "READY";
   totalItems: number;
   completedItems: number;
@@ -358,14 +358,17 @@ export default function ChapterTable({
                     />
                   </div>
                 </td>
-                {trackerConfigs.map((t) => (
-                  <td key={t.key} className="py-4 px-5 text-center">
-                    <TrackerCell
-                      isCompleted={chapter.trackerData[t.key]?.isCompleted ?? false}
-                      studyItemId={chapter.trackerData[t.key]?.studyItemId}
-                    />
-                  </td>
-                ))}
+                {trackerConfigs.map((t) => {
+                  const tracker = chapter.trackerData.find((d) => d.key === t.key);
+                  return (
+                    <td key={t.key} className="py-4 px-5 text-center">
+                      <TrackerCell
+                        isCompleted={tracker?.isCompleted ?? false}
+                        studyItemId={tracker?.studyItemId}
+                      />
+                    </td>
+                  );
+                })}
                 <td className="py-4 px-5 text-center">
                   <StatusBadge status={chapter.status} />
                 </td>
@@ -387,16 +390,11 @@ export default function ChapterTable({
 
       {editingChapter && (
         <ChapterModal
+          key={editingChapter._id}
           isOpen={!!editingChapter}
           onClose={() => setEditingChapter(null)}
           subjectId={finalSubjectId}
-          initialData={{
-            _id: editingChapter._id,
-            name: editingChapter.name,
-            slug: editingChapter.slug,
-            order: editingChapter.order,
-            inNextTerm: editingChapter.inNextTerm,
-          }}
+          initialData={editingChapter}
         />
       )}
     </section>

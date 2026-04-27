@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -14,15 +14,6 @@ type TrackerEntry = {
   avgMinutes: number;
 };
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .trim();
-}
-
 function toKey(label: string): string {
   return label
     .toLowerCase()
@@ -35,7 +26,7 @@ function ensureUniqueKeys(trackers: { label: string; avgMinutes: number }[]) {
   const keys = new Set<string>();
   return trackers.map((t) => {
     let key = toKey(t.label);
-    let originalKey = key;
+    const originalKey = key;
     let counter = 2;
     while (keys.has(key)) {
       key = `${originalKey}-${counter}`;
@@ -86,8 +77,6 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isIconDropdownOpen, setIsIconDropdownOpen] = useState(false);
 
-  if (!isOpen) return null;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (chapterTrackers.length === 0 || conceptTrackers.length === 0) {
@@ -99,7 +88,6 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
     try {
       await createSubject({
         name,
-        slug: slugify(name),
         icon,
         color,
         order: Date.now(),
@@ -146,9 +134,27 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 overflow-y-auto">
-      <div className="bg-pure-white rounded-xl shadow-xl w-full max-w-2xl my-8">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-pure-white rounded-xl shadow-xl w-full max-w-2xl my-8"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center p-6 border-b border-border-subtle sticky top-0 bg-pure-white z-10">
           <h2 className="font-card-title text-card-title text-on-surface">নতুন বিষয় যোগ করুন</h2>
           <button 
@@ -180,7 +186,7 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
                 <button
                   type="button"
                   onClick={() => setIsIconDropdownOpen(!isIconDropdownOpen)}
-                  className="w-full px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green bg-white flex items-center justify-between"
+                  className="w-full px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green bg-pure-white flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[20px] text-gray-600">
@@ -223,11 +229,16 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
                 <select 
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
-                  className="w-full px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green bg-white appearance-none"
+                  className="w-full px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green bg-pure-white appearance-none"
                 >
                   <option value="green">Green</option>
                   <option value="blue">Blue</option>
                   <option value="red">Red</option>
+                  <option value="amber">Amber</option>
+                  <option value="purple">Purple</option>
+                  <option value="teal">Teal</option>
+                  <option value="indigo">Indigo</option>
+                  <option value="pink">Pink</option>
                   <option value="gray">Gray</option>
                 </select>
               </div>

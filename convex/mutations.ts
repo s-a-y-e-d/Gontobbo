@@ -6,7 +6,7 @@ import { v } from "convex/values";
 export const createSubject = mutation({
   args: {
     name: v.string(),
-    slug: v.string(),
+    slug: v.optional(v.string()),
     color: v.optional(v.string()),
     icon: v.optional(v.string()),
     chapterTrackers: v.array(
@@ -27,7 +27,17 @@ export const createSubject = mutation({
     order: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("subjects", args);
+    const { slug, ...rest } = args;
+    const subjectId = await ctx.db.insert("subjects", {
+      ...rest,
+      slug: slug || "", // Placeholder
+    });
+    
+    if (!slug) {
+      await ctx.db.patch(subjectId, { slug: subjectId });
+    }
+    
+    return subjectId;
   },
 });
 
@@ -69,6 +79,12 @@ export const updateSubject = mutation({
           .collect();
 
         for (const item of studyItems) {
+          // Delete logs for this item
+          const logs = await ctx.db.query("studyLogs")
+            .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
+            .collect();
+          for (const log of logs) await ctx.db.delete(log._id);
+          
           await ctx.db.delete(item._id);
         }
       }
@@ -85,12 +101,47 @@ export const updateSubject = mutation({
           .collect();
 
         for (const item of studyItems) {
+          // Delete logs for this item
+          const logs = await ctx.db.query("studyLogs")
+            .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
+            .collect();
+          for (const log of logs) await ctx.db.delete(log._id);
+          
           await ctx.db.delete(item._id);
         }
       }
     }
 
     await ctx.db.patch(subjectId, updates);
+  },
+});
+
+// ── Update study log minutes ────────────────────────────────────
+export const updateStudyLogMinutes = mutation({
+  args: {
+    logId: v.id("studyLogs"),
+    minutesSpent: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const log = await ctx.db.get(args.logId);
+    if (!log) throw new Error("Log not found");
+    if (!log.isEditable) throw new Error("This log is not editable");
+
+    // Only allow study_item_completed and concept_review
+    if (log.eventType === "study_item_uncompleted") {
+      throw new Error("Cannot edit uncompletion logs");
+    }
+
+    // Validate minutes
+    if (args.minutesSpent < 1 || args.minutesSpent > 600 || !Number.isFinite(args.minutesSpent)) {
+      throw new Error("Minutes must be between 1 and 600");
+    }
+
+    await ctx.db.patch(args.logId, {
+      minutesSpent: args.minutesSpent,
+      minutesSource: "user_edited",
+      editedAt: Date.now(),
+    });
   },
 });
 
@@ -111,13 +162,23 @@ export const createChapter = mutation({
   args: {
     subjectId: v.id("subjects"),
     name: v.string(),
-    slug: v.string(),
+    slug: v.optional(v.string()),
     order: v.number(),
     inNextTerm: v.boolean(),
     priorityBoost: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("chapters", args);
+    const { slug, ...rest } = args;
+    const chapterId = await ctx.db.insert("chapters", {
+      ...rest,
+      slug: slug || "", // Placeholder
+    });
+
+    if (!slug) {
+      await ctx.db.patch(chapterId, { slug: chapterId });
+    }
+
+    return chapterId;
   },
 });
 
@@ -126,7 +187,7 @@ export const updateChapter = mutation({
   args: {
     chapterId: v.id("chapters"),
     name: v.string(),
-    slug: v.string(),
+    slug: v.optional(v.string()),
     order: v.number(),
     inNextTerm: v.boolean(),
     priorityBoost: v.optional(v.number()),
@@ -153,8 +214,21 @@ export const deleteChapter = mutation({
         .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
         .collect();
       for (const item of studyItems) {
+        // Delete logs for this item
+        const logs = await ctx.db.query("studyLogs")
+          .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
+          .collect();
+        for (const log of logs) await ctx.db.delete(log._id);
+        
         await ctx.db.delete(item._id);
       }
+
+      // Delete revision logs for this concept
+      const revisionLogs = await ctx.db.query("studyLogs")
+        .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", concept._id))
+        .collect();
+      for (const log of revisionLogs) await ctx.db.delete(log._id);
+
       await ctx.db.delete(concept._id);
     }
 
@@ -163,6 +237,12 @@ export const deleteChapter = mutation({
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
       .collect();
     for (const item of chapterItems) {
+      // Delete logs for this item
+      const logs = await ctx.db.query("studyLogs")
+        .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
+        .collect();
+      for (const log of logs) await ctx.db.delete(log._id);
+
       await ctx.db.delete(item._id);
     }
 
@@ -228,15 +308,25 @@ export const updateConcept = mutation({
 export const deleteConcept = mutation({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
-    // Delete associated studyItems first
+    // Delete associated studyItems first and their logs
     const studyItems = await ctx.db
       .query("studyItems")
       .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
       .collect();
     
     for (const item of studyItems) {
+      const logs = await ctx.db.query("studyLogs")
+        .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
+        .collect();
+      for (const log of logs) await ctx.db.delete(log._id);
       await ctx.db.delete(item._id);
     }
+
+    // Delete revision logs for this concept
+    const revisionLogs = await ctx.db.query("studyLogs")
+      .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", args.conceptId))
+      .collect();
+    for (const log of revisionLogs) await ctx.db.delete(log._id);
 
     await ctx.db.delete(args.conceptId);
   },
@@ -253,6 +343,12 @@ export const resetChapterProgress = mutation({
       .collect();
 
     for (const item of studyItems) {
+      // Delete logs for this item
+      const logs = await ctx.db.query("studyLogs")
+        .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
+        .collect();
+      for (const log of logs) await ctx.db.delete(log._id);
+
       await ctx.db.patch(item._id, {
         isCompleted: false,
         completionScore: undefined,
@@ -264,13 +360,19 @@ export const resetChapterProgress = mutation({
       });
     }
 
-    // 2. Reset all concepts for this chapter (SR fields)
+    // 2. Reset all concepts for this chapter (SR fields) and delete their logs
     const concepts = await ctx.db
       .query("concepts")
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
       .collect();
 
     for (const concept of concepts) {
+      // Delete revision logs for this concept
+      const revisionLogs = await ctx.db.query("studyLogs")
+        .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", concept._id))
+        .collect();
+      for (const log of revisionLogs) await ctx.db.delete(log._id);
+
       await ctx.db.patch(concept._id, {
         reviewCount: undefined,
         lastReviewedAt: undefined,
@@ -368,6 +470,74 @@ export const ensureConceptStudyItems = mutation({
   },
 });
 
+// ── Fix subjects with non-ASCII tracker keys ────────────────────
+export const fixInvalidTrackerKeys = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const subjects = await ctx.db.query("subjects").collect();
+    for (const subject of subjects) {
+      let changed = false;
+      
+      const updateTrackers = (trackers: any[]) => {
+        const resultKeys = new Set<string>();
+        return trackers.map(t => {
+          const sanitizedKey = t.key.replace(/[^\x00-\x7F]/g, "") || "tracker";
+          let finalKey = sanitizedKey;
+          let counter = 1;
+          
+          if (finalKey !== t.key || resultKeys.has(finalKey)) {
+            changed = true;
+            while (resultKeys.has(finalKey)) {
+              finalKey = `${sanitizedKey}-${counter}`;
+              counter++;
+            }
+          }
+          
+          resultKeys.add(finalKey);
+          if (finalKey !== t.key) {
+            return { ...t, key: finalKey, oldKey: t.key };
+          }
+          return t;
+        });
+      };
+
+      const chapterTrackersWithOld = updateTrackers(subject.chapterTrackers);
+      const conceptTrackersWithOld = updateTrackers(subject.conceptTrackers);
+
+      if (changed) {
+        // Update studyItems first
+        const studyItems = await ctx.db
+          .query("studyItems")
+          .withIndex("by_subject", (q) => q.eq("subjectId", subject._id))
+          .collect();
+
+        for (const item of studyItems) {
+          const matched = [...chapterTrackersWithOld, ...conceptTrackersWithOld].find(
+            (t: any) => t.oldKey === item.type
+          );
+          if (matched) {
+            await ctx.db.patch(item._id, { type: matched.key });
+          }
+        }
+
+        // Update subject trackers (removing the temporary oldKey)
+        await ctx.db.patch(subject._id, {
+          chapterTrackers: chapterTrackersWithOld.map(({ oldKey, ...t }: any) => t),
+          conceptTrackers: conceptTrackersWithOld.map(({ oldKey, ...t }: any) => t),
+        });
+      }
+    }
+  },
+});
+
+function getDhakaDayBucket(timestamp: number) {
+  // Dhaka is UTC+6
+  const dhakaOffset = 6 * 60 * 60 * 1000;
+  const dhakaTime = new Date(timestamp + dhakaOffset);
+  dhakaTime.setUTCHours(0, 0, 0, 0);
+  return dhakaTime.getTime() - dhakaOffset;
+}
+
 // ── Toggle a studyItem completion ────────────────────────────────
 export const toggleStudyItemCompletion = mutation({
   args: { studyItemId: v.id("studyItems") },
@@ -376,28 +546,70 @@ export const toggleStudyItemCompletion = mutation({
     if (!item) throw new Error("StudyItem not found");
     
     const newIsCompleted = !item.isCompleted;
+    const now = Date.now();
+    const dayBucket = getDhakaDayBucket(now);
+
     await ctx.db.patch(args.studyItemId, {
       isCompleted: newIsCompleted,
-      lastStudiedAt: Date.now(),
+      lastStudiedAt: now,
     });
 
-    // Auto-unlock logic for Concepts
-    if (newIsCompleted && item.conceptId) {
-      const conceptItems = await ctx.db
-        .query("studyItems")
-        .withIndex("by_concept", (q) => q.eq("conceptId", item.conceptId))
+    if (newIsCompleted) {
+      // Fetch ancestry for logging
+      const subject = await ctx.db.get(item.subjectId);
+      const chapter = await ctx.db.get(item.chapterId);
+      const concept = item.conceptId ? await ctx.db.get(item.conceptId) : null;
+
+      if (!subject || !chapter) throw new Error("Incomplete ancestry for studyItem");
+
+      // Insert 'completed' Log
+      await ctx.db.insert("studyLogs", {
+        eventType: "study_item_completed",
+        loggedAt: now,
+        dayBucket,
+        subjectId: item.subjectId,
+        chapterId: item.chapterId,
+        conceptId: item.conceptId,
+        studyItemId: item._id,
+        trackerType: item.type,
+        minutesSpent: item.estimatedMinutes,
+        originalMinutesSpent: item.estimatedMinutes,
+        minutesSource: "estimated_tracker",
+        isEditable: true,
+        titleSnapshot: item.title,
+        subjectNameSnapshot: subject.name,
+        chapterNameSnapshot: chapter.name,
+        conceptNameSnapshot: concept?.name,
+      });
+
+      // Auto-unlock logic for Concepts
+      if (item.conceptId) {
+        const conceptItems = await ctx.db
+          .query("studyItems")
+          .withIndex("by_concept", (q) => q.eq("conceptId", item.conceptId))
+          .collect();
+        
+        const allDone = conceptItems.every(si => si.isCompleted);
+        
+        if (allDone) {
+          const conceptRecord = await ctx.db.get(item.conceptId);
+          if (conceptRecord && conceptRecord.nextReviewAt === undefined) {
+            await ctx.db.patch(item.conceptId, {
+              repetitionLevel: 0,
+              nextReviewAt: Date.now() + 86400000, // 1 day
+            });
+          }
+        }
+      }
+    } else {
+      // Unchecked: Delete all logs related to this study item
+      const logs = await ctx.db
+        .query("studyLogs")
+        .withIndex("by_studyItemId_and_loggedAt", (q) => q.eq("studyItemId", args.studyItemId))
         .collect();
       
-      const allDone = conceptItems.every(si => si.isCompleted);
-      
-      if (allDone) {
-        const concept = await ctx.db.get(item.conceptId);
-        if (concept && concept.nextReviewAt === undefined) {
-          await ctx.db.patch(item.conceptId, {
-            repetitionLevel: 0,
-            nextReviewAt: Date.now() + 86400000, // 1 day
-          });
-        }
+      for (const log of logs) {
+        await ctx.db.delete(log._id);
       }
     }
   },
@@ -436,6 +648,36 @@ export const reviewConcept = mutation({
       lastReviewedAt: now,
       reviewCount: (concept.reviewCount || 0) + 1,
     });
+
+    // Logging
+    const chapter = await ctx.db.get(concept.chapterId);
+    if (!chapter) throw new Error("Chapter not found for concept");
+    const subject = await ctx.db.get(chapter.subjectId);
+    if (!subject) throw new Error("Subject not found for chapter");
+
+    const settings = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
+      .unique();
+    const defaultRevisionMinutes = (settings?.value as number) ?? 10;
+
+    await ctx.db.insert("studyLogs", {
+      eventType: "concept_review",
+      loggedAt: now,
+      dayBucket: getDhakaDayBucket(now),
+      subjectId: chapter.subjectId,
+      chapterId: concept.chapterId,
+      conceptId: concept._id,
+      minutesSpent: defaultRevisionMinutes,
+      originalMinutesSpent: defaultRevisionMinutes,
+      minutesSource: "default_revision",
+      rating: args.rating,
+      isEditable: true,
+      titleSnapshot: concept.name,
+      subjectNameSnapshot: subject.name,
+      chapterNameSnapshot: chapter.name,
+      conceptNameSnapshot: concept.name,
+    });
   },
 });
 
@@ -451,13 +693,19 @@ export const resetConceptProgress = mutation({
       repetitionLevel: undefined,
     });
 
-    // 2. Reset associated StudyItems
+    // 2. Reset associated StudyItems and delete their logs
     const studyItems = await ctx.db
       .query("studyItems")
       .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
       .collect();
 
     for (const item of studyItems) {
+      // Delete logs for this item
+      const logs = await ctx.db.query("studyLogs")
+        .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
+        .collect();
+      for (const log of logs) await ctx.db.delete(log._id);
+
       await ctx.db.patch(item._id, {
         isCompleted: false,
         completionScore: undefined,
@@ -468,6 +716,12 @@ export const resetConceptProgress = mutation({
         weaknessScore: undefined,
       });
     }
+
+    // 3. Delete revision logs for this concept
+    const revisionLogs = await ctx.db.query("studyLogs")
+      .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", args.conceptId))
+      .collect();
+    for (const log of revisionLogs) await ctx.db.delete(log._id);
   },
 });
 
@@ -512,6 +766,12 @@ export const migrateAndSeed = mutation({
     for (const session of sessions) {
       await ctx.db.delete(session._id);
     }
+
+    // 7. Seed Settings
+    await ctx.db.insert("settings", {
+      key: "defaultRevisionMinutes",
+      value: 15,
+    });
 
     // ── Seed Chemistry ─────────────────────────────────────────
     const chemId = await ctx.db.insert("subjects", {

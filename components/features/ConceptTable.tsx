@@ -20,7 +20,7 @@ type ConceptRowData = {
   reviewCount?: number;
   nextReviewAt?: number;
   repetitionLevel?: number;
-  trackerData: Record<string, { isCompleted: boolean; score?: number; studyItemId?: string }>;
+  trackerData: Array<{ key: string; isCompleted: boolean; score?: number; studyItemId?: string }>;
   status: "NOT_STARTED" | "IN_PROGRESS" | "READY";
   totalItems: number;
   completedItems: number;
@@ -218,6 +218,13 @@ export default function ConceptTable({
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingConcept, setEditingConcept] = React.useState<ConceptRowData | null>(null);
   const [reviewingConcept, setReviewingConcept] = React.useState<ConceptRowData | null>(null);
+  const [mounted, setMounted] = React.useState(false);
+  const [now, setNow] = React.useState(0);
+  
+  React.useEffect(() => {
+    setNow(Date.now());
+    setMounted(true);
+  }, []);
   
   const deleteConcept = useMutation(api.mutations.deleteConcept);
   const resetConcept = useMutation(api.mutations.resetConceptProgress);
@@ -256,6 +263,7 @@ export default function ConceptTable({
         </div>
 
         <ConceptModal 
+          key={editingConcept?._id || "new"}
           isOpen={isModalOpen}
           onClose={() => {
             setIsModalOpen(false);
@@ -263,11 +271,7 @@ export default function ConceptTable({
           }}
           chapterId={chapterId}
           suggestedOrder={nextOrder}
-          initialData={editingConcept ? {
-            _id: editingConcept._id,
-            name: editingConcept.name,
-            order: editingConcept.order,
-          } : undefined}
+          initialData={editingConcept || undefined}
         />
       </section>
     );
@@ -314,7 +318,7 @@ export default function ConceptTable({
           <tbody>
             {concepts.map((concept, idx) => {
               const isUnlocked = concept.completedItems === concept.totalItems && concept.totalItems > 0;
-              const isDue = concept.nextReviewAt ? concept.nextReviewAt <= Date.now() : false;
+              const isDue = mounted && concept.nextReviewAt ? concept.nextReviewAt <= now : false;
 
               return (
                 <tr
@@ -333,14 +337,17 @@ export default function ConceptTable({
                       </span>
                     </div>
                   </td>
-                  {trackerConfigs.map((t) => (
-                    <td key={t.key} className="py-4 px-5 text-center">
-                      <TrackerCell
-                        isCompleted={concept.trackerData[t.key]?.isCompleted ?? false}
-                        studyItemId={concept.trackerData[t.key]?.studyItemId}
-                      />
-                    </td>
-                  ))}
+                  {trackerConfigs.map((t) => {
+                    const tracker = concept.trackerData.find((d) => d.key === t.key);
+                    return (
+                      <td key={t.key} className="py-4 px-5 text-center">
+                        <TrackerCell
+                          isCompleted={tracker?.isCompleted ?? false}
+                          studyItemId={tracker?.studyItemId}
+                        />
+                      </td>
+                    );
+                  })}
                   <td className="py-4 px-5 text-center">
                     <div className="flex justify-center">
                       <button
@@ -377,6 +384,7 @@ export default function ConceptTable({
       </div>
 
       <ConceptModal 
+        key={editingConcept?._id || "new"}
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
@@ -384,11 +392,7 @@ export default function ConceptTable({
         }}
         chapterId={chapterId}
         suggestedOrder={nextOrder}
-        initialData={editingConcept ? {
-          _id: editingConcept._id,
-          name: editingConcept.name,
-          order: editingConcept.order,
-        } : undefined}
+        initialData={editingConcept || undefined}
       />
 
       {reviewingConcept && (

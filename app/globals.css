@@ -10,12 +10,28 @@
 .dark {
   --background: #0d0d0d;
   --foreground: #ededed;
+  
+  --color-pure-white: #141414;
+  --color-on-surface: #ededed;
+  --color-surface: #0d0d0d;
+  --color-surface-container: #1f1f1f;
+  
+  --color-near-black: #ededed;
+  
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-medium: rgba(255, 255, 255, 0.15);
+  
+  --color-gray-50: #141414;
+  --color-gray-100: #1a1a1a;
+  --color-gray-400: #666666;
+  --color-gray-500: #a0a0a0;
+  --color-gray-700: #d4d4d4;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: "Inter", var(--font-baloo), sans-serif;
   --font-mono: var(--font-geist-mono);
 
   --color-brand-green: #18E299;
@@ -39,13 +55,13 @@
   --color-on-surface: #151d18;
   --color-surface-container: #e7f0e8;
 
-  --font-display-hero: "Inter", sans-serif;
-  --font-section-heading: "Inter", sans-serif;
-  --font-sub-heading: "Inter", sans-serif;
-  --font-card-title: "Inter", sans-serif;
-  --font-body-large: "Inter", sans-serif;
-  --font-body: "Inter", sans-serif;
-  --font-label-uppercase: "Inter", sans-serif;
+  --font-display-hero: "Inter", var(--font-baloo), sans-serif;
+  --font-section-heading: "Inter", var(--font-baloo), sans-serif;
+  --font-sub-heading: "Inter", var(--font-baloo), sans-serif;
+  --font-card-title: "Inter", var(--font-baloo), sans-serif;
+  --font-body-large: "Inter", var(--font-baloo), sans-serif;
+  --font-body: "Inter", var(--font-baloo), sans-serif;
+  --font-label-uppercase: "Inter", var(--font-baloo), sans-serif;
   --font-mono-code: "Geist Mono", var(--font-geist-mono), monospace;
 
   --spacing-base: 8px;
@@ -58,12 +74,12 @@
   --text-display-hero: 64px;
   --text-display-hero--line-height: 1.15;
   --text-display-hero--letter-spacing: -1.28px;
-  --text-display-hero--font-weight: 600;
+  --text-display-hero--font-weight: 700;
 
   --text-section-heading: 40px;
   --text-section-heading--line-height: 1.10;
   --text-section-heading--letter-spacing: -0.8px;
-  --text-section-heading--font-weight: 600;
+  --text-section-heading--font-weight: 700;
 
   --text-sub-heading: 24px;
   --text-sub-heading--line-height: 1.30;
@@ -73,7 +89,7 @@
   --text-card-title: 20px;
   --text-card-title--line-height: 1.30;
   --text-card-title--letter-spacing: -0.2px;
-  --text-card-title--font-weight: 600;
+  --text-card-title--font-weight: 700;
 
   --text-body-large: 18px;
   --text-body-large--line-height: 1.50;
