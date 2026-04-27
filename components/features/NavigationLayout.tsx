@@ -40,6 +40,8 @@ function Breadcrumbs() {
     }
   } else if (segments[0] === "logs") {
     crumbs.push({ label: "Logs", href: "/logs" });
+  } else if (segments[0] === "revision") {
+    crumbs.push({ label: "Revision", href: "/revision" });
   }
 
   return (
@@ -128,7 +130,14 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
             <span className="material-symbols-outlined text-lg">query_stats</span>
             Progress
           </Link>
-          <Link className="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
+          <Link
+            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
+              pathname === "/revision"
+                ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10"
+                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
+            }`}
+            href="/revision"
+          >
             <span className="material-symbols-outlined text-lg">history_edu</span>
             Revision
           </Link>
