@@ -725,6 +725,19 @@ export const resetConceptProgress = mutation({
   },
 });
 
+// ── Reschedule a concept review ──────────────────────────────────
+export const rescheduleConceptReview = mutation({
+  args: {
+    conceptId: v.id("concepts"),
+    newNextReviewAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.conceptId, {
+      nextReviewAt: args.newNextReviewAt,
+    });
+  },
+});
+
 // ── MIGRATION: Clear old data & seed fresh ───────────────────────
 // Clears all old-schema documents and seeds Chemistry with 5 chapters.
 // Run once from the Convex dashboard or a temporary button.

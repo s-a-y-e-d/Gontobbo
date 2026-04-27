@@ -16,31 +16,31 @@ export const getStudyLogsFeed = query({
     dayBucket: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let q = ctx.db.query("studyLogs");
+    let q;
 
     // Choose best index based on provided filters
     if (args.subjectId && args.eventType) {
-      q = q.withIndex("by_subjectId_and_eventType_and_loggedAt", (q) =>
+      q = ctx.db.query("studyLogs").withIndex("by_subjectId_and_eventType_and_loggedAt", (q) =>
         q.eq("subjectId", args.subjectId!).eq("eventType", args.eventType!)
       );
     } else if (args.subjectId) {
-      q = q.withIndex("by_subjectId_and_loggedAt", (q) =>
+      q = ctx.db.query("studyLogs").withIndex("by_subjectId_and_loggedAt", (q) =>
         q.eq("subjectId", args.subjectId!)
       );
     } else if (args.eventType) {
-      q = q.withIndex("by_eventType_and_loggedAt", (q) =>
+      q = ctx.db.query("studyLogs").withIndex("by_eventType_and_loggedAt", (q) =>
         q.eq("eventType", args.eventType!)
       );
     } else if (args.dayBucket) {
-      q = q.withIndex("by_dayBucket", (q) =>
+      q = ctx.db.query("studyLogs").withIndex("by_dayBucket", (q) =>
         q.eq("dayBucket", args.dayBucket!)
       );
     } else if (args.editableOnly) {
-      q = q.withIndex("by_isEditable_and_loggedAt", (q) =>
+      q = ctx.db.query("studyLogs").withIndex("by_isEditable_and_loggedAt", (q) =>
         q.eq("isEditable", true)
       );
     } else {
-      q = q.withIndex("by_loggedAt");
+      q = ctx.db.query("studyLogs").withIndex("by_loggedAt");
     }
 
     // Apply remaining filters in-query (better for pagination than in-memory)
@@ -309,6 +309,101 @@ export const getSubjectsWithStats = query({
     );
 
     return subjectsWithStats;
+  },
+});
+
+function getDhakaDayBucket(timestamp: number) {
+  // Dhaka is UTC+6
+  const dhakaOffset = 6 * 60 * 60 * 1000;
+  const dhakaTime = new Date(timestamp + dhakaOffset);
+  dhakaTime.setUTCHours(0, 0, 0, 0);
+  return dhakaTime.getTime() - dhakaOffset;
+}
+
+// ── Reviews Dashboard Data ──────────────────────────────────────
+export const getReviewsDashboardData = query({
+  args: {
+    now: v.number(),
+    subjectId: v.optional(v.id("subjects")),
+  },
+  handler: async (ctx, args) => {
+    // 1. Get all concepts with nextReviewAt
+    let concepts = await ctx.db.query("concepts").collect();
+
+    // Filter by subject if provided
+    if (args.subjectId) {
+      const chapters = await ctx.db
+        .query("chapters")
+        .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId!))
+        .collect();
+      const chapterIds = new Set(chapters.map((c) => c._id));
+      concepts = concepts.filter((c) => chapterIds.has(c.chapterId));
+    }
+
+    const startOfToday = getDhakaDayBucket(args.now);
+    const endOfToday = startOfToday + 86400000 - 1;
+
+    // Get completed today count from studyLogs
+    const completedTodayLogs = await ctx.db
+      .query("studyLogs")
+      .withIndex("by_dayBucket", (q) => q.eq("dayBucket", startOfToday))
+      .filter((q) => q.eq(q.field("eventType"), "concept_review"))
+      .collect();
+
+    // Enrich concepts with subject/chapter info
+    const enrichedConcepts = await Promise.all(
+      concepts
+        .filter((c) => c.nextReviewAt !== undefined)
+        .map(async (concept) => {
+          const chapter = await ctx.db.get(concept.chapterId);
+          const subject = chapter ? await ctx.db.get(chapter.subjectId) : null;
+          return {
+            ...concept,
+            chapterName: chapter?.name ?? "Unknown",
+            subjectName: subject?.name ?? "Unknown",
+            subjectColor: subject?.color ?? "gray",
+            subjectIcon: subject?.icon ?? "menu_book",
+          };
+        })
+    );
+
+    const overdue = enrichedConcepts
+      .filter((c) => c.nextReviewAt! < startOfToday)
+      .sort((a, b) => a.nextReviewAt! - b.nextReviewAt!);
+
+    const dueToday = enrichedConcepts
+      .filter((c) => c.nextReviewAt! >= startOfToday && c.nextReviewAt! <= endOfToday)
+      .sort((a, b) => a.nextReviewAt! - b.nextReviewAt!);
+
+    const upcoming = enrichedConcepts
+      .filter((c) => c.nextReviewAt! > endOfToday && c.nextReviewAt! <= args.now + 7 * 86400000)
+      .sort((a, b) => a.nextReviewAt! - b.nextReviewAt!);
+
+    return {
+      stats: {
+        overdueCount: overdue.length,
+        dueTodayCount: dueToday.length,
+        upcomingCount: upcoming.length,
+        completedTodayCount: completedTodayLogs.length,
+      },
+      overdue,
+      dueToday,
+      upcoming,
+    };
+  },
+});
+
+// ── Get all subjects for filters ─────────────────────────────────
+export const getSubjectsForFilter = query({
+  args: {},
+  handler: async (ctx) => {
+    const subjects = await ctx.db.query("subjects").collect();
+    return subjects.map((s) => ({
+      _id: s._id,
+      name: s.name,
+      color: s.color,
+      icon: s.icon,
+    }));
   },
 });
 

@@ -68,7 +68,7 @@ export default function StudyLogFeed() {
           <span className="material-symbols-outlined text-sm text-slate-400">category</span>
           <select 
             value={eventType || ""} 
-            onChange={(e) => setEventType(e.target.value || undefined)}
+            onChange={(e) => setEventType((e.target.value as "study_item_completed" | "study_item_uncompleted" | "concept_review") || undefined)}
             className="bg-transparent text-sm outline-none border-none pr-4 text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
           >
             <option value="">সব ধরণ</option>
