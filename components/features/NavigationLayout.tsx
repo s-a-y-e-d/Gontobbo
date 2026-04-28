@@ -74,6 +74,7 @@ function Breadcrumbs() {
 export default function NavigationLayout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -189,28 +190,156 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
         </div>
       </header>
 
+      {/* Mobile Sticky Header */}
+      <header className="md:hidden sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-black/5 dark:border-white/5 h-16 px-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-brand-green transition-colors"
+          >
+            <span className="material-symbols-outlined text-2xl">menu</span>
+          </button>
+          <div className="flex flex-col">
+            <span className="text-sm font-black text-slate-900 dark:text-white leading-none">StudyOS</span>
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{currentDate}</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-brand-green transition-colors"
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              {mounted && theme === 'dark' ? 'light_mode' : 'dark_mode'}
+            </span>
+          </button>
+          <div className="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 overflow-hidden ml-1">
+            <img alt="Student Profile Avatar" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQHSCY5tzAn6ImxgAIUrvnBxTsfM4WmTIphkFjmEaY2epp7zaC9Y2wlcbffnn5OloFCXiSqmPi2bqza_G6nGrJqxpKlH7T-SEc74gcMiT7kZJ-EtwbqhvCSdcEHq13HqO6-Brm36_rAcQ6JTcrhe2JMiD8i6eC0NVeexm11d7JRwOSEV90OXqNTAH3HvP2rt5RmtHv-XAu-ZeDHWWx5THNCewM5F12i2jmu282tM6IuoC_47guCRzdAIL7uAi_oYGY0siibrFvnyu0"/>
+          </div>
+        </div>
+      </header>
+
+      {/* Slide-out Mobile Menu (Overlay) */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-[100] md:hidden">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity animate-in fade-in duration-300" 
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          
+          {/* Menu Panel */}
+          <div className="absolute left-0 top-0 bottom-0 w-[280px] bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-in slide-in-from-left duration-300 ease-out">
+            <div className="flex items-center justify-between px-6 py-6 border-b border-black/5 dark:border-white/5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
+                <span className="text-lg font-black text-slate-900 dark:text-white">StudyOS</span>
+              </div>
+              <button 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+              <Link 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
+              >
+                <span className="material-symbols-outlined">dashboard</span>
+                Dashboard
+              </Link>
+              <Link 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800 ${isSubjectsActive ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10" : "text-slate-600 dark:text-slate-400"}`} href="/"
+              >
+                <span className="material-symbols-outlined">auto_stories</span>
+                Subjects
+              </Link>
+              <Link 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
+              >
+                <span className="material-symbols-outlined">psychology</span>
+                AI Planner
+              </Link>
+              <Link 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
+              >
+                <span className="material-symbols-outlined">calendar_today</span>
+                Today Plan
+              </Link>
+              <Link 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
+              >
+                <span className="material-symbols-outlined">query_stats</span>
+                Progress
+              </Link>
+              <Link 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800 ${pathname === '/revision' ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10" : "text-slate-600 dark:text-slate-400"}`} href="/revision"
+              >
+                <span className="material-symbols-outlined">history_edu</span>
+                Revision
+              </Link>
+              <Link 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800 ${isLogsActive ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10" : "text-slate-600 dark:text-slate-400"}`} href="/logs"
+              >
+                <span className="material-symbols-outlined">format_list_bulleted</span>
+                Logs
+              </Link>
+              <div className="h-px bg-black/5 dark:border-white/5 my-2 mx-4" />
+              <Link 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
+              >
+                <span className="material-symbols-outlined">settings</span>
+                Settings
+              </Link>
+            </div>
+            
+            <div className="p-4 mt-auto border-t border-black/5 dark:border-white/5">
+              <button className="w-full bg-brand-green text-white rounded-2xl py-3 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-green/20">
+                <span className="material-symbols-outlined">add</span>
+                Study Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Canvas */}
-      <main className="flex-1 w-full max-w-[1200px] mx-auto px-6 py-section-y-sm">
+      <main className="flex-1 w-full max-w-[1200px] mx-auto px-4 py-6 md:px-6 md:py-section-y-sm">
         {children}
       </main>
 
       {/* BottomNavBar (Mobile) */}
-      <nav className="bg-white dark:bg-slate-950 font-body text-[10px] font-medium md:hidden border-t border-black/5 dark:border-white/5 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe">
+      <nav className="bg-white dark:bg-slate-950 font-body text-[10px] font-medium md:hidden border-t border-black/5 dark:border-white/5 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe">
         <Link className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 transition-all p-2 rounded-xl" href="#">
-          <span className="material-symbols-outlined text-2xl mb-1">home</span>
-          Home
+          <span className="material-symbols-outlined text-2xl mb-0.5">dashboard</span>
+          Dashboard
         </Link>
         <Link className={`flex flex-col items-center justify-center rounded-2xl px-3 py-1 transition-all ${isSubjectsActive ? "text-brand-green bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-400 dark:text-slate-500"}`} href="/">
-          <span className="material-symbols-outlined text-2xl mb-1" style={{ fontVariationSettings: isSubjectsActive ? "'FILL' 1" : "'FILL' 0" }}>book</span>
+          <span className="material-symbols-outlined text-2xl mb-0.5" style={{ fontVariationSettings: isSubjectsActive ? "'FILL' 1" : "'FILL' 0" }}>book</span>
           Subjects
         </Link>
         <Link className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 transition-all p-2 rounded-xl" href="#">
-          <span className="material-symbols-outlined text-2xl mb-1">event_note</span>
-          Planner
+          <span className="material-symbols-outlined text-2xl mb-0.5">psychology</span>
+          AI Planner
         </Link>
-        <Link className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 transition-all p-2 rounded-xl" href="#">
-          <span className="material-symbols-outlined text-2xl mb-1">bar_chart</span>
-          Progress
+        <Link className={`flex flex-col items-center justify-center rounded-2xl px-3 py-1 transition-all ${pathname === '/revision' ? "text-brand-green bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-400 dark:text-slate-500"}`} href="/revision">
+          <span className="material-symbols-outlined text-2xl mb-0.5" style={{ fontVariationSettings: pathname === '/revision' ? "'FILL' 1" : "'FILL' 0" }}>history_edu</span>
+          Revision
+        </Link>
+        <Link className={`flex flex-col items-center justify-center rounded-2xl px-3 py-1 transition-all ${isLogsActive ? "text-brand-green bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-400 dark:text-slate-500"}`} href="/logs">
+          <span className="material-symbols-outlined text-2xl mb-0.5" style={{ fontVariationSettings: isLogsActive ? "'FILL' 1" : "'FILL' 0" }}>format_list_bulleted</span>
+          Logs
         </Link>
       </nav>
     </div>

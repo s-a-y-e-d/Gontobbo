@@ -89,7 +89,7 @@ export default function RevisionDashboard() {
         </div>
 
         {activeReviews.length === 0 ? (
-          <div className="bg-white rounded-[32px] border border-border-subtle p-12 text-center">
+          <div className="bg-white rounded-3xl border border-border-subtle p-12 text-center">
             <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-brand-green text-3xl">task_alt</span>
             </div>
@@ -143,7 +143,7 @@ export default function RevisionDashboard() {
       {rescheduleConcept && (
         <RescheduleModal 
           isOpen={!!rescheduleConcept}
-          onClose={() => setRescheduleConcept(null)}
+          onClose={() => setReviewConcept(null)}
           concept={rescheduleConcept}
         />
       )}
@@ -153,7 +153,7 @@ export default function RevisionDashboard() {
 
 function StatCard({ label, count, color, icon }: { label: string; count: number; color: string; icon: string }) {
   return (
-    <div className="bg-white rounded-[24px] border border-border-subtle p-6 flex items-center justify-between shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+    <div className="bg-white rounded-2xl border border-border-subtle p-6 flex items-center justify-between shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
       <div>
         <p className="text-xs font-mono-code text-gray-500 uppercase tracking-wider mb-1">{label}</p>
         <p className="text-3xl font-bold text-on-surface">{count}</p>
@@ -213,7 +213,7 @@ function ReviewItemCard({
   const borderColor = borderColors[concept.subjectColor] || "#18E299"; // Fallback to brand green
 
   return (
-    <div className="bg-white rounded-[24px] border border-border-subtle p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 group hover:shadow-lg transition-all border-l-4" style={{ borderLeftColor: borderColor }}>
+    <div className="bg-white rounded-2xl border border-border-subtle p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 group hover:shadow-lg transition-all border-l-4" style={{ borderLeftColor: borderColor }}>
       <div className="flex items-start gap-4">
         <div className="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center shrink-0">
           <span className="material-symbols-outlined text-slate-400">{concept.subjectIcon}</span>

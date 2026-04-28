@@ -123,7 +123,7 @@ export default function SubjectCard(props: SubjectCardProps) {
     <>
       <div
         onClick={() => router.push(`/subjects/${slug}`)}
-        className="group bg-pure-white border border-border-subtle rounded-[24px] p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] transition-all hover:border-border-medium hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] cursor-pointer active:scale-[0.99]"
+        className="group bg-pure-white border border-border-subtle rounded-2xl p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] transition-all hover:border-border-medium hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] cursor-pointer active:scale-[0.99]"
       >
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-4">
