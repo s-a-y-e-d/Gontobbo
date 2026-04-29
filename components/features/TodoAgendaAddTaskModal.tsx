@@ -44,6 +44,7 @@ export default function TodoAgendaAddTaskModal({
       ? { date, searchText: deferredSearchText }
       : "skip",
   );
+  const maxDurationMinutes = getMaxDurationMinutes(startTimeValue);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -63,11 +64,21 @@ export default function TodoAgendaAddTaskModal({
 
   const canShowResults =
     selectedStudyItem === null && deferredSearchText.length > 0;
+  const isDurationPastSelectedDay =
+    durationMinutes !== null &&
+    maxDurationMinutes !== null &&
+    durationMinutes > maxDurationMinutes;
 
   const handleSelectStudyItem = (studyItem: TodoStudyItemSearchResult) => {
+    const roundedDuration = roundToNearestDuration(studyItem.estimatedMinutes);
+
     setSelectedStudyItem(studyItem);
     setSearchText(studyItem.title);
-    setDurationMinutes(roundToNearestDuration(studyItem.estimatedMinutes));
+    setDurationMinutes(
+      maxDurationMinutes === null || roundedDuration <= maxDurationMinutes
+        ? roundedDuration
+        : null,
+    );
     setErrorMessage(null);
   };
 
@@ -82,9 +93,15 @@ export default function TodoAgendaAddTaskModal({
     if (parsedValue === null) {
       setStartTimeValue(value);
     } else {
-      setStartTimeValue(
-        formatTimeInputValue(roundToNearestQuarterHour(parsedValue)),
-      );
+      const normalizedStartTime = roundToNearestQuarterHour(parsedValue);
+      setStartTimeValue(formatTimeInputValue(normalizedStartTime));
+
+      if (
+        durationMinutes !== null &&
+        durationMinutes > 1440 - normalizedStartTime
+      ) {
+        setDurationMinutes(null);
+      }
     }
     setErrorMessage(null);
   };
@@ -92,9 +109,15 @@ export default function TodoAgendaAddTaskModal({
   const handleStartTimeBlur = () => {
     const parsedValue = parseTimeInputValue(startTimeValue);
     if (parsedValue !== null) {
-      setStartTimeValue(
-        formatTimeInputValue(roundToNearestQuarterHour(parsedValue)),
-      );
+      const normalizedStartTime = roundToNearestQuarterHour(parsedValue);
+      setStartTimeValue(formatTimeInputValue(normalizedStartTime));
+
+      if (
+        durationMinutes !== null &&
+        durationMinutes > 1440 - normalizedStartTime
+      ) {
+        setDurationMinutes(null);
+      }
     }
   };
 
@@ -119,6 +142,11 @@ export default function TodoAgendaAddTaskModal({
 
     if (durationMinutes === null) {
       setErrorMessage("সময়কাল সিলেক্ট করুন।");
+      return;
+    }
+
+    if (normalizedStartTime + durationMinutes > 1440) {
+      setErrorMessage("এই টাস্কটি নির্বাচিত দিনের বাইরে চলে যাবে।");
       return;
     }
 
@@ -262,7 +290,13 @@ export default function TodoAgendaAddTaskModal({
               >
                 <option value="">সময়কাল বেছে নিন</option>
                 {TODO_DURATION_OPTIONS.map((minutes) => (
-                  <option key={minutes} value={minutes}>
+                  <option
+                    key={minutes}
+                    value={minutes}
+                    disabled={
+                      maxDurationMinutes !== null && minutes > maxDurationMinutes
+                    }
+                  >
                     {formatDurationLabel(minutes)}
                   </option>
                 ))}
@@ -304,6 +338,7 @@ export default function TodoAgendaAddTaskModal({
                 isSubmitting ||
                 !selectedStudyItem ||
                 durationMinutes === null ||
+                isDurationPastSelectedDay ||
                 startTimeValue.length === 0
               }
               className="rounded-full bg-on-surface px-7 py-3 font-label-uppercase text-label-uppercase text-pure-white shadow-sm transition-all hover:bg-brand-green hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
@@ -315,6 +350,15 @@ export default function TodoAgendaAddTaskModal({
       </div>
     </div>
   );
+}
+
+function getMaxDurationMinutes(startTimeValue: string) {
+  const parsedStartTime = parseTimeInputValue(startTimeValue);
+  if (parsedStartTime === null) {
+    return null;
+  }
+
+  return 1440 - roundToNearestQuarterHour(parsedStartTime);
 }
 
 function SelectedStudyItemCard({

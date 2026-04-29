@@ -813,6 +813,10 @@ export const createTodoTask = mutation({
       throw new Error("Duration must be one of the preset values");
     }
 
+    if (args.startTimeMinutes + args.durationMinutes > 1440) {
+      throw new Error("Todo task must end within the selected day");
+    }
+
     const studyItem = await ctx.db.get(args.studyItemId);
     if (!studyItem) {
       throw new Error("Study item not found");
