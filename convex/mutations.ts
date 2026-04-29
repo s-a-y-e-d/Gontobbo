@@ -1,5 +1,120 @@
-import { mutation } from "./_generated/server";
+import { mutation, type MutationCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+
+const TODO_DURATION_MINUTES = Array.from({ length: 16 }, (_, index) => (index + 1) * 15);
+
+function buildStudyItemTitle(baseName: string, trackerLabel: string) {
+  return `${baseName} — ${trackerLabel}`;
+}
+
+function buildStudyItemSearchText(args: {
+  title: string;
+  subjectName: string;
+  chapterName: string;
+  conceptName?: string;
+}) {
+  return [
+    args.title,
+    args.subjectName,
+    args.chapterName,
+    args.conceptName,
+  ]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join(" ");
+}
+
+function getTrackerForStudyItem(
+  subject: Doc<"subjects">,
+  item: Doc<"studyItems">,
+) {
+  const trackers = item.conceptId
+    ? subject.conceptTrackers
+    : subject.chapterTrackers;
+  return trackers.find((tracker) => tracker.key === item.type) ?? null;
+}
+
+async function removeTodoTasksForStudyItem(
+  ctx: MutationCtx,
+  studyItemId: Id<"studyItems">,
+) {
+  const todoTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_studyItemId", (q) => q.eq("studyItemId", studyItemId))
+    .collect();
+
+  for (const todoTask of todoTasks) {
+    await ctx.db.delete(todoTask._id);
+  }
+}
+
+async function syncStudyItemPresentation(
+  ctx: MutationCtx,
+  studyItemId: Id<"studyItems">,
+) {
+  const item = await ctx.db.get(studyItemId);
+  if (!item) return;
+
+  const [subject, chapter, concept] = await Promise.all([
+    ctx.db.get(item.subjectId),
+    ctx.db.get(item.chapterId),
+    item.conceptId ? ctx.db.get(item.conceptId) : Promise.resolve(null),
+  ]);
+
+  if (!subject || !chapter) return;
+
+  const tracker = getTrackerForStudyItem(subject, item);
+  if (!tracker) return;
+
+  const baseName = item.conceptId
+    ? concept?.name
+    : chapter.name;
+
+  if (!baseName) return;
+
+  const title = buildStudyItemTitle(baseName, tracker.label);
+  const searchText = buildStudyItemSearchText({
+    title,
+    subjectName: subject.name,
+    chapterName: chapter.name,
+    conceptName: concept?.name,
+  });
+
+  if (item.title !== title || item.searchText !== searchText) {
+    await ctx.db.patch(item._id, {
+      title,
+      searchText,
+    });
+  }
+}
+
+async function syncStudyItemsBySubject(
+  ctx: MutationCtx,
+  subjectId: Id<"subjects">,
+) {
+  const studyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_subject", (q) => q.eq("subjectId", subjectId))
+    .collect();
+
+  for (const item of studyItems) {
+    await syncStudyItemPresentation(ctx, item._id);
+  }
+}
+
+async function syncStudyItemsByChapter(
+  ctx: MutationCtx,
+  chapterId: Id<"chapters">,
+) {
+  const studyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
+    .collect();
+
+  for (const item of studyItems) {
+    await syncStudyItemPresentation(ctx, item._id);
+  }
+}
 
 // ── Create a subject ─────────────────────────────────────────────
 // ... (rest of the file)
@@ -84,7 +199,8 @@ export const updateSubject = mutation({
             .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
             .collect();
           for (const log of logs) await ctx.db.delete(log._id);
-          
+
+          await removeTodoTasksForStudyItem(ctx, item._id);
           await ctx.db.delete(item._id);
         }
       }
@@ -106,13 +222,15 @@ export const updateSubject = mutation({
             .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
             .collect();
           for (const log of logs) await ctx.db.delete(log._id);
-          
+
+          await removeTodoTasksForStudyItem(ctx, item._id);
           await ctx.db.delete(item._id);
         }
       }
     }
 
     await ctx.db.patch(subjectId, updates);
+    await syncStudyItemsBySubject(ctx, subjectId);
   },
 });
 
@@ -195,6 +313,7 @@ export const updateChapter = mutation({
   handler: async (ctx, args) => {
     const { chapterId, ...updates } = args;
     await ctx.db.patch(chapterId, updates);
+    await syncStudyItemsByChapter(ctx, chapterId);
   },
 });
 
@@ -219,7 +338,8 @@ export const deleteChapter = mutation({
           .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
           .collect();
         for (const log of logs) await ctx.db.delete(log._id);
-        
+
+        await removeTodoTasksForStudyItem(ctx, item._id);
         await ctx.db.delete(item._id);
       }
 
@@ -243,6 +363,7 @@ export const deleteChapter = mutation({
         .collect();
       for (const log of logs) await ctx.db.delete(log._id);
 
+      await removeTodoTasksForStudyItem(ctx, item._id);
       await ctx.db.delete(item._id);
     }
 
@@ -294,12 +415,9 @@ export const updateConcept = mutation({
       .collect();
 
     for (const item of studyItems) {
-      const tracker = subject.conceptTrackers.find(t => t.key === item.type);
-      if (tracker) {
-        await ctx.db.patch(item._id, {
-          title: `${concept.name} — ${tracker.label}`
-        });
-      }
+      const tracker = subject.conceptTrackers.find((t) => t.key === item.type);
+      if (!tracker) continue;
+      await syncStudyItemPresentation(ctx, item._id);
     }
   },
 });
@@ -319,6 +437,7 @@ export const deleteConcept = mutation({
         .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
         .collect();
       for (const log of logs) await ctx.db.delete(log._id);
+      await removeTodoTasksForStudyItem(ctx, item._id);
       await ctx.db.delete(item._id);
     }
 
@@ -413,14 +532,27 @@ export const ensureChapterStudyItems = mutation({
         );
 
         if (!alreadyExists) {
+          const title = buildStudyItemTitle(chapter.name, tracker.label);
           await ctx.db.insert("studyItems", {
             subjectId: args.subjectId,
             chapterId: chapter._id,
             type: tracker.key,
-            title: `${chapter.name} — ${tracker.label}`,
+            title,
+            searchText: buildStudyItemSearchText({
+              title,
+              subjectName: subject.name,
+              chapterName: chapter.name,
+            }),
             estimatedMinutes: tracker.avgMinutes,
             isCompleted: false,
           });
+        } else {
+          const existingItem = existingChapterItems.find(
+            (si) => si.type === tracker.key,
+          );
+          if (existingItem) {
+            await syncStudyItemPresentation(ctx, existingItem._id);
+          }
         }
       }
     }
@@ -455,15 +587,27 @@ export const ensureConceptStudyItems = mutation({
         );
 
         if (!alreadyExists) {
+          const title = buildStudyItemTitle(concept.name, tracker.label);
           await ctx.db.insert("studyItems", {
             subjectId: subject._id,
             chapterId: args.chapterId,
             conceptId: concept._id,
             type: tracker.key,
-            title: `${concept.name} — ${tracker.label}`,
+            title,
+            searchText: buildStudyItemSearchText({
+              title,
+              subjectName: subject.name,
+              chapterName: chapter.name,
+              conceptName: concept.name,
+            }),
             estimatedMinutes: tracker.avgMinutes,
             isCompleted: false,
           });
+        } else {
+          const existingItem = existingItems.find((si) => si.type === tracker.key);
+          if (existingItem) {
+            await syncStudyItemPresentation(ctx, existingItem._id);
+          }
         }
       }
     }
@@ -474,13 +618,29 @@ export const ensureConceptStudyItems = mutation({
 export const fixInvalidTrackerKeys = mutation({
   args: {},
   handler: async (ctx) => {
+    type TrackerConfig = {
+      key: string;
+      label: string;
+      avgMinutes: number;
+    };
+
+    type TrackerWithOldKey = TrackerConfig & {
+      oldKey?: string;
+    };
+
+    const stripOldKey = (tracker: TrackerWithOldKey): TrackerConfig => ({
+      key: tracker.key,
+      label: tracker.label,
+      avgMinutes: tracker.avgMinutes,
+    });
+
     const subjects = await ctx.db.query("subjects").collect();
     for (const subject of subjects) {
       let changed = false;
       
-      const updateTrackers = (trackers: any[]) => {
+      const updateTrackers = (trackers: TrackerConfig[]): TrackerWithOldKey[] => {
         const resultKeys = new Set<string>();
-        return trackers.map(t => {
+        return trackers.map((t) => {
           const sanitizedKey = t.key.replace(/[^\x00-\x7F]/g, "") || "tracker";
           let finalKey = sanitizedKey;
           let counter = 1;
@@ -513,7 +673,7 @@ export const fixInvalidTrackerKeys = mutation({
 
         for (const item of studyItems) {
           const matched = [...chapterTrackersWithOld, ...conceptTrackersWithOld].find(
-            (t: any) => t.oldKey === item.type
+            (t) => t.oldKey === item.type
           );
           if (matched) {
             await ctx.db.patch(item._id, { type: matched.key });
@@ -522,9 +682,10 @@ export const fixInvalidTrackerKeys = mutation({
 
         // Update subject trackers (removing the temporary oldKey)
         await ctx.db.patch(subject._id, {
-          chapterTrackers: chapterTrackersWithOld.map(({ oldKey, ...t }: any) => t),
-          conceptTrackers: conceptTrackersWithOld.map(({ oldKey, ...t }: any) => t),
+          chapterTrackers: chapterTrackersWithOld.map(stripOldKey),
+          conceptTrackers: conceptTrackersWithOld.map(stripOldKey),
         });
+        await syncStudyItemsBySubject(ctx, subject._id);
       }
     }
   },
@@ -537,6 +698,69 @@ function getDhakaDayBucket(timestamp: number) {
   dhakaTime.setUTCHours(0, 0, 0, 0);
   return dhakaTime.getTime() - dhakaOffset;
 }
+
+export const backfillStudyItemSearchText = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const studyItems = await ctx.db.query("studyItems").take(500);
+
+    for (const item of studyItems) {
+      await syncStudyItemPresentation(ctx, item._id);
+    }
+
+    return { syncedCount: studyItems.length };
+  },
+});
+
+export const createTodoTask = mutation({
+  args: {
+    date: v.number(),
+    studyItemId: v.id("studyItems"),
+    startTimeMinutes: v.number(),
+    durationMinutes: v.number(),
+    source: v.union(v.literal("manual"), v.literal("ai_accepted")),
+  },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
+      throw new Error("Date must be a valid Dhaka day bucket");
+    }
+
+    if (
+      !Number.isInteger(args.startTimeMinutes) ||
+      args.startTimeMinutes < 0 ||
+      args.startTimeMinutes > 1439 ||
+      args.startTimeMinutes % 15 !== 0
+    ) {
+      throw new Error("Start time must be in 15-minute steps");
+    }
+
+    if (!TODO_DURATION_MINUTES.includes(args.durationMinutes)) {
+      throw new Error("Duration must be one of the preset values");
+    }
+
+    const studyItem = await ctx.db.get(args.studyItemId);
+    if (!studyItem) {
+      throw new Error("Study item not found");
+    }
+
+    if (studyItem.isCompleted) {
+      throw new Error("Completed study items cannot be scheduled");
+    }
+
+    const existingTodoTask = await ctx.db
+      .query("todoTasks")
+      .withIndex("by_date_and_studyItemId", (q) =>
+        q.eq("date", args.date).eq("studyItemId", args.studyItemId),
+      )
+      .unique();
+
+    if (existingTodoTask) {
+      throw new Error("This study item is already scheduled for that day");
+    }
+
+    return await ctx.db.insert("todoTasks", args);
+  },
+});
 
 // ── Toggle a studyItem completion ────────────────────────────────
 export const toggleStudyItemCompletion = mutation({
@@ -780,7 +1004,13 @@ export const migrateAndSeed = mutation({
       await ctx.db.delete(session._id);
     }
 
-    // 7. Seed Settings
+    // 7. Delete all todoTasks
+    const todoTasks = await ctx.db.query("todoTasks").take(500);
+    for (const todoTask of todoTasks) {
+      await ctx.db.delete(todoTask._id);
+    }
+
+    // 8. Seed Settings
     await ctx.db.insert("settings", {
       key: "defaultRevisionMinutes",
       value: 15,

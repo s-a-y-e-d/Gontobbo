@@ -1,9 +1,34 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
-import { useTheme } from "next-themes";
+import React, { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { useTheme } from "@/components/ThemeProvider";
+
+type NavItem = {
+  icon: string;
+  label: string;
+  href?: string;
+};
+
+const primaryNavItems: NavItem[] = [
+  { icon: "dashboard", label: "Dashboard" },
+  { icon: "auto_stories", label: "Subjects", href: "/" },
+  { icon: "psychology", label: "AI Planner" },
+  { icon: "calendar_today", label: "Todo", href: "/todo" },
+  { icon: "query_stats", label: "Progress" },
+  { icon: "history_edu", label: "Revision", href: "/revision" },
+  { icon: "format_list_bulleted", label: "Logs", href: "/logs" },
+  { icon: "settings", label: "Settings" },
+];
+
+const bottomNavItems: NavItem[] = [
+  { icon: "calendar_today", label: "Todo", href: "/todo" },
+  { icon: "book", label: "Subjects", href: "/" },
+  { icon: "psychology", label: "AI Planner" },
+  { icon: "history_edu", label: "Revision", href: "/revision" },
+  { icon: "format_list_bulleted", label: "Logs", href: "/logs" },
+];
 
 function Breadcrumbs() {
   const pathname = usePathname();
@@ -42,6 +67,8 @@ function Breadcrumbs() {
     crumbs.push({ label: "Logs", href: "/logs" });
   } else if (segments[0] === "revision") {
     crumbs.push({ label: "Revision", href: "/revision" });
+  } else if (segments[0] === "todo") {
+    crumbs.push({ label: "করণীয়", href: "/todo" });
   }
 
   return (
@@ -72,7 +99,7 @@ function Breadcrumbs() {
 }
 
 export default function NavigationLayout({ children }: { children: React.ReactNode }) {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -90,6 +117,125 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
   // Determine active nav item
   const isSubjectsActive = pathname === "/" || pathname.startsWith("/subjects");
   const isLogsActive = pathname === "/logs" || pathname.startsWith("/logs");
+  const isTodoActive = pathname === "/todo" || pathname.startsWith("/todo");
+  const isRevisionActive = pathname === "/revision";
+
+  const getIsActive = (href?: string) => {
+    if (!href) return false;
+    if (href === "/") return isSubjectsActive;
+    if (href === "/todo") return isTodoActive;
+    if (href === "/logs") return isLogsActive;
+    if (href === "/revision") return isRevisionActive;
+    return pathname === href;
+  };
+
+  const renderSidebarLink = (item: NavItem) => {
+    const content = (
+      <>
+        <span className="material-symbols-outlined text-lg">{item.icon}</span>
+        {item.label}
+      </>
+    );
+
+    if (!item.href) {
+      return (
+        <button
+          key={item.label}
+          type="button"
+          className="flex items-center gap-3 px-4 py-2.5 text-left text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]"
+        >
+          {content}
+        </button>
+      );
+    }
+
+    return (
+      <Link
+        key={item.href}
+        className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
+          getIsActive(item.href)
+            ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10"
+            : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
+        }`}
+        href={item.href}
+      >
+        {content}
+      </Link>
+    );
+  };
+
+  const renderMobileMenuLink = (item: NavItem) => {
+    const content = (
+      <>
+        <span className="material-symbols-outlined">{item.icon}</span>
+        {item.label}
+      </>
+    );
+
+    if (!item.href) {
+      return (
+        <button
+          key={item.label}
+          type="button"
+          className="flex w-full items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800"
+        >
+          {content}
+        </button>
+      );
+    }
+
+    return (
+      <Link
+        key={item.href}
+        onClick={() => setIsMobileMenuOpen(false)}
+        className={`flex items-center gap-3 px-4 py-3 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800 ${
+          getIsActive(item.href)
+            ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10"
+            : "text-slate-600 dark:text-slate-400"
+        }`}
+        href={item.href}
+      >
+        {content}
+      </Link>
+    );
+  };
+
+  const renderBottomNavLink = (item: NavItem) => {
+    const isActive = getIsActive(item.href);
+
+    if (!item.href) {
+      return (
+        <button
+          key={item.label}
+          type="button"
+          className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 transition-all p-2 rounded-xl"
+        >
+          <span className="material-symbols-outlined text-2xl mb-0.5">{item.icon}</span>
+          {item.label}
+        </button>
+      );
+    }
+
+    return (
+      <Link
+        key={item.href}
+        className={`flex flex-col items-center justify-center rounded-2xl px-3 py-1 transition-all ${
+          isActive
+            ? "text-brand-green bg-emerald-50 dark:bg-emerald-900/20"
+            : "text-slate-400 dark:text-slate-500"
+        }`}
+        href={item.href}
+      >
+        <span
+          className="material-symbols-outlined text-2xl mb-0.5"
+          style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}
+        >
+          {item.icon}
+        </span>
+        {item.label}
+      </Link>
+    );
+  };
 
   return (
     <div className="antialiased min-h-screen pb-24 md:pb-0 md:pl-64 flex flex-col">
@@ -103,61 +249,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
           </div>
         </div>
         
-        <div className="flex-1 space-y-1">
-          <Link className="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
-            <span className="material-symbols-outlined text-lg">dashboard</span>
-            Dashboard
-          </Link>
-          <Link
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
-              isSubjectsActive
-                ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
-            }`}
-            href="/"
-          >
-            <span className="material-symbols-outlined text-lg">auto_stories</span>
-            Subjects
-          </Link>
-          <Link className="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
-            <span className="material-symbols-outlined text-lg">psychology</span>
-            AI Planner
-          </Link>
-          <Link className="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
-            <span className="material-symbols-outlined text-lg">calendar_today</span>
-            Today Plan
-          </Link>
-          <Link className="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
-            <span className="material-symbols-outlined text-lg">query_stats</span>
-            Progress
-          </Link>
-          <Link
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
-              pathname === "/revision"
-                ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
-            }`}
-            href="/revision"
-          >
-            <span className="material-symbols-outlined text-lg">history_edu</span>
-            Revision
-          </Link>
-          <Link
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
-              isLogsActive
-                ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
-            }`}
-            href="/logs"
-          >
-            <span className="material-symbols-outlined text-lg">format_list_bulleted</span>
-            Logs
-          </Link>
-          <Link className="flex items-center gap-3 px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]" href="#">
-            <span className="material-symbols-outlined text-lg">settings</span>
-            Settings
-          </Link>
-        </div>
+        <div className="flex-1 space-y-1">{primaryNavItems.map(renderSidebarLink)}</div>
         
         <div className="mt-auto px-4 py-4">
           <button className="w-full bg-near-black text-white rounded-full py-2.5 font-medium text-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
@@ -175,11 +267,11 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
           <div className="flex items-center gap-3 text-slate-500">
             <button className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"><span className="material-symbols-outlined">local_fire_department</span></button>
             <button 
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"
             >
               <span className="material-symbols-outlined">
-                {mounted && theme === 'dark' ? 'light_mode' : 'dark_mode'}
+                {mounted && resolvedTheme === "dark" ? "light_mode" : "dark_mode"}
               </span>
             </button>
             <button className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"><span className="material-symbols-outlined">notifications</span></button>
@@ -207,11 +299,11 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
         
         <div className="flex items-center gap-2">
           <button 
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
             className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-brand-green transition-colors"
           >
             <span className="material-symbols-outlined text-[20px]">
-              {mounted && theme === 'dark' ? 'light_mode' : 'dark_mode'}
+              {mounted && resolvedTheme === "dark" ? "light_mode" : "dark_mode"}
             </span>
           </button>
           <div className="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 overflow-hidden ml-1">
@@ -245,63 +337,9 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
             </div>
             
             <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-              <Link 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
-              >
-                <span className="material-symbols-outlined">dashboard</span>
-                Dashboard
-              </Link>
-              <Link 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800 ${isSubjectsActive ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10" : "text-slate-600 dark:text-slate-400"}`} href="/"
-              >
-                <span className="material-symbols-outlined">auto_stories</span>
-                Subjects
-              </Link>
-              <Link 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
-              >
-                <span className="material-symbols-outlined">psychology</span>
-                AI Planner
-              </Link>
-              <Link 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
-              >
-                <span className="material-symbols-outlined">calendar_today</span>
-                Today Plan
-              </Link>
-              <Link 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
-              >
-                <span className="material-symbols-outlined">query_stats</span>
-                Progress
-              </Link>
-              <Link 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800 ${pathname === '/revision' ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10" : "text-slate-600 dark:text-slate-400"}`} href="/revision"
-              >
-                <span className="material-symbols-outlined">history_edu</span>
-                Revision
-              </Link>
-              <Link 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800 ${isLogsActive ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10" : "text-slate-600 dark:text-slate-400"}`} href="/logs"
-              >
-                <span className="material-symbols-outlined">format_list_bulleted</span>
-                Logs
-              </Link>
+              {primaryNavItems.slice(0, -1).map(renderMobileMenuLink)}
               <div className="h-px bg-black/5 dark:border-white/5 my-2 mx-4" />
-              <Link 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 font-bold rounded-xl active:bg-slate-100 dark:active:bg-slate-800" href="#"
-              >
-                <span className="material-symbols-outlined">settings</span>
-                Settings
-              </Link>
+              {renderMobileMenuLink(primaryNavItems[primaryNavItems.length - 1])}
             </div>
             
             <div className="p-4 mt-auto border-t border-black/5 dark:border-white/5">
@@ -321,26 +359,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
 
       {/* BottomNavBar (Mobile) */}
       <nav className="bg-white dark:bg-slate-950 font-body text-[10px] font-medium md:hidden border-t border-black/5 dark:border-white/5 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe">
-        <Link className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 transition-all p-2 rounded-xl" href="#">
-          <span className="material-symbols-outlined text-2xl mb-0.5">dashboard</span>
-          Dashboard
-        </Link>
-        <Link className={`flex flex-col items-center justify-center rounded-2xl px-3 py-1 transition-all ${isSubjectsActive ? "text-brand-green bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-400 dark:text-slate-500"}`} href="/">
-          <span className="material-symbols-outlined text-2xl mb-0.5" style={{ fontVariationSettings: isSubjectsActive ? "'FILL' 1" : "'FILL' 0" }}>book</span>
-          Subjects
-        </Link>
-        <Link className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 active:bg-slate-100 dark:active:bg-slate-800 transition-all p-2 rounded-xl" href="#">
-          <span className="material-symbols-outlined text-2xl mb-0.5">psychology</span>
-          AI Planner
-        </Link>
-        <Link className={`flex flex-col items-center justify-center rounded-2xl px-3 py-1 transition-all ${pathname === '/revision' ? "text-brand-green bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-400 dark:text-slate-500"}`} href="/revision">
-          <span className="material-symbols-outlined text-2xl mb-0.5" style={{ fontVariationSettings: pathname === '/revision' ? "'FILL' 1" : "'FILL' 0" }}>history_edu</span>
-          Revision
-        </Link>
-        <Link className={`flex flex-col items-center justify-center rounded-2xl px-3 py-1 transition-all ${isLogsActive ? "text-brand-green bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-400 dark:text-slate-500"}`} href="/logs">
-          <span className="material-symbols-outlined text-2xl mb-0.5" style={{ fontVariationSettings: isLogsActive ? "'FILL' 1" : "'FILL' 0" }}>format_list_bulleted</span>
-          Logs
-        </Link>
+        {bottomNavItems.map(renderBottomNavLink)}
       </nav>
     </div>
   );

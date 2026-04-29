@@ -320,6 +320,9 @@ function getDhakaDayBucket(timestamp: number) {
   return dhakaTime.getTime() - dhakaOffset;
 }
 
+const DAY_MS = 86400000;
+
+
 // ── Reviews Dashboard Data ──────────────────────────────────────
 export const getReviewsDashboardData = query({
   args: {
@@ -394,6 +397,212 @@ export const getReviewsDashboardData = query({
 });
 
 // ── Get all subjects for filters ─────────────────────────────────
+export const getTodoAgenda = query({
+  args: {
+    startDate: v.number(),
+    days: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const clampedDays = Math.max(1, Math.min(args.days, 31));
+    const endDate = args.startDate + (clampedDays - 1) * DAY_MS;
+
+    const todoTasks = await ctx.db
+      .query("todoTasks")
+      .withIndex("by_date_and_startTimeMinutes", (q) =>
+        q.gte("date", args.startDate).lte("date", endDate)
+      )
+      .collect();
+
+    type TodoAgendaQueryTask = (typeof todoTasks)[number] & {
+      minutes: number;
+      title: string;
+      todoTaskId: string;
+    };
+
+    const tasksByDate = new Map<number, TodoAgendaQueryTask[]>();
+    for (const todoTask of todoTasks) {
+      const current = tasksByDate.get(todoTask.date) ?? [];
+      current.push({
+        ...todoTask,
+        minutes: todoTask.durationMinutes,
+        title: "",
+        todoTaskId: todoTask._id,
+      });
+      tasksByDate.set(todoTask.date, current);
+    }
+
+    const days = await Promise.all(
+      Array.from({ length: clampedDays }, async (_, index) => {
+        const date = args.startDate + index * DAY_MS;
+        const dayTasks = tasksByDate.get(date) ?? [];
+
+        if (dayTasks.length === 0) {
+          return {
+            date,
+            tasks: [],
+          };
+        }
+
+        const tasks = await Promise.all(
+          dayTasks.map(async (task) => {
+            const currentStudyItem = await ctx.db.get(task.studyItemId);
+            if (!currentStudyItem) {
+              return null;
+            }
+
+            const [currentSubject, currentChapter] = await Promise.all([
+              ctx.db.get(currentStudyItem.subjectId),
+              ctx.db.get(currentStudyItem.chapterId),
+            ]);
+
+            if (!currentSubject || !currentChapter) {
+              return null;
+            }
+
+            return {
+              id: task.todoTaskId,
+              studyItemId: currentStudyItem._id,
+              title: currentStudyItem.title,
+              isCompleted: currentStudyItem.isCompleted,
+              subjectName: currentSubject.name,
+              chapterName: currentChapter.name,
+              subjectColor: currentSubject.color ?? "gray",
+              startTimeMinutes: task.startTimeMinutes,
+              durationMinutes: task.durationMinutes,
+              source: task.source,
+            };
+
+            /*
+            if (!studyItem) {
+              return {
+                id: task.studyItemId,
+                title: normalizePlannerTitle(task.title),
+                subjectName: "অজানা বিষয়",
+                chapterName: "অজানা অধ্যায়",
+                subjectColor: "gray",
+                minutes: task.minutes,
+                isFallback: true,
+              };
+            }
+
+            const [subject, chapter, concept] = await Promise.all([
+              ctx.db.get(studyItem.subjectId),
+              ctx.db.get(studyItem.chapterId),
+              studyItem.conceptId
+                ? ctx.db.get(studyItem.conceptId)
+                : Promise.resolve(null),
+            ]);
+            const isConceptLevel = Boolean(studyItem.conceptId);
+
+            const trackerLabel = getTrackerLabel(
+              subject
+                ? {
+                    chapterTrackers: subject.chapterTrackers,
+                    conceptTrackers: subject.conceptTrackers,
+                  }
+                : null,
+              studyItem.type,
+              isConceptLevel
+            );
+
+            const title =
+              isConceptLevel && concept && trackerLabel
+                ? `${concept.name} - ${trackerLabel}`
+                : !isConceptLevel && chapter && trackerLabel
+                  ? `${chapter.name} - ${trackerLabel}`
+                  : normalizePlannerTitle(task.title);
+
+            return {
+              id: studyItem._id,
+              title,
+              subjectName: subject?.name ?? "অজানা বিষয়",
+              chapterName: chapter?.name ?? "অজানা অধ্যায়",
+              subjectColor: subject?.color ?? "gray",
+              minutes: task.minutes,
+              isFallback: false,
+            };
+            */
+          })
+        );
+
+        return {
+          date,
+          tasks: tasks.filter(
+            (
+              task,
+            ): task is NonNullable<(typeof tasks)[number]> => task !== null,
+          ),
+        };
+      })
+    );
+
+    return {
+      startDate: args.startDate,
+      days,
+    };
+  },
+});
+
+export const searchStudyItemsForTodo = query({
+  args: {
+    date: v.number(),
+    searchText: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const normalizedSearchText = args.searchText.trim();
+    if (normalizedSearchText.length === 0) {
+      return [];
+    }
+
+    const scheduledTasks = await ctx.db
+      .query("todoTasks")
+      .withIndex("by_date_and_startTimeMinutes", (q) => q.eq("date", args.date))
+      .collect();
+
+    const scheduledStudyItemIds = new Set(
+      scheduledTasks.map((todoTask) => todoTask.studyItemId),
+    );
+
+    const matchingStudyItems = await ctx.db
+      .query("studyItems")
+      .withSearchIndex("search_searchText", (q) =>
+        q.search("searchText", normalizedSearchText).eq("isCompleted", false)
+      )
+      .take(24);
+
+    const results = await Promise.all(
+      matchingStudyItems
+        .filter((studyItem) => !scheduledStudyItemIds.has(studyItem._id))
+        .slice(0, 12)
+        .map(async (studyItem) => {
+          const [subject, chapter, concept] = await Promise.all([
+            ctx.db.get(studyItem.subjectId),
+            ctx.db.get(studyItem.chapterId),
+            studyItem.conceptId
+              ? ctx.db.get(studyItem.conceptId)
+              : Promise.resolve(null),
+          ]);
+
+          if (!subject || !chapter) {
+            return null;
+          }
+
+          return {
+            _id: studyItem._id,
+            title: studyItem.title,
+            subjectName: subject.name,
+            chapterName: chapter.name,
+            conceptName: concept?.name,
+            subjectColor: subject.color ?? "gray",
+            estimatedMinutes: studyItem.estimatedMinutes,
+          };
+        }),
+    );
+
+    return results.filter((result) => result !== null);
+  },
+});
+
 export const getSubjectsForFilter = query({
   args: {},
   handler: async (ctx) => {

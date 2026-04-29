@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import EditSubjectModal from "./EditSubjectModal";
+import { getSubjectTheme } from "./subjectTheme";
 
 export type SubjectStats = {
   totalChapters: number;
@@ -23,78 +24,6 @@ export type SubjectCardProps = {
   stats?: SubjectStats;
 };
 
-const themeMap: Record<string, {
-  iconBg: string;
-  iconColor: string;
-  progressBadgeBg: string;
-  progressBadgeText: string;
-  progressBarBg: string;
-}> = {
-  green: {
-    iconBg: "bg-brand-green-light",
-    iconColor: "text-brand-green-deep",
-    progressBadgeBg: "bg-brand-green-light",
-    progressBadgeText: "text-brand-green-deep",
-    progressBarBg: "bg-brand-green",
-  },
-  red: {
-    iconBg: "bg-[#fef2f2]",
-    iconColor: "text-[#dc2626]",
-    progressBadgeBg: "bg-[#fee2e2]",
-    progressBadgeText: "text-[#991b1b]",
-    progressBarBg: "bg-[#ef4444]",
-  },
-  blue: {
-    iconBg: "bg-[#eff6ff]",
-    iconColor: "text-[#2563eb]",
-    progressBadgeBg: "bg-[#dbeafe]",
-    progressBadgeText: "text-[#1e40af]",
-    progressBarBg: "bg-[#3b82f6]",
-  },
-  gray: {
-    iconBg: "bg-surface-container",
-    iconColor: "text-gray-500",
-    progressBadgeBg: "bg-gray-100",
-    progressBadgeText: "text-gray-600",
-    progressBarBg: "bg-gray-300",
-  },
-  amber: {
-    iconBg: "bg-orange-50",
-    iconColor: "text-orange-600",
-    progressBadgeBg: "bg-orange-100",
-    progressBadgeText: "text-orange-700",
-    progressBarBg: "bg-orange-500",
-  },
-  purple: {
-    iconBg: "bg-purple-50",
-    iconColor: "text-purple-600",
-    progressBadgeBg: "bg-purple-100",
-    progressBadgeText: "text-purple-700",
-    progressBarBg: "bg-purple-500",
-  },
-  teal: {
-    iconBg: "bg-teal-50",
-    iconColor: "text-teal-600",
-    progressBadgeBg: "bg-teal-100",
-    progressBadgeText: "text-teal-700",
-    progressBarBg: "bg-teal-500",
-  },
-  indigo: {
-    iconBg: "bg-indigo-50",
-    iconColor: "text-indigo-600",
-    progressBadgeBg: "bg-indigo-100",
-    progressBadgeText: "text-indigo-700",
-    progressBarBg: "bg-indigo-500",
-  },
-  pink: {
-    iconBg: "bg-pink-50",
-    iconColor: "text-pink-600",
-    progressBadgeBg: "bg-pink-100",
-    progressBadgeText: "text-pink-700",
-    progressBarBg: "bg-pink-500",
-  },
-};
-
 export default function SubjectCard(props: SubjectCardProps) {
   const {
     _id,
@@ -109,7 +38,7 @@ export default function SubjectCard(props: SubjectCardProps) {
   
   const router = useRouter();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const theme = themeMap[color || "gray"] || themeMap.gray;
+  const theme = getSubjectTheme(color);
 
   // Default stats if not loaded yet
   const displayStats = stats || {

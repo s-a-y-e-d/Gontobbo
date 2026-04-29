@@ -77,6 +77,7 @@ export default defineSchema({
     type: v.string(),          // matches a key from chapterTrackers or conceptTrackers
     title: v.string(),         // human-readable: "গতি — MCQ"
 
+    searchText: v.optional(v.string()),
     estimatedMinutes: v.number(),
     isCompleted: v.boolean(),
     completionScore: v.optional(v.number()), // 1-5
@@ -90,7 +91,11 @@ export default defineSchema({
     .index("by_subject", ["subjectId"])
     .index("by_chapter", ["chapterId"])
     .index("by_concept", ["conceptId"])
-    .index("by_next_review", ["nextReviewAt"]),
+    .index("by_next_review", ["nextReviewAt"])
+    .searchIndex("search_searchText", {
+      searchField: "searchText",
+      filterFields: ["isCompleted"],
+    }),
 
   // ======================================
   // STUDY LOGS — explicit event records
@@ -155,6 +160,17 @@ export default defineSchema({
     ),
     completedMinutes: v.optional(v.number()),
   }).index("by_date", ["date"]),
+
+  todoTasks: defineTable({
+    date: v.number(),              // unix ms (start of day in Dhaka)
+    studyItemId: v.id("studyItems"),
+    startTimeMinutes: v.number(),  // minutes from local day start
+    durationMinutes: v.number(),
+    source: v.union(v.literal("manual"), v.literal("ai_accepted")),
+  })
+    .index("by_date_and_startTimeMinutes", ["date", "startTimeMinutes"])
+    .index("by_date_and_studyItemId", ["date", "studyItemId"])
+    .index("by_studyItemId", ["studyItemId"]),
 
   // ======================================
   // SETTINGS

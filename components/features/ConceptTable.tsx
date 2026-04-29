@@ -218,13 +218,7 @@ export default function ConceptTable({
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingConcept, setEditingConcept] = React.useState<ConceptRowData | null>(null);
   const [reviewingConcept, setReviewingConcept] = React.useState<ConceptRowData | null>(null);
-  const [mounted, setMounted] = React.useState(false);
-  const [now, setNow] = React.useState(0);
-  
-  React.useEffect(() => {
-    setNow(Date.now());
-    setMounted(true);
-  }, []);
+  const [now] = React.useState(() => Date.now());
   
   const deleteConcept = useMutation(api.mutations.deleteConcept);
   const resetConcept = useMutation(api.mutations.resetConceptProgress);
@@ -318,7 +312,7 @@ export default function ConceptTable({
           <tbody>
             {concepts.map((concept, idx) => {
               const isUnlocked = concept.completedItems === concept.totalItems && concept.totalItems > 0;
-              const isDue = mounted && concept.nextReviewAt ? concept.nextReviewAt <= now : false;
+              const isDue = concept.nextReviewAt ? concept.nextReviewAt <= now : false;
 
               return (
                 <tr

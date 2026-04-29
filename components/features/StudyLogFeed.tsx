@@ -245,8 +245,8 @@ export default function StudyLogFeed() {
                     </div>
                   </div>
 
-                  {/* Rating & Editing (Desktop View & Global Editing state) */}
-                  <div className={`items-center gap-4 pl-0 md:pl-4 md:border-l border-slate-100 dark:border-slate-800 ${editingLogId === log._id ? 'flex' : 'hidden md:flex'}`}>
+                  {/* Rating & Editing (Desktop only) */}
+                  <div className="hidden md:flex items-center gap-4 pl-4 border-l border-slate-100 dark:border-slate-800">
                     {log.rating && (
                       <div className="flex flex-col items-center justify-center min-w-[48px] h-12 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-black/5 dark:border-white/5">
                          <span className={`material-symbols-outlined text-2xl ${
