@@ -110,7 +110,6 @@ See `DESIGN.md` for the full design system (colors, typography, components, spac
 - Full-pill radius (9999px) for buttons and inputs
 - Borders at 5% opacity for separation, minimal shadows
 
-
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

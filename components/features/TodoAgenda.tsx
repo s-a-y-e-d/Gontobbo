@@ -32,9 +32,23 @@ export default function TodoAgenda() {
   });
 
   useEffect(() => {
-    void backfillStudyItemSearchText({}).catch((error) => {
+    let isCancelled = false;
+
+    const syncSearchTextInBatches = async (cursor: string | null = null) => {
+      const result = await backfillStudyItemSearchText({ cursor });
+
+      if (!isCancelled && !result.isDone) {
+        await syncSearchTextInBatches(result.continueCursor);
+      }
+    };
+
+    void syncSearchTextInBatches().catch((error) => {
       console.error("Failed to sync study item search text:", error);
     });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [backfillStudyItemSearchText]);
 
   if (!agenda) {

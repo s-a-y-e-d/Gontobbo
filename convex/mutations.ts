@@ -1,8 +1,14 @@
 import { mutation, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import {
+  buildStudyItemSearchArtifacts,
+  STUDY_ITEM_SEARCH_TEXT_VERSION,
+} from "./studyItemSearch";
 
 const TODO_DURATION_MINUTES = Array.from({ length: 16 }, (_, index) => (index + 1) * 15);
+const STUDY_ITEM_SEARCH_VERSION_SETTING_KEY = "study_item_search_text_version";
+const STUDY_ITEM_SEARCH_BACKFILL_BATCH_SIZE = 64;
 
 function buildStudyItemTitle(baseName: string, trackerLabel: string) {
   return `${baseName} — ${trackerLabel}`;
@@ -73,12 +79,21 @@ async function syncStudyItemPresentation(
   if (!baseName) return;
 
   const title = buildStudyItemTitle(baseName, tracker.label);
-  const searchText = buildStudyItemSearchText({
+  const legacySearchText = buildStudyItemSearchText({
     title,
     subjectName: subject.name,
     chapterName: chapter.name,
     conceptName: concept?.name,
   });
+  const searchText =
+    buildStudyItemSearchArtifacts({
+      baseName,
+      trackerLabel: tracker.label,
+      subjectName: subject.name,
+      chapterName: chapter.name,
+      conceptName: concept?.name,
+      title,
+    }).searchText || legacySearchText;
 
   if (item.title !== title || item.searchText !== searchText) {
     await ctx.db.patch(item._id, {
@@ -533,16 +548,25 @@ export const ensureChapterStudyItems = mutation({
 
         if (!alreadyExists) {
           const title = buildStudyItemTitle(chapter.name, tracker.label);
+          const legacySearchText = buildStudyItemSearchText({
+            title,
+            subjectName: subject.name,
+            chapterName: chapter.name,
+          });
+          const searchText =
+            buildStudyItemSearchArtifacts({
+              baseName: chapter.name,
+              trackerLabel: tracker.label,
+              subjectName: subject.name,
+              chapterName: chapter.name,
+              title,
+            }).searchText || legacySearchText;
           await ctx.db.insert("studyItems", {
             subjectId: args.subjectId,
             chapterId: chapter._id,
             type: tracker.key,
             title,
-            searchText: buildStudyItemSearchText({
-              title,
-              subjectName: subject.name,
-              chapterName: chapter.name,
-            }),
+            searchText,
             estimatedMinutes: tracker.avgMinutes,
             isCompleted: false,
           });
@@ -588,18 +612,28 @@ export const ensureConceptStudyItems = mutation({
 
         if (!alreadyExists) {
           const title = buildStudyItemTitle(concept.name, tracker.label);
+          const legacySearchText = buildStudyItemSearchText({
+            title,
+            subjectName: subject.name,
+            chapterName: chapter.name,
+            conceptName: concept.name,
+          });
+          const searchText =
+            buildStudyItemSearchArtifacts({
+              baseName: concept.name,
+              trackerLabel: tracker.label,
+              subjectName: subject.name,
+              chapterName: chapter.name,
+              conceptName: concept.name,
+              title,
+            }).searchText || legacySearchText;
           await ctx.db.insert("studyItems", {
             subjectId: subject._id,
             chapterId: args.chapterId,
             conceptId: concept._id,
             type: tracker.key,
             title,
-            searchText: buildStudyItemSearchText({
-              title,
-              subjectName: subject.name,
-              chapterName: chapter.name,
-              conceptName: concept.name,
-            }),
+            searchText,
             estimatedMinutes: tracker.avgMinutes,
             isCompleted: false,
           });
@@ -700,15 +734,56 @@ function getDhakaDayBucket(timestamp: number) {
 }
 
 export const backfillStudyItemSearchText = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const studyItems = await ctx.db.query("studyItems").take(500);
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const currentVersionSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", STUDY_ITEM_SEARCH_VERSION_SETTING_KEY))
+      .unique();
 
-    for (const item of studyItems) {
+    if (
+      !args.cursor &&
+      currentVersionSetting?.value === STUDY_ITEM_SEARCH_TEXT_VERSION
+    ) {
+      return {
+        syncedCount: 0,
+        continueCursor: null,
+        isDone: true,
+      };
+    }
+
+    const page = await ctx.db
+      .query("studyItems")
+      .order("asc")
+      .paginate({
+        numItems: STUDY_ITEM_SEARCH_BACKFILL_BATCH_SIZE,
+        cursor: args.cursor ?? null,
+      });
+
+    for (const item of page.page) {
       await syncStudyItemPresentation(ctx, item._id);
     }
 
-    return { syncedCount: studyItems.length };
+    if (page.isDone) {
+      if (currentVersionSetting) {
+        await ctx.db.patch(currentVersionSetting._id, {
+          value: STUDY_ITEM_SEARCH_TEXT_VERSION,
+        });
+      } else {
+        await ctx.db.insert("settings", {
+          key: STUDY_ITEM_SEARCH_VERSION_SETTING_KEY,
+          value: STUDY_ITEM_SEARCH_TEXT_VERSION,
+        });
+      }
+    }
+
+    return {
+      syncedCount: page.page.length,
+      continueCursor: page.isDone ? null : page.continueCursor,
+      isDone: page.isDone,
+    };
   },
 });
 

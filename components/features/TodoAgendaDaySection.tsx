@@ -30,12 +30,14 @@ export default function TodoAgendaDaySection({
         <button
           type="button"
           onClick={onAddTask}
-          className={`flex w-full items-center gap-3 py-4 text-left text-[#db4c3f] transition-colors hover:text-[#b83a30] ${
+          className={`flex w-full items-center gap-3 py-4 text-left transition-colors hover:opacity-85 ${
             day.tasks.length === 0 ? "" : "border-t border-border-subtle"
           }`}
         >
-          <span className="material-symbols-outlined text-[18px]">add</span>
-          <span className="font-body text-sm opacity-80 md:text-base">
+          <span className="material-symbols-outlined text-[18px] text-brand-green">
+            add
+          </span>
+          <span className="font-body text-sm text-gray-500 md:text-base">
             টাস্ক যোগ করুন
           </span>
         </button>

@@ -20,10 +20,14 @@ type ReviewConcept = {
   subjectIcon?: string;
 };
 
+type ActiveModalState =
+  | { type: "review"; concept: ReviewConcept }
+  | { type: "reschedule"; concept: ReviewConcept }
+  | null;
+
 export default function RevisionDashboard() {
   const [selectedSubjectId, setSelectedSubjectId] = useState<Id<"subjects"> | "all">("all");
-  const [reviewConcept, setReviewConcept] = useState<ReviewConcept | null>(null);
-  const [rescheduleConcept, setRescheduleConcept] = useState<ReviewConcept | null>(null);
+  const [activeModal, setActiveModal] = useState<ActiveModalState>(null);
   const [now] = useState(() => Date.now());
 
   const dashboardData = useQuery(api.queries.getReviewsDashboardData, {
@@ -76,14 +80,20 @@ export default function RevisionDashboard() {
         <FilterPill
           label="সব বিষয়"
           isActive={selectedSubjectId === "all"}
-          onClick={() => setSelectedSubjectId("all")}
+          onClick={() => {
+            setActiveModal(null);
+            setSelectedSubjectId("all");
+          }}
         />
         {subjects.map((subject) => (
           <FilterPill
             key={subject._id}
             label={subject.name}
             isActive={selectedSubjectId === subject._id}
-            onClick={() => setSelectedSubjectId(subject._id)}
+            onClick={() => {
+              setActiveModal(null);
+              setSelectedSubjectId(subject._id);
+            }}
           />
         ))}
       </div>
@@ -121,8 +131,8 @@ export default function RevisionDashboard() {
                 isOverdue={Boolean(
                   concept.nextReviewAt && concept.nextReviewAt < now - 86400000
                 )}
-                onReview={() => setReviewConcept(concept)}
-                onReschedule={() => setRescheduleConcept(concept)}
+                onReview={() => setActiveModal({ type: "review", concept })}
+                onReschedule={() => setActiveModal({ type: "reschedule", concept })}
                 formatDate={formatDate}
               />
             ))}
@@ -141,8 +151,8 @@ export default function RevisionDashboard() {
                 key={concept._id}
                 concept={concept}
                 isUpcoming
-                onReview={() => setReviewConcept(concept)}
-                onReschedule={() => setRescheduleConcept(concept)}
+                onReview={() => setActiveModal({ type: "review", concept })}
+                onReschedule={() => setActiveModal({ type: "reschedule", concept })}
                 formatDate={formatDate}
               />
             ))}
@@ -150,20 +160,20 @@ export default function RevisionDashboard() {
         </section>
       ) : null}
 
-      {reviewConcept ? (
+      {activeModal?.type === "review" ? (
         <ConceptReviewModal
-          isOpen={Boolean(reviewConcept)}
-          onClose={() => setReviewConcept(null)}
-          concept={reviewConcept}
+          isOpen
+          onClose={() => setActiveModal(null)}
+          concept={activeModal.concept}
         />
       ) : null}
 
-      {rescheduleConcept ? (
+      {activeModal?.type === "reschedule" ? (
         <RescheduleModal
-          key={rescheduleConcept._id}
-          isOpen={Boolean(rescheduleConcept)}
-          onClose={() => setRescheduleConcept(null)}
-          concept={rescheduleConcept}
+          key={`${activeModal.concept._id}:${activeModal.concept.nextReviewAt ?? "none"}`}
+          isOpen
+          onClose={() => setActiveModal(null)}
+          concept={activeModal.concept}
         />
       ) : null}
     </div>

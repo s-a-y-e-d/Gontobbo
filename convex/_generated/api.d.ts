@@ -10,6 +10,7 @@
 
 import type * as mutations from "../mutations.js";
 import type * as queries from "../queries.js";
+import type * as studyItemSearch from "../studyItemSearch.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +21,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   mutations: typeof mutations;
   queries: typeof queries;
+  studyItemSearch: typeof studyItemSearch;
 }>;
 
 /**

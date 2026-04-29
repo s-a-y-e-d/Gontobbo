@@ -1,6 +1,22 @@
 import { query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
+import {
+  buildStudyItemSearchArtifacts,
+  normalizeStudyItemSearchQuery,
+  scoreStudyItemSearchMatch,
+} from "./studyItemSearch";
+
+function getTrackerLabel(
+  subject: Doc<"subjects">,
+  studyItem: Doc<"studyItems">,
+) {
+  const trackers = studyItem.conceptId
+    ? subject.conceptTrackers
+    : subject.chapterTrackers;
+  return trackers.find((tracker) => tracker.key === studyItem.type)?.label ?? "";
+}
 
 // ── List study logs feed ─────────────────────────────────────────
 export const getStudyLogsFeed = query({
@@ -549,7 +565,7 @@ export const searchStudyItemsForTodo = query({
     searchText: v.string(),
   },
   handler: async (ctx, args) => {
-    const normalizedSearchText = args.searchText.trim();
+    const normalizedSearchText = normalizeStudyItemSearchQuery(args.searchText);
     if (normalizedSearchText.length === 0) {
       return [];
     }
@@ -568,38 +584,104 @@ export const searchStudyItemsForTodo = query({
       .withSearchIndex("search_searchText", (q) =>
         q.search("searchText", normalizedSearchText).eq("isCompleted", false)
       )
-      .take(24);
+      .take(36);
 
-    const results = await Promise.all(
-      matchingStudyItems
-        .filter((studyItem) => !scheduledStudyItemIds.has(studyItem._id))
-        .slice(0, 12)
-        .map(async (studyItem) => {
-          const [subject, chapter, concept] = await Promise.all([
-            ctx.db.get(studyItem.subjectId),
-            ctx.db.get(studyItem.chapterId),
-            studyItem.conceptId
-              ? ctx.db.get(studyItem.conceptId)
-              : Promise.resolve(null),
-          ]);
+    const fallbackStudyItems =
+      matchingStudyItems.length >= 12
+        ? []
+        : await ctx.db
+            .query("studyItems")
+            .withIndex("by_isCompleted", (q) => q.eq("isCompleted", false))
+            .take(200);
 
-          if (!subject || !chapter) {
-            return null;
-          }
+    const candidateStudyItems = new Map<string, Doc<"studyItems">>();
 
-          return {
-            _id: studyItem._id,
-            title: studyItem.title,
-            subjectName: subject.name,
-            chapterName: chapter.name,
-            conceptName: concept?.name,
-            subjectColor: subject.color ?? "gray",
-            estimatedMinutes: studyItem.estimatedMinutes,
-          };
-        }),
+    for (const studyItem of [...matchingStudyItems, ...fallbackStudyItems]) {
+      if (scheduledStudyItemIds.has(studyItem._id)) {
+        continue;
+      }
+
+      candidateStudyItems.set(studyItem._id, studyItem);
+    }
+
+    const rankedResults = await Promise.all(
+      Array.from(candidateStudyItems.values()).map(async (studyItem) => {
+        const [subject, chapter, concept] = await Promise.all([
+          ctx.db.get(studyItem.subjectId),
+          ctx.db.get(studyItem.chapterId),
+          studyItem.conceptId
+            ? ctx.db.get(studyItem.conceptId)
+            : Promise.resolve(null),
+        ]);
+
+        if (!subject || !chapter) {
+          return null;
+        }
+
+        const trackerLabel = getTrackerLabel(subject, studyItem);
+        if (!trackerLabel) {
+          return null;
+        }
+
+        const baseName = studyItem.conceptId ? concept?.name : chapter.name;
+        if (!baseName) {
+          return null;
+        }
+
+        const searchArtifacts = buildStudyItemSearchArtifacts({
+          baseName,
+          trackerLabel,
+          subjectName: subject.name,
+          chapterName: chapter.name,
+          conceptName: concept?.name,
+          title: studyItem.title,
+        });
+        const score = scoreStudyItemSearchMatch({
+          query: normalizedSearchText,
+          titleAliases: searchArtifacts.titleAliases,
+          contextAliases: searchArtifacts.contextAliases,
+        });
+
+        if (score === 0) {
+          return null;
+        }
+
+        return {
+          _id: studyItem._id,
+          title: studyItem.title,
+          subjectName: subject.name,
+          chapterName: chapter.name,
+          conceptName: concept?.name,
+          subjectColor: subject.color ?? "gray",
+          estimatedMinutes: studyItem.estimatedMinutes,
+          score,
+        };
+      }),
     );
 
-    return results.filter((result) => result !== null);
+    return rankedResults
+      .filter(
+        (
+          result,
+        ): result is NonNullable<(typeof rankedResults)[number]> => result !== null,
+      )
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return left.title.localeCompare(right.title);
+      })
+      .slice(0, 12)
+      .map((result) => ({
+        _id: result._id,
+        title: result.title,
+        subjectName: result.subjectName,
+        chapterName: result.chapterName,
+        conceptName: result.conceptName,
+        subjectColor: result.subjectColor,
+        estimatedMinutes: result.estimatedMinutes,
+      }));
   },
 });
 

@@ -91,6 +91,7 @@ export default defineSchema({
     .index("by_subject", ["subjectId"])
     .index("by_chapter", ["chapterId"])
     .index("by_concept", ["conceptId"])
+    .index("by_isCompleted", ["isCompleted"])
     .index("by_next_review", ["nextReviewAt"])
     .searchIndex("search_searchText", {
       searchField: "searchText",
