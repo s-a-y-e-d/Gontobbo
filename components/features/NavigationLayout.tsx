@@ -14,18 +14,18 @@ type NavItem = {
 const primaryNavItems: NavItem[] = [
   { icon: "dashboard", label: "Dashboard" },
   { icon: "auto_stories", label: "Subjects", href: "/" },
-  { icon: "psychology", label: "AI Planner" },
+  { icon: "psychology", label: "AI Planner", href: "/planner" },
   { icon: "calendar_today", label: "Todo", href: "/todo" },
   { icon: "query_stats", label: "Progress" },
   { icon: "history_edu", label: "Revision", href: "/revision" },
   { icon: "format_list_bulleted", label: "Logs", href: "/logs" },
-  { icon: "settings", label: "Settings" },
+  { icon: "settings", label: "Settings", href: "/settings" },
 ];
 
 const bottomNavItems: NavItem[] = [
   { icon: "calendar_today", label: "Todo", href: "/todo" },
   { icon: "book", label: "Subjects", href: "/" },
-  { icon: "psychology", label: "AI Planner" },
+  { icon: "psychology", label: "AI Planner", href: "/planner" },
   { icon: "history_edu", label: "Revision", href: "/revision" },
   { icon: "format_list_bulleted", label: "Logs", href: "/logs" },
 ];
@@ -69,6 +69,12 @@ function Breadcrumbs() {
     crumbs.push({ label: "Revision", href: "/revision" });
   } else if (segments[0] === "todo") {
     crumbs.push({ label: "করণীয়", href: "/todo" });
+  }
+
+  if (segments[0] === "planner") {
+    crumbs.push({ label: "AI Planner", href: "/planner" });
+  } else if (segments[0] === "settings") {
+    crumbs.push({ label: "Settings", href: "/settings" });
   }
 
   return (
@@ -119,6 +125,8 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
   const isLogsActive = pathname === "/logs" || pathname.startsWith("/logs");
   const isTodoActive = pathname === "/todo" || pathname.startsWith("/todo");
   const isRevisionActive = pathname === "/revision";
+  const isPlannerActive = pathname === "/planner" || pathname.startsWith("/planner");
+  const isSettingsActive = pathname === "/settings" || pathname.startsWith("/settings");
 
   const getIsActive = (href?: string) => {
     if (!href) return false;
@@ -126,6 +134,8 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
     if (href === "/todo") return isTodoActive;
     if (href === "/logs") return isLogsActive;
     if (href === "/revision") return isRevisionActive;
+    if (href === "/planner") return isPlannerActive;
+    if (href === "/settings") return isSettingsActive;
     return pathname === href;
   };
 

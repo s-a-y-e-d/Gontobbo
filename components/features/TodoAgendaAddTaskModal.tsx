@@ -39,7 +39,7 @@ export default function TodoAgendaAddTaskModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const searchResults = useQuery(
-    api.queries.searchStudyItemsForTodo,
+    api.todoQueries.searchStudyItemsForTodo,
     isOpen && deferredSearchText.length > 0
       ? { date, searchText: deferredSearchText }
       : "skip",

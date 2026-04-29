@@ -151,27 +151,84 @@ export default defineSchema({
   // ======================================
   plannerSessions: defineTable({
     date: v.number(),              // unix ms (start of day)
-    availableMinutes: v.number(),
-    tasks: v.array(
+    latestGeneratedAt: v.optional(v.number()),
+    generationCount: v.optional(v.number()),
+    latestAvailableMinutes: v.optional(v.number()),
+    latestComment: v.optional(v.string()),
+
+    // Legacy compatibility for older local data
+    availableMinutes: v.optional(v.number()),
+    tasks: v.optional(v.array(
       v.object({
         studyItemId: v.id("studyItems"),
         title: v.string(),
         minutes: v.number(),
       })
-    ),
+    )),
     completedMinutes: v.optional(v.number()),
   }).index("by_date", ["date"]),
 
+  plannerSuggestions: defineTable({
+    sessionId: v.id("plannerSessions"),
+    date: v.number(),
+    kind: v.union(v.literal("study_item"), v.literal("concept_review")),
+    studyItemId: v.optional(v.id("studyItems")),
+    conceptId: v.optional(v.id("concepts")),
+    durationMinutes: v.number(),
+    rankOrder: v.number(),
+    generationRound: v.number(),
+    titleSnapshot: v.string(),
+    subjectNameSnapshot: v.string(),
+    chapterNameSnapshot: v.string(),
+    conceptNameSnapshot: v.optional(v.string()),
+    subjectColorSnapshot: v.optional(v.string()),
+    acceptedAt: v.optional(v.number()),
+  })
+    .index("by_date", ["date"])
+    .index("by_date_and_rankOrder", ["date", "rankOrder"])
+    .index("by_sessionId_and_rankOrder", ["sessionId", "rankOrder"]),
+
+  plannerSubjectPreferences: defineTable({
+    subjectId: v.id("subjects"),
+    priority: v.union(v.literal("normal"), v.literal("important")),
+  }).index("by_subjectId", ["subjectId"]),
+
+  weeklyTargets: defineTable({
+    kind: v.union(v.literal("chapter"), v.literal("concept")),
+    subjectId: v.id("subjects"),
+    chapterId: v.id("chapters"),
+    conceptId: v.optional(v.id("concepts")),
+  })
+    .index("by_subjectId", ["subjectId"])
+    .index("by_chapterId", ["chapterId"])
+    .index("by_conceptId", ["conceptId"]),
+
+  coachingProgress: defineTable({
+    chapterId: v.id("chapters"),
+    status: v.union(
+      v.literal("not_started"),
+      v.literal("running"),
+      v.literal("finished"),
+    ),
+  }).index("by_chapterId", ["chapterId"]),
+
   todoTasks: defineTable({
     date: v.number(),              // unix ms (start of day in Dhaka)
-    studyItemId: v.id("studyItems"),
-    startTimeMinutes: v.number(),  // minutes from local day start
+    kind: v.optional(v.union(v.literal("study_item"), v.literal("concept_review"))),
+    studyItemId: v.optional(v.id("studyItems")),
+    conceptId: v.optional(v.id("concepts")),
+    startTimeMinutes: v.optional(v.number()),  // minutes from local day start
+    sortOrder: v.optional(v.number()),
     durationMinutes: v.number(),
     source: v.union(v.literal("manual"), v.literal("ai_accepted")),
   })
+    .index("by_date", ["date"])
+    .index("by_date_and_sortOrder", ["date", "sortOrder"])
     .index("by_date_and_startTimeMinutes", ["date", "startTimeMinutes"])
     .index("by_date_and_studyItemId", ["date", "studyItemId"])
-    .index("by_studyItemId", ["studyItemId"]),
+    .index("by_date_and_conceptId", ["date", "conceptId"])
+    .index("by_studyItemId", ["studyItemId"])
+    .index("by_conceptId", ["conceptId"]),
 
   // ======================================
   // SETTINGS

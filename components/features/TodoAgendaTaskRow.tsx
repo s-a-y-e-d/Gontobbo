@@ -1,9 +1,10 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import ConceptReviewModal from "./ConceptReviewModal";
 import { getSubjectTheme } from "./subjectTheme";
 import { TodoAgendaTask } from "./todoAgendaTypes";
 import {
@@ -22,71 +23,115 @@ export default function TodoAgendaTaskRow({
 }: TodoAgendaTaskRowProps) {
   const theme = getSubjectTheme(task.subjectColor);
   const checkboxId = useId();
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const toggleStudyItemCompletion = useMutation(
     api.mutations.toggleStudyItemCompletion,
   );
 
+  const isStudyItemTask = task.kind === "study_item";
+  const isScheduled = task.startTimeMinutes !== undefined;
+  const metadataText = task.conceptName
+    ? `${task.subjectName} • ${task.chapterName} • ${task.conceptName}`
+    : `${task.subjectName} • ${task.chapterName}`;
+
   return (
-    <div
-      className={`flex items-start gap-3 py-4 ${
-        !isLast ? "border-b border-border-subtle" : ""
-      }`}
-    >
-      <div className="checkbox-wrapper-46 mt-0.5 shrink-0">
-        <input
-          className="inp-cbx"
-          id={checkboxId}
-          type="checkbox"
-          checked={task.isCompleted}
-          onChange={() =>
-            void toggleStudyItemCompletion({
-              studyItemId: task.studyItemId as Id<"studyItems">,
-            })
-          }
+    <>
+      <div
+        className={`flex items-start gap-3 py-4 ${
+          !isLast ? "border-b border-border-subtle" : ""
+        }`}
+      >
+        {isStudyItemTask ? (
+          <div className="checkbox-wrapper-46 mt-0.5 shrink-0">
+            <input
+              className="inp-cbx"
+              id={checkboxId}
+              type="checkbox"
+              checked={task.isCompleted}
+              onChange={() =>
+                void toggleStudyItemCompletion({
+                  studyItemId: task.studyItemId as Id<"studyItems">,
+                })
+              }
+            />
+            <label className="cbx" htmlFor={checkboxId} aria-label={task.title}>
+              <span>
+                <svg width="12px" height="10px" viewBox="0 0 12 10">
+                  <polyline points="1.5 6 4.5 9 10.5 1"></polyline>
+                </svg>
+              </span>
+            </label>
+          </div>
+        ) : (
+          <div className="checkbox-wrapper-46 mt-0.5 shrink-0">
+            <input
+              className="inp-cbx"
+              id={checkboxId}
+              type="checkbox"
+              checked={task.isCompleted}
+              onChange={() => setIsReviewModalOpen(true)}
+            />
+            <label className="cbx" htmlFor={checkboxId} aria-label={task.title}>
+              <span>
+                <svg width="12px" height="10px" viewBox="0 0 12 10">
+                  <polyline points="1.5 6 4.5 9 10.5 1"></polyline>
+                </svg>
+              </span>
+            </label>
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p
+              className={`truncate font-body text-[15px] md:text-body ${
+                task.isCompleted
+                  ? "text-on-surface/55 line-through"
+                  : "text-on-surface"
+              }`}
+            >
+              {task.title}
+            </p>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em] ${
+                task.isCompleted
+                  ? "bg-surface-container/60 text-gray-400"
+                  : "bg-surface-container text-gray-500"
+              }`}
+            >
+              {isScheduled
+                ? formatTimeRangeLabel(
+                    task.startTimeMinutes as number,
+                    task.durationMinutes,
+                  )
+                : "Planner"}
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs md:text-sm">
+            <span
+              className={task.isCompleted ? "font-medium opacity-55" : "font-medium"}
+              style={{ color: theme.accentHex }}
+            >
+              {metadataText}
+            </span>
+            <span className={task.isCompleted ? "text-gray-400/80" : "text-gray-400"}>
+              {formatDurationLabel(task.durationMinutes)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {!isStudyItemTask && task.conceptId ? (
+        <ConceptReviewModal
+          isOpen={isReviewModalOpen}
+          onClose={() => setIsReviewModalOpen(false)}
+          concept={{
+            _id: task.conceptId as Id<"concepts">,
+            name: task.conceptName ?? task.title,
+          }}
         />
-        <label className="cbx" htmlFor={checkboxId} aria-label={task.title}>
-          <span>
-            <svg width="12px" height="10px" viewBox="0 0 12 10">
-              <polyline points="1.5 6 4.5 9 10.5 1"></polyline>
-            </svg>
-          </span>
-        </label>
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p
-            className={`truncate font-body text-[15px] md:text-body ${
-              task.isCompleted
-                ? "text-on-surface/55 line-through"
-                : "text-on-surface"
-            }`}
-          >
-            {task.title}
-          </p>
-          <span
-            className={`rounded-full px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em] ${
-              task.isCompleted
-                ? "bg-surface-container/60 text-gray-400"
-                : "bg-surface-container text-gray-500"
-            }`}
-          >
-            {formatTimeRangeLabel(task.startTimeMinutes, task.durationMinutes)}
-          </span>
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs md:text-sm">
-          <span
-            className={task.isCompleted ? "font-medium opacity-55" : "font-medium"}
-            style={{ color: theme.accentHex }}
-          >
-            {`${task.subjectName} • ${task.chapterName}`}
-          </span>
-          <span className={task.isCompleted ? "text-gray-400/80" : "text-gray-400"}>
-            {formatDurationLabel(task.durationMinutes)}
-          </span>
-        </div>
-      </div>
-    </div>
+      ) : null}
+    </>
   );
 }

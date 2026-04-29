@@ -9,8 +9,11 @@
  */
 
 import type * as mutations from "../mutations.js";
+import type * as planner from "../planner.js";
+import type * as plannerQueries from "../plannerQueries.js";
 import type * as queries from "../queries.js";
 import type * as studyItemSearch from "../studyItemSearch.js";
+import type * as todoQueries from "../todoQueries.js";
 
 import type {
   ApiFromModules,
@@ -20,8 +23,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   mutations: typeof mutations;
+  planner: typeof planner;
+  plannerQueries: typeof plannerQueries;
   queries: typeof queries;
   studyItemSearch: typeof studyItemSearch;
+  todoQueries: typeof todoQueries;
 }>;
 
 /**

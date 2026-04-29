@@ -26,7 +26,7 @@ export default function TodoAgenda() {
   const backfillStudyItemSearchText = useMutation(
     api.mutations.backfillStudyItemSearchText,
   );
-  const agenda = useQuery(api.queries.getTodoAgenda, {
+  const agenda = useQuery(api.todoQueries.getTodoAgenda, {
     startDate: rangeStartDate,
     days: DAY_COUNT,
   });

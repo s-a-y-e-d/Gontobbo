@@ -5,6 +5,13 @@ import {
   buildStudyItemSearchArtifacts,
   STUDY_ITEM_SEARCH_TEXT_VERSION,
 } from "./studyItemSearch";
+import {
+  buildPlannerCandidateIdentity,
+  buildPlannerSelection,
+  PLANNER_SUGGESTION_KIND,
+  ruleBasedPlannerCommentParser,
+  type PlannerCandidate,
+} from "./planner";
 
 const TODO_DURATION_MINUTES = Array.from({ length: 16 }, (_, index) => (index + 1) * 15);
 const STUDY_ITEM_SEARCH_VERSION_SETTING_KEY = "study_item_search_text_version";
@@ -52,6 +59,41 @@ async function removeTodoTasksForStudyItem(
   for (const todoTask of todoTasks) {
     await ctx.db.delete(todoTask._id);
   }
+}
+
+async function removeTodoTasksForConcept(
+  ctx: MutationCtx,
+  conceptId: Id<"concepts">,
+) {
+  const todoTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_conceptId", (q) => q.eq("conceptId", conceptId))
+    .collect();
+
+  for (const todoTask of todoTasks) {
+    await ctx.db.delete(todoTask._id);
+  }
+}
+
+async function getNextTodoSortOrder(
+  ctx: MutationCtx,
+  date: number,
+) {
+  const todoTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_date", (q) => q.eq("date", date))
+    .collect();
+
+  return (
+    todoTasks.reduce((max, todoTask) => {
+      const sortOrder =
+        todoTask.sortOrder ??
+        (todoTask.startTimeMinutes !== undefined
+          ? todoTask.startTimeMinutes
+          : todoTask._creationTime);
+      return Math.max(max, sortOrder);
+    }, -1) + 1
+  );
 }
 
 async function syncStudyItemPresentation(
@@ -128,6 +170,140 @@ async function syncStudyItemsByChapter(
 
   for (const item of studyItems) {
     await syncStudyItemPresentation(ctx, item._id);
+  }
+}
+
+async function ensureChapterStudyItemsForSubject(
+  ctx: MutationCtx,
+  subjectId: Id<"subjects">,
+) {
+  const subject = await ctx.db.get(subjectId);
+  if (!subject) throw new Error("Subject not found");
+
+  const chapters = await ctx.db
+    .query("chapters")
+    .withIndex("by_subject", (q) => q.eq("subjectId", subjectId))
+    .collect();
+
+  for (const chapter of chapters) {
+    const existingItems = await ctx.db
+      .query("studyItems")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+      .collect();
+
+    const existingChapterItems = existingItems.filter(
+      (studyItem) => studyItem.conceptId === undefined,
+    );
+
+    for (const tracker of subject.chapterTrackers) {
+      const existingItem = existingChapterItems.find(
+        (studyItem) => studyItem.type === tracker.key,
+      );
+
+      if (!existingItem) {
+        const title = buildStudyItemTitle(chapter.name, tracker.label);
+        const legacySearchText = buildStudyItemSearchText({
+          title,
+          subjectName: subject.name,
+          chapterName: chapter.name,
+        });
+        const searchText =
+          buildStudyItemSearchArtifacts({
+            baseName: chapter.name,
+            trackerLabel: tracker.label,
+            subjectName: subject.name,
+            chapterName: chapter.name,
+            title,
+          }).searchText || legacySearchText;
+
+        await ctx.db.insert("studyItems", {
+          subjectId,
+          chapterId: chapter._id,
+          type: tracker.key,
+          title,
+          searchText,
+          estimatedMinutes: tracker.avgMinutes,
+          isCompleted: false,
+        });
+      } else {
+        await syncStudyItemPresentation(ctx, existingItem._id);
+      }
+    }
+  }
+}
+
+async function ensureConceptStudyItemsForChapter(
+  ctx: MutationCtx,
+  chapterId: Id<"chapters">,
+) {
+  const chapter = await ctx.db.get(chapterId);
+  if (!chapter) throw new Error("Chapter not found");
+
+  const subject = await ctx.db.get(chapter.subjectId);
+  if (!subject) throw new Error("Subject not found");
+
+  const concepts = await ctx.db
+    .query("concepts")
+    .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
+    .collect();
+
+  for (const concept of concepts) {
+    const existingItems = await ctx.db
+      .query("studyItems")
+      .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
+      .collect();
+
+    for (const tracker of subject.conceptTrackers) {
+      const existingItem = existingItems.find(
+        (studyItem) => studyItem.type === tracker.key,
+      );
+
+      if (!existingItem) {
+        const title = buildStudyItemTitle(concept.name, tracker.label);
+        const legacySearchText = buildStudyItemSearchText({
+          title,
+          subjectName: subject.name,
+          chapterName: chapter.name,
+          conceptName: concept.name,
+        });
+        const searchText =
+          buildStudyItemSearchArtifacts({
+            baseName: concept.name,
+            trackerLabel: tracker.label,
+            subjectName: subject.name,
+            chapterName: chapter.name,
+            conceptName: concept.name,
+            title,
+          }).searchText || legacySearchText;
+
+        await ctx.db.insert("studyItems", {
+          subjectId: subject._id,
+          chapterId,
+          conceptId: concept._id,
+          type: tracker.key,
+          title,
+          searchText,
+          estimatedMinutes: tracker.avgMinutes,
+          isCompleted: false,
+        });
+      } else {
+        await syncStudyItemPresentation(ctx, existingItem._id);
+      }
+    }
+  }
+}
+
+async function ensurePlannerStudyItems(ctx: MutationCtx) {
+  const chapters = await ctx.db.query("chapters").collect();
+  const nextTermChapters = chapters.filter((chapter) => chapter.inNextTerm);
+  const subjectIds = new Set(nextTermChapters.map((chapter) => chapter.subjectId));
+
+  for (const subjectId of subjectIds) {
+    await ensureChapterStudyItemsForSubject(ctx, subjectId);
+  }
+
+  for (const chapter of nextTermChapters) {
+    await ensureConceptStudyItemsForChapter(ctx, chapter._id);
   }
 }
 
@@ -363,8 +539,33 @@ export const deleteChapter = mutation({
         .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", concept._id))
         .collect();
       for (const log of revisionLogs) await ctx.db.delete(log._id);
+      await removeTodoTasksForConcept(ctx, concept._id);
+
+      const conceptWeeklyTarget = await ctx.db
+        .query("weeklyTargets")
+        .withIndex("by_conceptId", (q) => q.eq("conceptId", concept._id))
+        .unique();
+      if (conceptWeeklyTarget) {
+        await ctx.db.delete(conceptWeeklyTarget._id);
+      }
 
       await ctx.db.delete(concept._id);
+    }
+
+    const chapterWeeklyTargets = await ctx.db
+      .query("weeklyTargets")
+      .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
+      .collect();
+    for (const chapterWeeklyTarget of chapterWeeklyTargets) {
+      await ctx.db.delete(chapterWeeklyTarget._id);
+    }
+
+    const coachingProgress = await ctx.db
+      .query("coachingProgress")
+      .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
+      .unique();
+    if (coachingProgress) {
+      await ctx.db.delete(coachingProgress._id);
     }
 
     const chapterItems = await ctx.db
@@ -461,6 +662,15 @@ export const deleteConcept = mutation({
       .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", args.conceptId))
       .collect();
     for (const log of revisionLogs) await ctx.db.delete(log._id);
+    await removeTodoTasksForConcept(ctx, args.conceptId);
+
+    const weeklyTarget = await ctx.db
+      .query("weeklyTargets")
+      .withIndex("by_conceptId", (q) => q.eq("conceptId", args.conceptId))
+      .unique();
+    if (weeklyTarget) {
+      await ctx.db.delete(weeklyTarget._id);
+    }
 
     await ctx.db.delete(args.conceptId);
   },
@@ -506,6 +716,7 @@ export const resetChapterProgress = mutation({
         .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", concept._id))
         .collect();
       for (const log of revisionLogs) await ctx.db.delete(log._id);
+      await removeTodoTasksForConcept(ctx, concept._id);
 
       await ctx.db.patch(concept._id, {
         reviewCount: undefined,
@@ -521,131 +732,14 @@ export const resetChapterProgress = mutation({
 // Called when user first visits a subject page
 export const ensureChapterStudyItems = mutation({
   args: { subjectId: v.id("subjects") },
-  handler: async (ctx, args) => {
-    const subject = await ctx.db.get(args.subjectId);
-    if (!subject) throw new Error("Subject not found");
-
-    const chapters = await ctx.db
-      .query("chapters")
-      .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
-      .collect();
-
-    for (const chapter of chapters) {
-      // Get existing chapter-level studyItems
-      const existingItems = await ctx.db
-        .query("studyItems")
-        .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
-        .collect();
-
-      const existingChapterItems = existingItems.filter(
-        (si) => si.conceptId === undefined
-      );
-
-      for (const tracker of subject.chapterTrackers) {
-        const alreadyExists = existingChapterItems.some(
-          (si) => si.type === tracker.key
-        );
-
-        if (!alreadyExists) {
-          const title = buildStudyItemTitle(chapter.name, tracker.label);
-          const legacySearchText = buildStudyItemSearchText({
-            title,
-            subjectName: subject.name,
-            chapterName: chapter.name,
-          });
-          const searchText =
-            buildStudyItemSearchArtifacts({
-              baseName: chapter.name,
-              trackerLabel: tracker.label,
-              subjectName: subject.name,
-              chapterName: chapter.name,
-              title,
-            }).searchText || legacySearchText;
-          await ctx.db.insert("studyItems", {
-            subjectId: args.subjectId,
-            chapterId: chapter._id,
-            type: tracker.key,
-            title,
-            searchText,
-            estimatedMinutes: tracker.avgMinutes,
-            isCompleted: false,
-          });
-        } else {
-          const existingItem = existingChapterItems.find(
-            (si) => si.type === tracker.key,
-          );
-          if (existingItem) {
-            await syncStudyItemPresentation(ctx, existingItem._id);
-          }
-        }
-      }
-    }
-  },
+  handler: async (ctx, args) => ensureChapterStudyItemsForSubject(ctx, args.subjectId),
 });
 
 // ── Ensure concept-level studyItems exist (lazy creation) ────────
 // Called when user first visits a chapter page
 export const ensureConceptStudyItems = mutation({
   args: { chapterId: v.id("chapters") },
-  handler: async (ctx, args) => {
-    const chapter = await ctx.db.get(args.chapterId);
-    if (!chapter) throw new Error("Chapter not found");
-
-    const subject = await ctx.db.get(chapter.subjectId);
-    if (!subject) throw new Error("Subject not found");
-
-    const concepts = await ctx.db
-      .query("concepts")
-      .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-      .collect();
-
-    for (const concept of concepts) {
-      const existingItems = await ctx.db
-        .query("studyItems")
-        .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
-        .collect();
-
-      for (const tracker of subject.conceptTrackers) {
-        const alreadyExists = existingItems.some(
-          (si) => si.type === tracker.key
-        );
-
-        if (!alreadyExists) {
-          const title = buildStudyItemTitle(concept.name, tracker.label);
-          const legacySearchText = buildStudyItemSearchText({
-            title,
-            subjectName: subject.name,
-            chapterName: chapter.name,
-            conceptName: concept.name,
-          });
-          const searchText =
-            buildStudyItemSearchArtifacts({
-              baseName: concept.name,
-              trackerLabel: tracker.label,
-              subjectName: subject.name,
-              chapterName: chapter.name,
-              conceptName: concept.name,
-              title,
-            }).searchText || legacySearchText;
-          await ctx.db.insert("studyItems", {
-            subjectId: subject._id,
-            chapterId: args.chapterId,
-            conceptId: concept._id,
-            type: tracker.key,
-            title,
-            searchText,
-            estimatedMinutes: tracker.avgMinutes,
-            isCompleted: false,
-          });
-        } else {
-          const existingItem = existingItems.find((si) => si.type === tracker.key);
-          if (existingItem) {
-            await syncStudyItemPresentation(ctx, existingItem._id);
-          }
-        }
-      }
-    }
-  },
+  handler: async (ctx, args) => ensureConceptStudyItemsForChapter(ctx, args.chapterId),
 });
 
 // ── Fix subjects with non-ASCII tracker keys ────────────────────
@@ -837,11 +931,626 @@ export const createTodoTask = mutation({
       throw new Error("This study item is already scheduled for that day");
     }
 
-    return await ctx.db.insert("todoTasks", args);
+    return await ctx.db.insert("todoTasks", {
+      ...args,
+      kind: PLANNER_SUGGESTION_KIND.studyItem,
+      sortOrder: args.startTimeMinutes,
+    });
   },
 });
 
-// ── Toggle a studyItem completion ────────────────────────────────
+export const setPlannerSubjectPriority = mutation({
+  args: {
+    subjectId: v.id("subjects"),
+    priority: v.union(v.literal("normal"), v.literal("important")),
+  },
+  handler: async (ctx, args) => {
+    const subject = await ctx.db.get(args.subjectId);
+    if (!subject) {
+      throw new Error("Subject not found");
+    }
+
+    const existingPreference = await ctx.db
+      .query("plannerSubjectPreferences")
+      .withIndex("by_subjectId", (q) => q.eq("subjectId", args.subjectId))
+      .unique();
+
+    if (args.priority === "normal") {
+      if (existingPreference) {
+        await ctx.db.delete(existingPreference._id);
+      }
+      return null;
+    }
+
+    if (existingPreference) {
+      await ctx.db.patch(existingPreference._id, { priority: args.priority });
+      return existingPreference._id;
+    }
+
+    return await ctx.db.insert("plannerSubjectPreferences", args);
+  },
+});
+
+export const setCoachingChapterProgress = mutation({
+  args: {
+    chapterId: v.id("chapters"),
+    status: v.union(
+      v.literal("not_started"),
+      v.literal("running"),
+      v.literal("finished"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const chapter = await ctx.db.get(args.chapterId);
+    if (!chapter) {
+      throw new Error("Chapter not found");
+    }
+
+    const existingProgress = await ctx.db
+      .query("coachingProgress")
+      .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
+      .unique();
+
+    if (args.status === "not_started") {
+      if (existingProgress) {
+        await ctx.db.delete(existingProgress._id);
+      }
+      return null;
+    }
+
+    if (existingProgress) {
+      await ctx.db.patch(existingProgress._id, { status: args.status });
+      return existingProgress._id;
+    }
+
+    return await ctx.db.insert("coachingProgress", args);
+  },
+});
+
+export const addWeeklyTarget = mutation({
+  args: {
+    kind: v.union(v.literal("chapter"), v.literal("concept")),
+    chapterId: v.id("chapters"),
+    conceptId: v.optional(v.id("concepts")),
+  },
+  handler: async (ctx, args) => {
+    const chapter = await ctx.db.get(args.chapterId);
+    if (!chapter) {
+      throw new Error("Chapter not found");
+    }
+
+    if (args.kind === "chapter") {
+      const existingTargets = await ctx.db
+        .query("weeklyTargets")
+        .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
+        .collect();
+      const existingChapterTarget = existingTargets.find(
+        (target) => target.kind === "chapter",
+      );
+      if (existingChapterTarget) {
+        return existingChapterTarget._id;
+      }
+
+      return await ctx.db.insert("weeklyTargets", {
+        kind: "chapter",
+        subjectId: chapter.subjectId,
+        chapterId: chapter._id,
+      });
+    }
+
+    if (!args.conceptId) {
+      throw new Error("Concept target requires a concept");
+    }
+
+    const concept = await ctx.db.get(args.conceptId);
+    if (!concept || concept.chapterId !== chapter._id) {
+      throw new Error("Concept not found");
+    }
+
+    const existingTarget = await ctx.db
+      .query("weeklyTargets")
+      .withIndex("by_conceptId", (q) => q.eq("conceptId", args.conceptId))
+      .unique();
+
+    if (existingTarget) {
+      return existingTarget._id;
+    }
+
+    return await ctx.db.insert("weeklyTargets", {
+      kind: "concept",
+      subjectId: chapter.subjectId,
+      chapterId: chapter._id,
+      conceptId: concept._id,
+    });
+  },
+});
+
+export const removeWeeklyTarget = mutation({
+  args: { weeklyTargetId: v.id("weeklyTargets") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.weeklyTargetId);
+  },
+});
+
+export const generatePlannerSuggestions = mutation({
+  args: {
+    date: v.number(),
+    availableMinutes: v.number(),
+    comment: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
+      throw new Error("Date must be a valid Dhaka day bucket");
+    }
+
+    if (!Number.isFinite(args.availableMinutes) || args.availableMinutes <= 0) {
+      throw new Error("Available minutes must be greater than zero");
+    }
+
+    await ensurePlannerStudyItems(ctx);
+
+    const [
+      subjects,
+      chapters,
+      concepts,
+      studyItems,
+      plannerPreferences,
+      weeklyTargets,
+      coachingStatuses,
+      todoTasks,
+      existingSession,
+      settings,
+    ] = await Promise.all([
+      ctx.db.query("subjects").collect(),
+      ctx.db.query("chapters").collect(),
+      ctx.db.query("concepts").collect(),
+      ctx.db.query("studyItems").collect(),
+      ctx.db.query("plannerSubjectPreferences").collect(),
+      ctx.db.query("weeklyTargets").collect(),
+      ctx.db.query("coachingProgress").collect(),
+      ctx.db.query("todoTasks").withIndex("by_date", (q) => q.eq("date", args.date)).collect(),
+      ctx.db.query("plannerSessions").withIndex("by_date", (q) => q.eq("date", args.date)).unique(),
+      ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
+        .unique(),
+    ]);
+
+    const defaultRevisionMinutes = (settings?.value as number) ?? 15;
+    const nextTermChapters = chapters.filter((chapter) => chapter.inNextTerm);
+    const nextTermChapterIds = new Set(nextTermChapters.map((chapter) => chapter._id));
+
+    const chapterById = new Map(chapters.map((chapter) => [chapter._id, chapter]));
+    const subjectById = new Map(subjects.map((subject) => [subject._id, subject]));
+    const conceptsById = new Map(concepts.map((concept) => [concept._id, concept]));
+
+    const studyItemsByChapter = new Map<Id<"chapters">, Doc<"studyItems">[]>();
+    const studyItemsByConcept = new Map<Id<"concepts">, Doc<"studyItems">[]>();
+
+    for (const studyItem of studyItems) {
+      const chapterItems = studyItemsByChapter.get(studyItem.chapterId) ?? [];
+      chapterItems.push(studyItem);
+      studyItemsByChapter.set(studyItem.chapterId, chapterItems);
+
+      if (studyItem.conceptId) {
+        const conceptItems = studyItemsByConcept.get(studyItem.conceptId) ?? [];
+        conceptItems.push(studyItem);
+        studyItemsByConcept.set(studyItem.conceptId, conceptItems);
+      }
+    }
+
+    const nextTermCompletionBySubject = new Map<Id<"subjects">, number>();
+    for (const subject of subjects) {
+      const subjectNextTermChapters = nextTermChapters.filter(
+        (chapter) => chapter.subjectId === subject._id,
+      );
+      const subjectStudyItems = subjectNextTermChapters.flatMap(
+        (chapter) => studyItemsByChapter.get(chapter._id) ?? [],
+      );
+      const completedCount = subjectStudyItems.filter((item) => item.isCompleted).length;
+      nextTermCompletionBySubject.set(
+        subject._id,
+        subjectStudyItems.length === 0 ? 0 : completedCount / subjectStudyItems.length,
+      );
+    }
+
+    const importantSubjectIds = new Set(
+      plannerPreferences
+        .filter((preference) => preference.priority === "important")
+        .map((preference) => preference.subjectId),
+    );
+
+    const coachingStatusByChapter = new Map(
+      coachingStatuses.map((status) => [status.chapterId, status.status]),
+    );
+
+    const activeChapterTargetIds = new Set<Id<"chapters">>();
+    const activeConceptTargetIds = new Set<Id<"concepts">>();
+
+    for (const weeklyTarget of weeklyTargets) {
+      if (!nextTermChapterIds.has(weeklyTarget.chapterId)) {
+        continue;
+      }
+
+      if (weeklyTarget.kind === "chapter") {
+        const chapterItems = studyItemsByChapter.get(weeklyTarget.chapterId) ?? [];
+        const isComplete =
+          chapterItems.length > 0 && chapterItems.every((studyItem) => studyItem.isCompleted);
+        if (!isComplete) {
+          activeChapterTargetIds.add(weeklyTarget.chapterId);
+        }
+        continue;
+      }
+
+      if (!weeklyTarget.conceptId) {
+        continue;
+      }
+
+      const conceptItems = studyItemsByConcept.get(weeklyTarget.conceptId) ?? [];
+      const isComplete =
+        conceptItems.length > 0 && conceptItems.every((studyItem) => studyItem.isCompleted);
+      if (!isComplete) {
+        activeConceptTargetIds.add(weeklyTarget.conceptId);
+      }
+    }
+
+    const parsedComment = ruleBasedPlannerCommentParser.parse({
+      comment: args.comment ?? "",
+      subjects: subjects.map((subject) => ({
+        _id: subject._id,
+        name: subject.name,
+        slug: subject.slug,
+      })),
+      chapters: nextTermChapters.map((chapter) => ({
+        _id: chapter._id,
+        name: chapter.name,
+        slug: chapter.slug,
+      })),
+    });
+
+    const preferredSubjectIds = new Set(parsedComment.preferredSubjectIds);
+    const examChapterIds = new Set(parsedComment.examChapterIds);
+    const endOfDay = args.date + 86400000 - 1;
+
+    const existingSuggestions = existingSession
+      ? await ctx.db
+          .query("plannerSuggestions")
+          .withIndex("by_sessionId_and_rankOrder", (q) =>
+            q.eq("sessionId", existingSession._id),
+          )
+          .collect()
+      : [];
+
+    const blockedIdentities = new Set<string>();
+    for (const suggestion of existingSuggestions) {
+      blockedIdentities.add(
+        buildPlannerCandidateIdentity({
+          kind: suggestion.kind,
+          studyItemId: suggestion.studyItemId,
+          conceptId: suggestion.conceptId,
+        }),
+      );
+    }
+
+    for (const todoTask of todoTasks) {
+      blockedIdentities.add(
+        buildPlannerCandidateIdentity({
+          kind: todoTask.kind ?? PLANNER_SUGGESTION_KIND.studyItem,
+          studyItemId: todoTask.studyItemId,
+          conceptId: todoTask.conceptId,
+        }),
+      );
+    }
+
+    const candidates: PlannerCandidate[] = [];
+
+    for (const concept of concepts) {
+      const chapter = chapterById.get(concept.chapterId);
+      if (!chapter || !nextTermChapterIds.has(chapter._id)) {
+        continue;
+      }
+
+      const subject = subjectById.get(chapter.subjectId);
+      if (!subject) {
+        continue;
+      }
+
+      if (concept.nextReviewAt === undefined || concept.nextReviewAt > endOfDay) {
+        continue;
+      }
+
+      const identity = buildPlannerCandidateIdentity({
+        kind: PLANNER_SUGGESTION_KIND.conceptReview,
+        conceptId: concept._id,
+      });
+
+      if (blockedIdentities.has(identity)) {
+        continue;
+      }
+
+      const isOverdue = concept.nextReviewAt < args.date;
+      const completionPressure =
+        (1 - (nextTermCompletionBySubject.get(subject._id) ?? 0)) * 400;
+
+      candidates.push({
+        identity,
+        kind: PLANNER_SUGGESTION_KIND.conceptReview,
+        conceptId: concept._id,
+        title: `${concept.name} - Revision`,
+        subjectId: subject._id,
+        subjectName: subject.name,
+        subjectColor: subject.color,
+        chapterId: chapter._id,
+        chapterName: chapter.name,
+        conceptName: concept.name,
+        durationMinutes: defaultRevisionMinutes,
+        score:
+          10000 +
+          (isOverdue ? 250 : 0) +
+          (activeConceptTargetIds.has(concept._id) ? 5000 : 0) +
+          (examChapterIds.has(chapter._id) ? 3500 : 0) +
+          (preferredSubjectIds.has(subject._id) ? 900 : 0) +
+          (importantSubjectIds.has(subject._id) ? 700 : 0) +
+          completionPressure,
+        isRevision: true,
+        isPreferredSubject: preferredSubjectIds.has(subject._id),
+        isExamMatch: examChapterIds.has(chapter._id),
+      });
+    }
+
+    for (const chapter of nextTermChapters) {
+      const subject = subjectById.get(chapter.subjectId);
+      if (!subject) {
+        continue;
+      }
+
+      const chapterStudyItems = studyItemsByChapter.get(chapter._id) ?? [];
+      const chapterConceptItems = chapterStudyItems.filter(
+        (studyItem) => studyItem.conceptId !== undefined,
+      );
+      const chapterLevelItems = chapterStudyItems.filter(
+        (studyItem) => studyItem.conceptId === undefined,
+      );
+      const hasUnfinishedConceptItem = chapterConceptItems.some(
+        (studyItem) => !studyItem.isCompleted,
+      );
+      const chapterHasProgress = chapterStudyItems.some((studyItem) => studyItem.isCompleted);
+      const chapterHasPending = chapterStudyItems.some((studyItem) => !studyItem.isCompleted);
+      const chapterInProgress = chapterHasProgress && chapterHasPending;
+
+      for (const studyItem of chapterStudyItems) {
+        if (studyItem.isCompleted) {
+          continue;
+        }
+
+        if (studyItem.conceptId === undefined && hasUnfinishedConceptItem) {
+          continue;
+        }
+
+        const identity = buildPlannerCandidateIdentity({
+          kind: PLANNER_SUGGESTION_KIND.studyItem,
+          studyItemId: studyItem._id,
+        });
+
+        if (blockedIdentities.has(identity)) {
+          continue;
+        }
+
+        const concept = studyItem.conceptId
+          ? conceptsById.get(studyItem.conceptId)
+          : null;
+        const conceptStudyItems = studyItem.conceptId
+          ? studyItemsByConcept.get(studyItem.conceptId) ?? []
+          : [];
+        const conceptHasProgress = conceptStudyItems.some(
+          (conceptItem) => conceptItem.isCompleted,
+        );
+        const conceptHasPending = conceptStudyItems.some(
+          (conceptItem) => !conceptItem.isCompleted,
+        );
+        const conceptInProgress = conceptHasProgress && conceptHasPending;
+        const coachingStatus = coachingStatusByChapter.get(chapter._id);
+        const completionPressure =
+          (1 - (nextTermCompletionBySubject.get(subject._id) ?? 0)) * 400;
+
+        const score =
+          (studyItem.conceptId && activeConceptTargetIds.has(studyItem.conceptId)
+            ? 5000
+            : activeChapterTargetIds.has(chapter._id)
+              ? 5000
+              : 0) +
+          (examChapterIds.has(chapter._id) ? 3500 : 0) +
+          (conceptInProgress ? 2500 : 0) +
+          (chapterInProgress ? 2000 : 0) +
+          (coachingStatus === "running" ? 1800 : 0) +
+          (coachingStatus === "finished" ? 1200 : 0) +
+          (preferredSubjectIds.has(subject._id) ? 900 : 0) +
+          (importantSubjectIds.has(subject._id) ? 700 : 0) +
+          ((chapter.priorityBoost ?? 0) * 50) +
+          completionPressure;
+
+        candidates.push({
+          identity,
+          kind: PLANNER_SUGGESTION_KIND.studyItem,
+          studyItemId: studyItem._id,
+          title: studyItem.title,
+          subjectId: subject._id,
+          subjectName: subject.name,
+          subjectColor: subject.color,
+          chapterId: chapter._id,
+          chapterName: chapter.name,
+          conceptName: concept?.name,
+          durationMinutes: studyItem.estimatedMinutes,
+          score,
+          isRevision: false,
+          isPreferredSubject: preferredSubjectIds.has(subject._id),
+          isExamMatch: examChapterIds.has(chapter._id),
+        });
+      }
+
+      // Suppress unused local arrays for future tuning clarity.
+      void chapterLevelItems;
+    }
+
+    const selection = buildPlannerSelection({
+      candidates,
+      availableMinutes: args.availableMinutes,
+      preferredSubjectIds: Array.from(preferredSubjectIds),
+      examChapterIds: Array.from(examChapterIds),
+    });
+
+    const generationRound = (existingSession?.generationCount ?? 0) + 1;
+    const now = Date.now();
+    const sessionId = existingSession
+      ? existingSession._id
+      : await ctx.db.insert("plannerSessions", {
+          date: args.date,
+          latestGeneratedAt: now,
+          generationCount: generationRound,
+          latestAvailableMinutes: Math.floor(args.availableMinutes),
+          latestComment: args.comment?.trim() || undefined,
+        });
+
+    if (existingSession) {
+      await ctx.db.patch(existingSession._id, {
+        latestGeneratedAt: now,
+        generationCount: generationRound,
+        latestAvailableMinutes: Math.floor(args.availableMinutes),
+        latestComment: args.comment?.trim() || undefined,
+      });
+    }
+
+    let nextRankOrder = existingSuggestions.length;
+    for (const candidate of selection.selected) {
+      await ctx.db.insert("plannerSuggestions", {
+        sessionId,
+        date: args.date,
+        kind: candidate.kind,
+        studyItemId: candidate.studyItemId,
+        conceptId: candidate.conceptId,
+        durationMinutes: candidate.durationMinutes,
+        rankOrder: nextRankOrder,
+        generationRound,
+        titleSnapshot: candidate.title,
+        subjectNameSnapshot: candidate.subjectName,
+        chapterNameSnapshot: candidate.chapterName,
+        conceptNameSnapshot: candidate.conceptName,
+        subjectColorSnapshot: candidate.subjectColor,
+      });
+      nextRankOrder += 1;
+    }
+
+    return {
+      appendedCount: selection.selected.length,
+      usedMinutes: selection.usedMinutes,
+    };
+  },
+});
+
+export const acceptPlannerSuggestion = mutation({
+  args: {
+    suggestionId: v.id("plannerSuggestions"),
+  },
+  handler: async (ctx, args) => {
+    const suggestion = await ctx.db.get(args.suggestionId);
+    if (!suggestion) {
+      throw new Error("Suggestion not found");
+    }
+
+    if (suggestion.acceptedAt) {
+      throw new Error("Suggestion already accepted");
+    }
+
+    const sortOrder = await getNextTodoSortOrder(ctx, suggestion.date);
+
+    if (suggestion.kind === PLANNER_SUGGESTION_KIND.studyItem) {
+      if (!suggestion.studyItemId) {
+        throw new Error("Study item suggestion is invalid");
+      }
+
+      const studyItem = await ctx.db.get(suggestion.studyItemId);
+      if (!studyItem || studyItem.isCompleted) {
+        throw new Error("Study item is no longer available");
+      }
+
+      const existingTodoTask = await ctx.db
+        .query("todoTasks")
+        .withIndex("by_date_and_studyItemId", (q) =>
+          q.eq("date", suggestion.date).eq("studyItemId", suggestion.studyItemId),
+        )
+        .unique();
+
+      if (existingTodoTask) {
+        throw new Error("This study item is already in Todo for that day");
+      }
+
+      await ctx.db.insert("todoTasks", {
+        date: suggestion.date,
+        kind: PLANNER_SUGGESTION_KIND.studyItem,
+        studyItemId: suggestion.studyItemId,
+        durationMinutes: suggestion.durationMinutes,
+        source: "ai_accepted",
+        sortOrder,
+      });
+    } else {
+      if (!suggestion.conceptId) {
+        throw new Error("Revision suggestion is invalid");
+      }
+
+      const concept = await ctx.db.get(suggestion.conceptId);
+      if (!concept) {
+        throw new Error("Concept is no longer available");
+      }
+
+      const existingTodoTask = await ctx.db
+        .query("todoTasks")
+        .withIndex("by_date_and_conceptId", (q) =>
+          q.eq("date", suggestion.date).eq("conceptId", suggestion.conceptId),
+        )
+        .unique();
+
+      if (existingTodoTask) {
+        throw new Error("This revision is already in Todo for that day");
+      }
+
+      await ctx.db.insert("todoTasks", {
+        date: suggestion.date,
+        kind: PLANNER_SUGGESTION_KIND.conceptReview,
+        conceptId: suggestion.conceptId,
+        durationMinutes: suggestion.durationMinutes,
+        source: "ai_accepted",
+        sortOrder,
+      });
+    }
+
+    await ctx.db.patch(suggestion._id, {
+      acceptedAt: Date.now(),
+    });
+
+    return null;
+  },
+});
+
+export const dismissPlannerSuggestion = mutation({
+  args: {
+    suggestionId: v.id("plannerSuggestions"),
+  },
+  handler: async (ctx, args) => {
+    const suggestion = await ctx.db.get(args.suggestionId);
+    if (!suggestion) {
+      throw new Error("Suggestion not found");
+    }
+
+    if (suggestion.acceptedAt) {
+      throw new Error("Accepted suggestions cannot be removed");
+    }
+
+    await ctx.db.delete(args.suggestionId);
+    return null;
+  },
+});
+
+// ?????? Toggle a studyItem completion ????????????????????????????????????????????????????????????????????????????????????????????????
 export const toggleStudyItemCompletion = mutation({
   args: { studyItemId: v.id("studyItems") },
   handler: async (ctx, args) => {
@@ -1025,6 +1734,7 @@ export const resetConceptProgress = mutation({
       .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", args.conceptId))
       .collect();
     for (const log of revisionLogs) await ctx.db.delete(log._id);
+    await removeTodoTasksForConcept(ctx, args.conceptId);
   },
 });
 
@@ -1083,13 +1793,45 @@ export const migrateAndSeed = mutation({
       await ctx.db.delete(session._id);
     }
 
-    // 7. Delete all todoTasks
+    // 7. Delete all plannerSuggestions
+    const suggestions = await ctx.db.query("plannerSuggestions").take(500);
+    for (const suggestion of suggestions) {
+      await ctx.db.delete(suggestion._id);
+    }
+
+    // 8. Delete all planner subject preferences
+    const plannerSubjectPreferences = await ctx.db
+      .query("plannerSubjectPreferences")
+      .take(500);
+    for (const preference of plannerSubjectPreferences) {
+      await ctx.db.delete(preference._id);
+    }
+
+    // 9. Delete all weekly targets
+    const weeklyTargets = await ctx.db.query("weeklyTargets").take(500);
+    for (const weeklyTarget of weeklyTargets) {
+      await ctx.db.delete(weeklyTarget._id);
+    }
+
+    // 10. Delete all coaching progress rows
+    const coachingProgress = await ctx.db.query("coachingProgress").take(500);
+    for (const progress of coachingProgress) {
+      await ctx.db.delete(progress._id);
+    }
+
+    // 11. Delete all todoTasks
     const todoTasks = await ctx.db.query("todoTasks").take(500);
     for (const todoTask of todoTasks) {
       await ctx.db.delete(todoTask._id);
     }
 
-    // 8. Seed Settings
+    // 12. Delete all settings
+    const settings = await ctx.db.query("settings").take(500);
+    for (const setting of settings) {
+      await ctx.db.delete(setting._id);
+    }
+
+    // 13. Seed Settings
     await ctx.db.insert("settings", {
       key: "defaultRevisionMinutes",
       value: 15,

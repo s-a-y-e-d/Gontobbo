@@ -8,24 +8,24 @@
 }
 
 .dark {
-  --background: #0d0d0d;
-  --foreground: #ededed;
+  --background: #080808;
+  --foreground: #f2eee8;
   
-  --color-pure-white: #141414;
-  --color-on-surface: #ededed;
-  --color-surface: #0d0d0d;
-  --color-surface-container: #1f1f1f;
+  --color-pure-white: #161311;
+  --color-on-surface: #f2eee8;
+  --color-surface: #080808;
+  --color-surface-container: #161311;
   
-  --color-near-black: #ededed;
+  --color-near-black: #f2eee8;
   
-  --color-border-subtle: rgba(255, 255, 255, 0.08);
-  --color-border-medium: rgba(255, 255, 255, 0.15);
+  --color-border-subtle: rgba(255, 244, 228, 0.08);
+  --color-border-medium: rgba(255, 244, 228, 0.14);
   
-  --color-gray-50: #141414;
-  --color-gray-100: #1a1a1a;
-  --color-gray-400: #666666;
-  --color-gray-500: #a0a0a0;
-  --color-gray-700: #d4d4d4;
+  --color-gray-50: #100e0d;
+  --color-gray-100: #181514;
+  --color-gray-400: #8a847e;
+  --color-gray-500: #b5aea6;
+  --color-gray-700: #e7e1d8;
 }
 
 @theme inline {
@@ -192,4 +192,106 @@ body {
   50% {
     transform: scale(0.9);
   }
+}
+
+/* Dark theme normalization: keep all legacy slate utilities in same palette */
+.dark .dark\:bg-slate-950,
+.dark .bg-slate-950 {
+  background-color: #080808 !important;
+}
+
+.dark .dark\:bg-slate-950\/80,
+.dark .bg-slate-950\/80 {
+  background-color: rgb(8 8 8 / 0.8) !important;
+}
+
+.dark .dark\:bg-slate-900,
+.dark .bg-slate-900 {
+  background-color: #12100f !important;
+}
+
+.dark .dark\:bg-slate-900\/80,
+.dark .bg-slate-900\/80 {
+  background-color: rgb(18 16 15 / 0.8) !important;
+}
+
+.dark .dark\:bg-slate-800,
+.dark .bg-slate-800 {
+  background-color: #1c1816 !important;
+}
+
+.dark .dark\:bg-slate-800\/50,
+.dark .bg-slate-800\/50 {
+  background-color: rgb(28 24 22 / 0.5) !important;
+}
+
+.dark .dark\:text-slate-200,
+.dark .text-slate-200 {
+  color: #ebe4da !important;
+}
+
+.dark .dark\:text-slate-300,
+.dark .text-slate-300 {
+  color: #d6cec3 !important;
+}
+
+.dark .dark\:text-slate-400,
+.dark .text-slate-400 {
+  color: #b3aba1 !important;
+}
+
+.dark .dark\:text-slate-500,
+.dark .text-slate-500 {
+  color: #8f877f !important;
+}
+
+.dark .dark\:text-slate-700,
+.dark .text-slate-700 {
+  color: #6f6862 !important;
+}
+
+.dark .dark\:border-slate-800,
+.dark .border-slate-800,
+.dark .dark\:border-slate-700,
+.dark .border-slate-700 {
+  border-color: rgba(255, 244, 228, 0.1) !important;
+}
+
+.dark .dark\:border-white\/5 {
+  border-color: rgba(255, 244, 228, 0.08) !important;
+}
+
+/* Ensure semantic tokens win after @theme output */
+.dark {
+  --color-pure-white: #161311;
+  --color-on-surface: #f2eee8;
+  --color-surface: #080808;
+  --color-surface-container: #161311;
+  --color-near-black: #f2eee8;
+  --color-border-subtle: rgba(255, 244, 228, 0.08);
+  --color-border-medium: rgba(255, 244, 228, 0.14);
+  --color-gray-50: #100e0d;
+  --color-gray-100: #181514;
+  --color-gray-400: #8a847e;
+  --color-gray-500: #b5aea6;
+  --color-gray-700: #e7e1d8;
+}
+
+/* Catch hardcoded light utilities still in feature components */
+.dark .bg-white {
+  background-color: #161311 !important;
+}
+
+.dark .bg-white\/80 {
+  background-color: rgb(22 19 17 / 0.8) !important;
+}
+
+.dark .text-slate-900,
+.dark .text-black {
+  color: #f2eee8 !important;
+}
+
+.dark .border-slate-200,
+.dark .border-black\/5 {
+  border-color: rgba(255, 244, 228, 0.1) !important;
 }

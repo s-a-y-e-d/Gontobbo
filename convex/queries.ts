@@ -461,6 +461,10 @@ export const getTodoAgenda = query({
 
         const tasks = await Promise.all(
           dayTasks.map(async (task) => {
+            if (!task.studyItemId) {
+              return null;
+            }
+
             const currentStudyItem = await ctx.db.get(task.studyItemId);
             if (!currentStudyItem) {
               return null;
