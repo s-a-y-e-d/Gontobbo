@@ -186,6 +186,7 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("menu_book");
   const [color, setColor] = useState("green");
+  const [examWeight, setExamWeight] = useState("");
   const [chapterTrackers, setChapterTrackers] = useState<TrackerEntry[]>([
     { label: "MCQ", avgMinutes: 30 },
     { label: "বোর্ড", avgMinutes: 45 }
@@ -210,11 +211,13 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
         name,
         icon,
         color,
+        examWeight: examWeight.trim() === "" ? undefined : Number(examWeight),
         order: Date.now(),
         chapterTrackers: ensureUniqueKeys(chapterTrackers),
         conceptTrackers: ensureUniqueKeys(conceptTrackers),
       });
       setName("");
+      setExamWeight("");
       setChapterTrackers([]);
       setConceptTrackers([]);
       onClose();
@@ -362,6 +365,22 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
                   <option value="gray">Gray</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="block font-label-uppercase text-label-uppercase text-gray-500 mb-2">Exam Weight</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={examWeight}
+                onChange={(e) => setExamWeight(e.target.value)}
+                className="w-full px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
+                placeholder="যেমন: 30"
+              />
+              <p className="mt-2 text-xs text-gray-400">
+                Dashboard-এর Effort vs Weightage chart-এ এই মান ব্যবহার হবে।
+              </p>
             </div>
           </div>
 

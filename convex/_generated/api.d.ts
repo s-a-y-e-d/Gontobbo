@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as dashboardQueries from "../dashboardQueries.js";
 import type * as mutations from "../mutations.js";
+import type * as onboarding from "../onboarding.js";
 import type * as ownershipMigration from "../ownershipMigration.js";
 import type * as planner from "../planner.js";
 import type * as plannerQueries from "../plannerQueries.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   dashboardQueries: typeof dashboardQueries;
   mutations: typeof mutations;
+  onboarding: typeof onboarding;
   ownershipMigration: typeof ownershipMigration;
   planner: typeof planner;
   plannerQueries: typeof plannerQueries;

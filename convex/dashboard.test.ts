@@ -133,5 +133,128 @@ describe("dashboard", () => {
     expect(dashboard.termDates.isConfigured).toBe(true);
     expect(dashboard.urgency).not.toBeNull();
     expect(dashboard.pace).not.toBeNull();
+    expect(dashboard.progression?.points.length).toBeGreaterThan(0);
+    expect(dashboard.studyVolume.days).toHaveLength(90);
+  });
+
+  test("sorts subject progress high to low", async () => {
+    const t = await createAuthenticatedTestContext("dashboard-subject-sort");
+
+    const highSubjectId = await t.mutation(api.mutations.createSubject, {
+      name: "High",
+      slug: "high",
+      color: "green",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+    const lowSubjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Low",
+      slug: "low",
+      color: "red",
+      order: 2,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+
+    await t.mutation(api.mutations.createChapter, {
+      subjectId: highSubjectId,
+      name: "Done",
+      order: 1,
+      inNextTerm: true,
+    });
+    await t.mutation(api.mutations.createChapter, {
+      subjectId: lowSubjectId,
+      name: "Todo",
+      order: 1,
+      inNextTerm: true,
+    });
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId: highSubjectId });
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId: lowSubjectId });
+
+    const highPage = await t.query(api.queries.getSubjectPageData, { slug: "high" });
+    const highItems = await t.query(api.queries.getChapterStudyItems, {
+      chapterId: highPage!.chapters[0]!._id,
+    });
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: highItems[0]!._id,
+    });
+
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+
+    expect(dashboard.subjectProgress.map((subject) => subject.name)).toEqual([
+      "High",
+      "Low",
+    ]);
+  });
+
+  test("computes effort against configured subject weights", async () => {
+    const t = await createAuthenticatedTestContext("dashboard-effort-weight");
+
+    const physicsId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-effort",
+      color: "blue",
+      order: 1,
+      examWeight: 30,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+    const chemistryId = await t.mutation(api.mutations.createSubject, {
+      name: "Chemistry",
+      slug: "chemistry-effort",
+      color: "green",
+      order: 2,
+      examWeight: 70,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+
+    await t.mutation(api.mutations.createChapter, {
+      subjectId: physicsId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+    await t.mutation(api.mutations.createChapter, {
+      subjectId: chemistryId,
+      name: "Atom",
+      order: 1,
+      inNextTerm: true,
+    });
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId: physicsId });
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId: chemistryId });
+
+    const physics = await t.query(api.queries.getSubjectPageData, {
+      slug: "physics-effort",
+    });
+    const chemistry = await t.query(api.queries.getSubjectPageData, {
+      slug: "chemistry-effort",
+    });
+    const physicsItems = await t.query(api.queries.getChapterStudyItems, {
+      chapterId: physics!.chapters[0]!._id,
+    });
+    const chemistryItems = await t.query(api.queries.getChapterStudyItems, {
+      chapterId: chemistry!.chapters[0]!._id,
+    });
+
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: physicsItems[0]!._id,
+    });
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: chemistryItems[0]!._id,
+    });
+
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+    const chemistryEffort = dashboard.effortWeightage.subjects.find(
+      (subject) => subject.name === "Chemistry",
+    );
+
+    expect(dashboard.effortWeightage.hasConfiguredWeights).toBe(true);
+    expect(chemistryEffort).toMatchObject({
+      studyShare: 50,
+      weightShare: 70,
+      isUnderStudied: true,
+    });
   });
 });

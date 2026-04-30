@@ -7,6 +7,8 @@ export default defineSchema({
     clerkUserId: v.string(),
     role: v.union(v.literal("owner"), v.literal("viewer")),
     legacyWorkspaceOwner: v.optional(v.boolean()),
+    classLevel: v.optional(v.literal("hsc")),
+    onboardingCompletedAt: v.optional(v.number()),
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     imageUrl: v.optional(v.string()),

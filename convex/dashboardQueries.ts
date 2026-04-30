@@ -1,14 +1,18 @@
 import { query } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { filterOwnedDocuments, requireCurrentUser } from "./auth";
 
 const DAY_MS = 86400000;
 const DASHBOARD_TODO_LIMIT = 5;
 const TRACK_STATUS_TOLERANCE = 5;
+const STUDY_VOLUME_DAYS = 90;
+const EFFORT_UNDER_STUDIED_GAP = 10;
 
 type DashboardTodoItem = {
   id: Id<"todoTasks">;
   kind: "study_item" | "concept_review";
+  studyItemId?: Id<"studyItems">;
+  conceptId?: Id<"concepts">;
   title: string;
   subjectName: string;
   chapterName: string;
@@ -39,11 +43,28 @@ function getRoundedPercentage(completed: number, total: number) {
   return Math.round((completed / total) * 100);
 }
 
+function getHeatmapIntensity(minutesSpent: number) {
+  if (minutesSpent >= 240) return 4;
+  if (minutesSpent >= 120) return 3;
+  if (minutesSpent >= 60) return 2;
+  if (minutesSpent > 0) return 1;
+  return 0;
+}
+
+function getCompletionDay(item: Doc<"studyItems">, termStartDate: number) {
+  if (item.lastStudiedAt === undefined) {
+    return termStartDate;
+  }
+
+  return Math.max(termStartDate, getDhakaDayBucket(item.lastStudiedAt));
+}
+
 export const getDashboardPageData = query({
   args: {},
   handler: async (ctx) => {
     const currentUser = await requireCurrentUser(ctx);
     const today = getDhakaDayBucket(Date.now());
+    const recentStartDate = today - (STUDY_VOLUME_DAYS - 1) * DAY_MS;
 
     const [
       subjects,
@@ -51,6 +72,7 @@ export const getDashboardPageData = query({
       concepts,
       studyItems,
       todayTodoTasks,
+      recentStudyLogs,
       settings,
     ] = await Promise.all([
       filterOwnedDocuments(currentUser, await ctx.db.query("subjects").collect()),
@@ -62,6 +84,15 @@ export const getDashboardPageData = query({
         await ctx.db
           .query("todoTasks")
           .withIndex("by_date", (q) => q.eq("date", today))
+          .collect(),
+      ),
+      filterOwnedDocuments(
+        currentUser,
+        await ctx.db
+          .query("studyLogs")
+          .withIndex("by_dayBucket", (q) =>
+            q.gte("dayBucket", recentStartDate).lte("dayBucket", today),
+          )
           .collect(),
       ),
       filterOwnedDocuments(currentUser, await ctx.db.query("settings").collect()),
@@ -83,6 +114,10 @@ export const getDashboardPageData = query({
     const nextTermCompletedItems = nextTermStudyItems.filter(
       (item) => item.isCompleted,
     ).length;
+    const nextTermProgressPercentage = getRoundedPercentage(
+      nextTermCompletedItems,
+      nextTermStudyItems.length,
+    );
 
     const subjectProgress = subjects
       .map((subject) => {
@@ -107,15 +142,13 @@ export const getDashboardPageData = query({
       .filter((subject) => subject.totalItems > 0)
       .sort((left, right) => {
         if (left.progressPercentage !== right.progressPercentage) {
-          return left.progressPercentage - right.progressPercentage;
+          return right.progressPercentage - left.progressPercentage;
         }
 
-        if (left.totalItems - left.completedItems !== right.totalItems - right.completedItems) {
-          return (
-            right.totalItems -
-            right.completedItems -
-            (left.totalItems - left.completedItems)
-          );
+        const leftRemaining = left.totalItems - left.completedItems;
+        const rightRemaining = right.totalItems - right.completedItems;
+        if (leftRemaining !== rightRemaining) {
+          return leftRemaining - rightRemaining;
         }
 
         return left.name.localeCompare(right.name);
@@ -145,7 +178,8 @@ export const getDashboardPageData = query({
         return {
           id: todoTask._id,
           kind: "concept_review" as const,
-          title: `${concept.name} - রিভিশন`,
+          conceptId: concept._id,
+          title: `${concept.name} - Revision`,
           subjectName: subject.name,
           chapterName: chapter.name,
           subjectColor: subject.color ?? "gray",
@@ -180,6 +214,7 @@ export const getDashboardPageData = query({
       return {
         id: todoTask._id,
         kind: "study_item" as const,
+        studyItemId: studyItem._id,
         title: studyItem.title,
         subjectName: subject.name,
         chapterName: chapter.name,
@@ -222,11 +257,6 @@ export const getDashboardPageData = query({
         : undefined;
     const hasTermDates =
       termStartDate !== undefined && nextTermExamDate !== undefined;
-
-    const nextTermProgressPercentage = getRoundedPercentage(
-      nextTermCompletedItems,
-      nextTermStudyItems.length,
-    );
 
     const urgency =
       termStartDate === undefined || nextTermExamDate === undefined
@@ -306,6 +336,117 @@ export const getDashboardPageData = query({
             };
           })();
 
+    const progression =
+      termStartDate === undefined || nextTermExamDate === undefined
+        ? null
+        : (() => {
+            const chartEndDate = clamp(
+              today,
+              termStartDate,
+              Math.max(termStartDate, nextTermExamDate),
+            );
+            const elapsedDays = Math.max(
+              0,
+              Math.floor((chartEndDate - termStartDate) / DAY_MS),
+            );
+            const totalWindowDays = Math.max(
+              1,
+              Math.floor((nextTermExamDate - termStartDate) / DAY_MS),
+            );
+            const completionDays = nextTermStudyItems
+              .filter((item) => item.isCompleted)
+              .map((item) => getCompletionDay(item, termStartDate))
+              .sort((left, right) => left - right);
+            let completedCount = 0;
+
+            const points = Array.from({ length: elapsedDays + 1 }, (_, index) => {
+              const date = termStartDate + index * DAY_MS;
+              while (
+                completedCount < completionDays.length &&
+                completionDays[completedCount] <= date
+              ) {
+                completedCount += 1;
+              }
+
+              return {
+                date,
+                actualPercentage: getRoundedPercentage(
+                  completedCount,
+                  nextTermStudyItems.length,
+                ),
+                requiredPercentage: clamp(
+                  Math.round((index / totalWindowDays) * 100),
+                  0,
+                  100,
+                ),
+              };
+            });
+
+            return {
+              points,
+              currentActualPercentage:
+                points[points.length - 1]?.actualPercentage ?? nextTermProgressPercentage,
+              currentRequiredPercentage:
+                points[points.length - 1]?.requiredPercentage ?? 0,
+            };
+          })();
+
+    const minutesByDay = new Map<number, number>();
+    const minutesBySubjectId = new Map<Id<"subjects">, number>();
+    let totalRecentMinutes = 0;
+    for (const log of recentStudyLogs) {
+      minutesByDay.set(
+        log.dayBucket,
+        (minutesByDay.get(log.dayBucket) ?? 0) + log.minutesSpent,
+      );
+      minutesBySubjectId.set(
+        log.subjectId,
+        (minutesBySubjectId.get(log.subjectId) ?? 0) + log.minutesSpent,
+      );
+      totalRecentMinutes += log.minutesSpent;
+    }
+
+    const studyVolumeDays = Array.from({ length: STUDY_VOLUME_DAYS }, (_, index) => {
+      const date = today - (STUDY_VOLUME_DAYS - 1 - index) * DAY_MS;
+      const minutesSpent = minutesByDay.get(date) ?? 0;
+      return {
+        date,
+        minutesSpent,
+        intensity: getHeatmapIntensity(minutesSpent),
+      };
+    });
+
+    const configuredWeightSubjects = subjects.filter(
+      (subject) => typeof subject.examWeight === "number" && subject.examWeight > 0,
+    );
+    const totalConfiguredWeight = configuredWeightSubjects.reduce(
+      (sum, subject) => sum + (subject.examWeight ?? 0),
+      0,
+    );
+    const effortWeightageSubjects =
+      totalConfiguredWeight === 0
+        ? []
+        : configuredWeightSubjects
+            .map((subject) => {
+              const studyMinutes = minutesBySubjectId.get(subject._id) ?? 0;
+              const studyShare =
+                totalRecentMinutes === 0
+                  ? 0
+                  : (studyMinutes / totalRecentMinutes) * 100;
+              const weightShare = ((subject.examWeight ?? 0) / totalConfiguredWeight) * 100;
+
+              return {
+                subjectId: subject._id,
+                name: subject.name,
+                color: subject.color ?? "gray",
+                studyMinutes,
+                studyShare: Math.round(studyShare),
+                weightShare: Math.round(weightShare),
+                isUnderStudied: weightShare - studyShare >= EFFORT_UNDER_STUDIED_GAP,
+              };
+            })
+            .sort((left, right) => right.weightShare - left.weightShare);
+
     return {
       today: {
         date: today,
@@ -314,6 +455,8 @@ export const getDashboardPageData = query({
         tasks: todoItems.slice(0, DASHBOARD_TODO_LIMIT).map((item) => ({
           id: item.id,
           kind: item.kind,
+          studyItemId: item.studyItemId,
+          conceptId: item.conceptId,
           title: item.title,
           subjectName: item.subjectName,
           chapterName: item.chapterName,
@@ -345,6 +488,17 @@ export const getDashboardPageData = query({
       },
       urgency,
       pace,
+      progression,
+      studyVolume: {
+        days: studyVolumeDays,
+        totalMinutes: totalRecentMinutes,
+        activeDays: studyVolumeDays.filter((day) => day.minutesSpent > 0).length,
+      },
+      effortWeightage: {
+        subjects: effortWeightageSubjects,
+        missingWeightCount: subjects.length - configuredWeightSubjects.length,
+        hasConfiguredWeights: totalConfiguredWeight > 0,
+      },
       subjectProgress,
     };
   },

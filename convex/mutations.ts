@@ -489,6 +489,7 @@ export const updateSubject = mutation({
     slug: v.optional(v.string()),
     icon: v.optional(v.string()),
     color: v.optional(v.string()),
+    examWeight: v.optional(v.number()),
     chapterTrackers: v.optional(v.array(v.object({
       key: v.string(),
       label: v.string(),

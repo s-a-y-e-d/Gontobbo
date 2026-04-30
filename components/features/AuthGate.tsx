@@ -1,16 +1,17 @@
 "use client";
 
 import { SignInButton } from "@clerk/nextjs";
-import type { FunctionReference } from "convex/server";
 import {
   Authenticated,
   AuthLoading,
   Unauthenticated,
   useConvexAuth,
   useMutation,
+  useQuery,
 } from "convex/react";
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 import NavigationLayout from "@/components/features/NavigationLayout";
+import { api } from "@/convex/_generated/api";
 
 type BootstrapState =
   | "idle"
@@ -30,14 +31,76 @@ function CenteredMessage({ children }: { children: React.ReactNode }) {
   );
 }
 
+function OnboardingClassPicker({
+  isSubmitting,
+  onSelectHsc,
+}: {
+  isSubmitting: boolean;
+  onSelectHsc: () => void;
+}) {
+  return (
+    <CenteredMessage>
+      <div className="space-y-6 text-left">
+        <div className="space-y-3 text-center">
+          <p className="font-mono-code text-[11px] uppercase tracking-[0.22em] text-emerald-600">
+            প্রথম সেটআপ
+          </p>
+          <h1 className="text-3xl font-bold text-slate-950 dark:text-slate-50">
+            তুমি কোন ক্লাসে পড়ো?
+          </h1>
+          <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+            আপাতত HSC সিলেবাস প্রস্তুত আছে। এটি বেছে নিলে বিষয় ও অধ্যায়গুলো
+            তোমার জন্য তৈরি হয়ে যাবে।
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="flex w-full items-center gap-4 rounded-[28px] border border-emerald-500 bg-emerald-50 p-5 text-left shadow-sm ring-4 ring-emerald-500/10 transition hover:bg-emerald-100 dark:border-emerald-400/70 dark:bg-emerald-400/10"
+          aria-pressed="true"
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm dark:bg-slate-900">
+            <span className="material-symbols-outlined">school</span>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-lg font-bold text-slate-950 dark:text-slate-50">
+              HSC
+            </span>
+            <span className="mt-1 block text-sm text-slate-600 dark:text-slate-300">
+              বিজ্ঞান বিভাগের বিষয় ও অধ্যায়
+            </span>
+          </span>
+          <span className="material-symbols-outlined text-emerald-600">
+            check_circle
+          </span>
+        </button>
+
+        <button
+          type="button"
+          disabled={isSubmitting}
+          onClick={onSelectHsc}
+          className="inline-flex w-full items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSubmitting ? "সিলেবাস তৈরি হচ্ছে..." : "HSC দিয়ে শুরু করুন"}
+        </button>
+      </div>
+    </CenteredMessage>
+  );
+}
+
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useConvexAuth();
-  const ensureCurrentUser =
-    useMutation(
-      "auth:ensureCurrentUser" as unknown as FunctionReference<"mutation">,
-    ) as () => Promise<unknown>;
+  const ensureCurrentUser = useMutation(api.auth.ensureCurrentUser);
+  const selectClassAndSeedSyllabus = useMutation(
+    api.onboarding.selectClassAndSeedSyllabus,
+  );
   const [bootstrapState, setBootstrapState] =
     useState<BootstrapState>("idle");
+  const [isCompletingOnboarding, setIsCompletingOnboarding] = useState(false);
+  const onboardingStatus = useQuery(
+    api.onboarding.getOnboardingStatus,
+    bootstrapState === "ready" ? {} : "skip",
+  );
 
   const bootstrapUser = useEffectEvent(async () => {
     startTransition(() => {
@@ -56,6 +119,24 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       });
     }
   });
+
+  const completeHscOnboarding = async () => {
+    startTransition(() => {
+      setIsCompletingOnboarding(true);
+    });
+
+    try {
+      await selectClassAndSeedSyllabus({ classLevel: "hsc" });
+    } catch {
+      startTransition(() => {
+        setBootstrapState("error");
+      });
+    } finally {
+      startTransition(() => {
+        setIsCompletingOnboarding(false);
+      });
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -108,7 +189,14 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       </Unauthenticated>
 
       <Authenticated>
-        {bootstrapState === "ready" ? (
+        {bootstrapState === "ready" && onboardingStatus?.requiresOnboarding ? (
+          <OnboardingClassPicker
+            isSubmitting={isCompletingOnboarding}
+            onSelectHsc={() => {
+              void completeHscOnboarding();
+            }}
+          />
+        ) : bootstrapState === "ready" && onboardingStatus !== undefined ? (
           <NavigationLayout>{children}</NavigationLayout>
         ) : (
           <CenteredMessage>

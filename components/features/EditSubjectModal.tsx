@@ -16,6 +16,7 @@ type EditSubjectModalProps = {
     chapterTrackers: { key: string; label: string; avgMinutes: number }[];
     conceptTrackers: { key: string; label: string; avgMinutes: number }[];
     slug: string; // Add slug here
+    examWeight?: number;
   };
 };
 
@@ -82,6 +83,9 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
   const [name, setName] = useState(subject.name);
   const [icon, setIcon] = useState(subject.icon || "menu_book");
   const [color, setColor] = useState(subject.color || "green");
+  const [examWeight, setExamWeight] = useState(
+    subject.examWeight === undefined ? "" : String(subject.examWeight),
+  );
   const [chapterTrackers, setChapterTrackers] = useState<TrackerEntry[]>(subject.chapterTrackers);
   const [conceptTrackers, setConceptTrackers] = useState<TrackerEntry[]>(subject.conceptTrackers);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -116,6 +120,7 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
         name,
         icon,
         color,
+        examWeight: examWeight.trim() === "" ? undefined : Number(examWeight),
         chapterTrackers: ensureUniqueKeys(chapterTrackers),
         conceptTrackers: ensureUniqueKeys(conceptTrackers),
       });
@@ -282,6 +287,22 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
                   <option value="gray">Gray</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="block font-label-uppercase text-label-uppercase text-gray-500 mb-2">Exam Weight</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={examWeight}
+                onChange={(e) => setExamWeight(e.target.value)}
+                className="w-full px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
+                placeholder="যেমন: 30"
+              />
+              <p className="mt-2 text-xs text-gray-400">
+                Dashboard-এর Effort vs Weightage chart-এ এই মান ব্যবহার হবে।
+              </p>
             </div>
           </div>
 

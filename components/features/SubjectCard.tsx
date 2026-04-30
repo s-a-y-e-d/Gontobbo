@@ -19,6 +19,7 @@ export type SubjectCardProps = {
   slug: string;
   icon?: string;
   color?: string;
+  examWeight?: number;
   chapterTrackers: { key: string; label: string; avgMinutes: number }[];
   conceptTrackers: { key: string; label: string; avgMinutes: number }[];
   stats?: SubjectStats;
@@ -31,6 +32,7 @@ export default function SubjectCard(props: SubjectCardProps) {
     slug,
     icon,
     color,
+    examWeight,
     chapterTrackers,
     conceptTrackers,
     stats,
@@ -116,6 +118,7 @@ export default function SubjectCard(props: SubjectCardProps) {
             name,
             icon,
             color,
+            examWeight,
             chapterTrackers,
             conceptTrackers,
             slug // Pass slug
