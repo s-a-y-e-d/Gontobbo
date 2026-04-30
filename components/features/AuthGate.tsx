@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton, SignOutButton, UserButton } from "@clerk/nextjs";
+import { SignInButton } from "@clerk/nextjs";
 import type { FunctionReference } from "convex/server";
 import {
   Authenticated,
@@ -16,12 +16,7 @@ type BootstrapState =
   | "idle"
   | "bootstrapping"
   | "ready"
-  | "unauthorized"
   | "error";
-
-type EnsureCurrentUserResult = {
-  role: "owner" | "viewer";
-};
 
 function CenteredMessage({ children }: { children: React.ReactNode }) {
   return (
@@ -40,7 +35,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const ensureCurrentUser =
     useMutation(
       "auth:ensureCurrentUser" as unknown as FunctionReference<"mutation">,
-    ) as () => Promise<EnsureCurrentUserResult>;
+    ) as () => Promise<unknown>;
   const [bootstrapState, setBootstrapState] =
     useState<BootstrapState>("idle");
 
@@ -50,10 +45,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     });
 
     try {
-      const user = await ensureCurrentUser();
+      await ensureCurrentUser();
 
       startTransition(() => {
-        setBootstrapState(user.role === "owner" ? "ready" : "unauthorized");
+        setBootstrapState("ready");
       });
     } catch {
       startTransition(() => {
@@ -128,28 +123,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
                 <p className="text-sm text-slate-600 dark:text-slate-300">
                   প্রথমবার সাইন ইন হলে আমরা আপনার Convex user record তৈরি করি।
                 </p>
-              </div>
-            ) : bootstrapState === "unauthorized" ? (
-              <div className="space-y-5">
-                <div className="flex justify-center">
-                  <UserButton />
-                </div>
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold uppercase tracking-[0.24em] text-rose-600">
-                    Access blocked
-                  </p>
-                  <h1 className="text-2xl font-bold">
-                    এই অ্যাকাউন্টে অনুমতি নেই
-                  </h1>
-                  <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-                    এই Gontobbo workspace শুধু owner account-এর জন্য খোলা আছে।
-                  </p>
-                </div>
-                <SignOutButton>
-                  <button className="inline-flex w-full items-center justify-center rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-800">
-                    অন্য অ্যাকাউন্টে সাইন ইন করুন
-                  </button>
-                </SignOutButton>
               </div>
             ) : (
               <div className="space-y-3">

@@ -1,7 +1,10 @@
 import { query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { requireCurrentOwner } from "./auth";
+import {
+  filterOwnedDocuments,
+  requireCurrentUser,
+} from "./auth";
 import {
   buildStudyItemSearchArtifacts,
   normalizeStudyItemSearchQuery,
@@ -33,16 +36,19 @@ export const getTodoAgenda = query({
     days: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     const clampedDays = Math.max(1, Math.min(args.days, 31));
     const endDate = args.startDate + (clampedDays - 1) * DAY_MS;
 
-    const todoTasks = await ctx.db
-      .query("todoTasks")
-      .withIndex("by_date", (q) =>
-        q.gte("date", args.startDate).lte("date", endDate),
-      )
-      .collect();
+    const todoTasks = filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("todoTasks")
+        .withIndex("by_date", (q) =>
+          q.gte("date", args.startDate).lte("date", endDate),
+        )
+        .collect(),
+    );
 
     const tasksByDate = new Map<number, typeof todoTasks>();
     for (const todoTask of todoTasks) {
@@ -66,7 +72,7 @@ export const getTodoAgenda = query({
               }
 
               const concept = await ctx.db.get(todoTask.conceptId);
-              if (!concept) {
+              if (!concept || !filterOwnedDocuments(currentUser, [concept]).length) {
                 return null;
               }
 
@@ -107,7 +113,7 @@ export const getTodoAgenda = query({
             }
 
             const studyItem = await ctx.db.get(todoTask.studyItemId);
-            if (!studyItem) {
+            if (!studyItem || !filterOwnedDocuments(currentUser, [studyItem]).length) {
               return null;
             }
 
@@ -172,16 +178,19 @@ export const searchStudyItemsForTodo = query({
     searchText: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     const normalizedSearchText = normalizeStudyItemSearchQuery(args.searchText);
     if (normalizedSearchText.length === 0) {
       return [];
     }
 
-    const todoTasks = await ctx.db
-      .query("todoTasks")
-      .withIndex("by_date", (q) => q.eq("date", args.date))
-      .collect();
+    const todoTasks = filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("todoTasks")
+        .withIndex("by_date", (q) => q.eq("date", args.date))
+        .collect(),
+    );
 
     const scheduledStudyItemIds = new Set(
       todoTasks
@@ -194,17 +203,20 @@ export const searchStudyItemsForTodo = query({
     const matchingStudyItems = await ctx.db
       .query("studyItems")
       .withSearchIndex("search_searchText", (q) =>
-        q.search("searchText", normalizedSearchText).eq("isCompleted", false),
+        q
+          .search("searchText", normalizedSearchText)
+          .eq("userId", currentUser._id)
+          .eq("isCompleted", false),
       )
       .take(36);
 
-    const fallbackStudyItems =
-      matchingStudyItems.length >= 12
-        ? []
-        : await ctx.db
-            .query("studyItems")
-            .withIndex("by_isCompleted", (q) => q.eq("isCompleted", false))
-            .take(200);
+    const fallbackStudyItems = filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("studyItems")
+        .withIndex("by_isCompleted", (q) => q.eq("isCompleted", false))
+        .take(200),
+    );
 
     const candidateStudyItems = new Map<string, Doc<"studyItems">>();
 
@@ -254,13 +266,17 @@ export const searchStudyItemsForTodo = query({
           contextAliases: searchArtifacts.contextAliases,
         });
 
+        if (score === 0) {
+          return null;
+        }
+
         return {
           _id: studyItem._id,
           title: studyItem.title,
           subjectName: subject.name,
           chapterName: chapter.name,
           conceptName: concept?.name,
-          subjectColor: subject.color,
+          subjectColor: subject.color ?? "gray",
           estimatedMinutes: studyItem.estimatedMinutes,
           score,
         };
@@ -273,7 +289,13 @@ export const searchStudyItemsForTodo = query({
           result,
         ): result is NonNullable<(typeof rankedResults)[number]> => result !== null,
       )
-      .sort((a, b) => b.score - a.score)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return left.title.localeCompare(right.title);
+      })
       .slice(0, 12)
       .map((result) => ({
         _id: result._id,

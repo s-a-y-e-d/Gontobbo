@@ -8,6 +8,20 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
+async function createAuthenticatedTestContext(subject: string) {
+  const t = convexTest(schema, modules).withIdentity({
+    subject,
+    tokenIdentifier: `test|${subject}`,
+    name: subject,
+  });
+  await t.mutation(api.auth.ensureCurrentUser, {});
+  return t;
+}
+
+type AuthenticatedTestContext = Awaited<
+  ReturnType<typeof createAuthenticatedTestContext>
+>;
+
 function getDhakaDayBucket(timestamp: number) {
   const dhakaOffset = 6 * 60 * 60 * 1000;
   const dhakaTime = new Date(timestamp + dhakaOffset);
@@ -16,7 +30,7 @@ function getDhakaDayBucket(timestamp: number) {
 }
 
 async function createSubjectWithNextTermChapter(args: {
-  t: ReturnType<typeof convexTest>;
+  t: AuthenticatedTestContext;
   name: string;
   slug: string;
   color?: string;
@@ -47,7 +61,7 @@ async function createSubjectWithNextTermChapter(args: {
 
 describe("planner", () => {
   test("hides chapter-level tasks until concept-level items are complete", async () => {
-    const t = convexTest(schema, modules);
+    const t = await createAuthenticatedTestContext("planner-hide-chapter");
     const date = getDhakaDayBucket(Date.now());
 
     const subjectId = await t.mutation(api.mutations.createSubject, {
@@ -94,7 +108,7 @@ describe("planner", () => {
   });
 
   test("accepting a revision suggestion creates an unscheduled revision todo task", async () => {
-    const t = convexTest(schema, modules);
+    const t = await createAuthenticatedTestContext("planner-revision");
     const date = getDhakaDayBucket(Date.now());
 
     const subjectId = await t.mutation(api.mutations.createSubject, {
@@ -157,7 +171,7 @@ describe("planner", () => {
   });
 
   test("important subjects outrank slightly lower-completion normal subjects", async () => {
-    const t = convexTest(schema, modules);
+    const t = await createAuthenticatedTestContext("planner-priority");
     const date = getDhakaDayBucket(Date.now());
 
     const physics = await createSubjectWithNextTermChapter({

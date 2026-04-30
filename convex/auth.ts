@@ -1,6 +1,8 @@
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 
 type AuthenticatedCtx = QueryCtx | MutationCtx;
+export type CurrentUser = Doc<"users">;
 
 async function getIdentityOrThrow(ctx: AuthenticatedCtx) {
   const identity = await ctx.auth.getUserIdentity();
@@ -24,16 +26,39 @@ async function findUserByTokenIdentifier(
     .unique();
 }
 
-export async function requireCurrentOwner(ctx: AuthenticatedCtx) {
+export function isLegacyWorkspaceOwner(user: Pick<Doc<"users">, "legacyWorkspaceOwner">) {
+  return user.legacyWorkspaceOwner === true;
+}
+
+export function canAccessOwnedDocument(
+  user: Pick<Doc<"users">, "_id" | "legacyWorkspaceOwner">,
+  doc: { userId?: Id<"users"> },
+) {
+  return doc.userId === user._id || (doc.userId === undefined && isLegacyWorkspaceOwner(user));
+}
+
+export function assertCanAccessOwnedDocument(
+  user: Pick<Doc<"users">, "_id" | "legacyWorkspaceOwner">,
+  doc: { userId?: Id<"users"> },
+) {
+  if (!canAccessOwnedDocument(user, doc)) {
+    throw new Error("Unauthorized");
+  }
+}
+
+export function filterOwnedDocuments<T extends { userId?: Id<"users"> }>(
+  user: Pick<Doc<"users">, "_id" | "legacyWorkspaceOwner">,
+  docs: T[],
+) {
+  return docs.filter((doc) => canAccessOwnedDocument(user, doc));
+}
+
+export async function requireCurrentUser(ctx: AuthenticatedCtx) {
   const identity = await getIdentityOrThrow(ctx);
   const user = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);
 
   if (!user) {
     throw new Error("User profile not initialized");
-  }
-
-  if (user.role !== "owner") {
-    throw new Error("Unauthorized");
   }
 
   return user;
@@ -55,33 +80,41 @@ export const ensureCurrentUser = mutation({
     };
 
     if (existingUser) {
+      const shouldMarkLegacyWorkspaceOwner =
+        existingUser.legacyWorkspaceOwner === undefined &&
+        existingUser.role === "owner";
       const shouldPatch =
         existingUser.clerkUserId !== profile.clerkUserId ||
         existingUser.name !== profile.name ||
         existingUser.email !== profile.email ||
-        existingUser.imageUrl !== profile.imageUrl;
+        existingUser.imageUrl !== profile.imageUrl ||
+        shouldMarkLegacyWorkspaceOwner;
 
       if (shouldPatch) {
-        await ctx.db.patch(existingUser._id, profile);
+        await ctx.db.patch(existingUser._id, {
+          ...profile,
+          legacyWorkspaceOwner: shouldMarkLegacyWorkspaceOwner
+            ? true
+            : existingUser.legacyWorkspaceOwner,
+        });
       }
 
       return {
         userId: existingUser._id,
-        role: existingUser.role,
+        role: "owner" as const,
       };
     }
 
-    const firstExistingUser = (await ctx.db.query("users").take(1))[0] ?? null;
-    const role = firstExistingUser ? "viewer" : "owner";
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: identity.tokenIdentifier,
-      role,
+      role: "owner",
+      legacyWorkspaceOwner: false,
       ...profile,
     });
 
     return {
       userId,
-      role,
+      role: "owner" as const,
     };
   },
 });
@@ -98,7 +131,8 @@ export const getCurrentUser = query({
 
     return {
       _id: user._id,
-      role: user.role,
+      role: "owner" as const,
+      legacyWorkspaceOwner: user.legacyWorkspaceOwner ?? false,
       name: user.name,
       email: user.email,
       imageUrl: user.imageUrl,

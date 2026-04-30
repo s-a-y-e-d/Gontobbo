@@ -12,11 +12,123 @@ import {
   ruleBasedPlannerCommentParser,
   type PlannerCandidate,
 } from "./planner";
-import { requireCurrentOwner } from "./auth";
+import {
+  assertCanAccessOwnedDocument,
+  filterOwnedDocuments,
+  requireCurrentUser,
+  type CurrentUser,
+} from "./auth";
 
 const TODO_DURATION_MINUTES = Array.from({ length: 16 }, (_, index) => (index + 1) * 15);
 const STUDY_ITEM_SEARCH_VERSION_SETTING_KEY = "study_item_search_text_version";
 const STUDY_ITEM_SEARCH_BACKFILL_BATCH_SIZE = 64;
+const requireCurrentOwner = requireCurrentUser;
+
+async function getOwnedSubjectOrThrow(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  subjectId: Id<"subjects">,
+) {
+  const subject = await ctx.db.get(subjectId);
+  if (!subject) {
+    throw new Error("Subject not found");
+  }
+  assertCanAccessOwnedDocument(currentUser, subject);
+  return subject;
+}
+
+async function getOwnedChapterOrThrow(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  chapterId: Id<"chapters">,
+) {
+  const chapter = await ctx.db.get(chapterId);
+  if (!chapter) {
+    throw new Error("Chapter not found");
+  }
+  assertCanAccessOwnedDocument(currentUser, chapter);
+  return chapter;
+}
+
+async function getOwnedConceptOrThrow(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  conceptId: Id<"concepts">,
+) {
+  const concept = await ctx.db.get(conceptId);
+  if (!concept) {
+    throw new Error("Concept not found");
+  }
+  assertCanAccessOwnedDocument(currentUser, concept);
+  return concept;
+}
+
+async function getOwnedStudyItemOrThrow(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  studyItemId: Id<"studyItems">,
+) {
+  const studyItem = await ctx.db.get(studyItemId);
+  if (!studyItem) {
+    throw new Error("StudyItem not found");
+  }
+  assertCanAccessOwnedDocument(currentUser, studyItem);
+  return studyItem;
+}
+
+async function getOwnedStudyLogOrThrow(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  logId: Id<"studyLogs">,
+) {
+  const log = await ctx.db.get(logId);
+  if (!log) {
+    throw new Error("Log not found");
+  }
+  assertCanAccessOwnedDocument(currentUser, log);
+  return log;
+}
+
+async function getOwnedPlannerSuggestionOrThrow(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  suggestionId: Id<"plannerSuggestions">,
+) {
+  const suggestion = await ctx.db.get(suggestionId);
+  if (!suggestion) {
+    throw new Error("Suggestion not found");
+  }
+  assertCanAccessOwnedDocument(currentUser, suggestion);
+  return suggestion;
+}
+
+async function getOwnedWeeklyTargetOrThrow(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  weeklyTargetId: Id<"weeklyTargets">,
+) {
+  const weeklyTarget = await ctx.db.get(weeklyTargetId);
+  if (!weeklyTarget) {
+    throw new Error("Weekly target not found");
+  }
+  assertCanAccessOwnedDocument(currentUser, weeklyTarget);
+  return weeklyTarget;
+}
+
+async function getOwnedSettingByKey(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  key: string,
+) {
+  const settings = filterOwnedDocuments(
+    currentUser,
+    await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .collect(),
+  );
+  return settings[0] ?? null;
+}
 
 function buildStudyItemTitle(baseName: string, trackerLabel: string) {
   return `${baseName} — ${trackerLabel}`;
@@ -50,12 +162,13 @@ function getTrackerForStudyItem(
 
 async function removeTodoTasksForStudyItem(
   ctx: MutationCtx,
+  currentUser: CurrentUser,
   studyItemId: Id<"studyItems">,
 ) {
-  const todoTasks = await ctx.db
+  const todoTasks = filterOwnedDocuments(currentUser, await ctx.db
     .query("todoTasks")
     .withIndex("by_studyItemId", (q) => q.eq("studyItemId", studyItemId))
-    .collect();
+    .collect());
 
   for (const todoTask of todoTasks) {
     await ctx.db.delete(todoTask._id);
@@ -64,12 +177,13 @@ async function removeTodoTasksForStudyItem(
 
 async function removeTodoTasksForConcept(
   ctx: MutationCtx,
+  currentUser: CurrentUser,
   conceptId: Id<"concepts">,
 ) {
-  const todoTasks = await ctx.db
+  const todoTasks = filterOwnedDocuments(currentUser, await ctx.db
     .query("todoTasks")
     .withIndex("by_conceptId", (q) => q.eq("conceptId", conceptId))
-    .collect();
+    .collect());
 
   for (const todoTask of todoTasks) {
     await ctx.db.delete(todoTask._id);
@@ -78,12 +192,13 @@ async function removeTodoTasksForConcept(
 
 async function getNextTodoSortOrder(
   ctx: MutationCtx,
+  currentUser: CurrentUser,
   date: number,
 ) {
-  const todoTasks = await ctx.db
+  const todoTasks = filterOwnedDocuments(currentUser, await ctx.db
     .query("todoTasks")
     .withIndex("by_date", (q) => q.eq("date", date))
-    .collect();
+    .collect());
 
   return (
     todoTasks.reduce((max, todoTask) => {
@@ -176,21 +291,21 @@ async function syncStudyItemsByChapter(
 
 async function ensureChapterStudyItemsForSubject(
   ctx: MutationCtx,
+  currentUser: CurrentUser,
   subjectId: Id<"subjects">,
 ) {
-  const subject = await ctx.db.get(subjectId);
-  if (!subject) throw new Error("Subject not found");
+  const subject = await getOwnedSubjectOrThrow(ctx, currentUser, subjectId);
 
-  const chapters = await ctx.db
+  const chapters = filterOwnedDocuments(currentUser, await ctx.db
     .query("chapters")
     .withIndex("by_subject", (q) => q.eq("subjectId", subjectId))
-    .collect();
+    .collect());
 
   for (const chapter of chapters) {
-    const existingItems = await ctx.db
+    const existingItems = filterOwnedDocuments(currentUser, await ctx.db
       .query("studyItems")
       .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
-      .collect();
+      .collect());
 
     const existingChapterItems = existingItems.filter(
       (studyItem) => studyItem.conceptId === undefined,
@@ -218,6 +333,7 @@ async function ensureChapterStudyItemsForSubject(
           }).searchText || legacySearchText;
 
         await ctx.db.insert("studyItems", {
+          userId: currentUser._id,
           subjectId,
           chapterId: chapter._id,
           type: tracker.key,
@@ -235,24 +351,22 @@ async function ensureChapterStudyItemsForSubject(
 
 async function ensureConceptStudyItemsForChapter(
   ctx: MutationCtx,
+  currentUser: CurrentUser,
   chapterId: Id<"chapters">,
 ) {
-  const chapter = await ctx.db.get(chapterId);
-  if (!chapter) throw new Error("Chapter not found");
+  const chapter = await getOwnedChapterOrThrow(ctx, currentUser, chapterId);
+  const subject = await getOwnedSubjectOrThrow(ctx, currentUser, chapter.subjectId);
 
-  const subject = await ctx.db.get(chapter.subjectId);
-  if (!subject) throw new Error("Subject not found");
-
-  const concepts = await ctx.db
+  const concepts = filterOwnedDocuments(currentUser, await ctx.db
     .query("concepts")
     .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
-    .collect();
+    .collect());
 
   for (const concept of concepts) {
-    const existingItems = await ctx.db
+    const existingItems = filterOwnedDocuments(currentUser, await ctx.db
       .query("studyItems")
       .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
-      .collect();
+      .collect());
 
     for (const tracker of subject.conceptTrackers) {
       const existingItem = existingItems.find(
@@ -278,6 +392,7 @@ async function ensureConceptStudyItemsForChapter(
           }).searchText || legacySearchText;
 
         await ctx.db.insert("studyItems", {
+          userId: currentUser._id,
           subjectId: subject._id,
           chapterId,
           conceptId: concept._id,
@@ -294,17 +409,20 @@ async function ensureConceptStudyItemsForChapter(
   }
 }
 
-async function ensurePlannerStudyItems(ctx: MutationCtx) {
-  const chapters = await ctx.db.query("chapters").collect();
+async function ensurePlannerStudyItems(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+) {
+  const chapters = filterOwnedDocuments(currentUser, await ctx.db.query("chapters").collect());
   const nextTermChapters = chapters.filter((chapter) => chapter.inNextTerm);
   const subjectIds = new Set(nextTermChapters.map((chapter) => chapter.subjectId));
 
   for (const subjectId of subjectIds) {
-    await ensureChapterStudyItemsForSubject(ctx, subjectId);
+    await ensureChapterStudyItemsForSubject(ctx, currentUser, subjectId);
   }
 
   for (const chapter of nextTermChapters) {
-    await ensureConceptStudyItemsForChapter(ctx, chapter._id);
+    await ensureConceptStudyItemsForChapter(ctx, currentUser, chapter._id);
   }
 }
 
@@ -334,9 +452,21 @@ export const createSubject = mutation({
     order: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     const { slug, ...rest } = args;
+    if (slug) {
+      const existingSubject = await ctx.db
+        .query("subjects")
+        .withIndex("by_userId_and_slug", (q) =>
+          q.eq("userId", currentUser._id).eq("slug", slug),
+        )
+        .unique();
+      if (existingSubject) {
+        throw new Error("A subject with this slug already exists");
+      }
+    }
     const subjectId = await ctx.db.insert("subjects", {
+      userId: currentUser._id,
       ...rest,
       slug: slug || "", // Placeholder
     });
@@ -371,21 +501,34 @@ export const updateSubject = mutation({
     }))),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     const { subjectId, ...updates } = args;
 
-    const oldSubject = await ctx.db.get(subjectId);
-    if (!oldSubject) throw new Error("Subject not found");
+    const oldSubject = await getOwnedSubjectOrThrow(ctx, currentUser, subjectId);
+
+    if (updates.slug && updates.slug !== oldSubject.slug) {
+      const conflictingSubject = await ctx.db
+        .query("subjects")
+        .withIndex("by_userId_and_slug", (q) =>
+          q.eq("userId", currentUser._id).eq("slug", updates.slug!),
+        )
+        .unique();
+      if (conflictingSubject && conflictingSubject._id !== subjectId) {
+        throw new Error("A subject with this slug already exists");
+      }
+    }
 
     if (updates.chapterTrackers) {
       const newKeys = new Set(updates.chapterTrackers.map(t => t.key));
       const removedKeys = oldSubject.chapterTrackers.filter(t => !newKeys.has(t.key)).map(t => t.key);
 
       for (const key of removedKeys) {
-        const studyItems = await ctx.db.query("studyItems")
-          .withIndex("by_subject", q => q.eq("subjectId", subjectId))
-          .filter(q => q.eq(q.field("type"), key))
-          .collect();
+        const studyItems = filterOwnedDocuments(
+          currentUser,
+          await ctx.db.query("studyItems")
+            .withIndex("by_subject", q => q.eq("subjectId", subjectId))
+            .collect(),
+        ).filter((item) => item.type === key);
 
         for (const item of studyItems) {
           // Delete logs for this item
@@ -394,7 +537,7 @@ export const updateSubject = mutation({
             .collect();
           for (const log of logs) await ctx.db.delete(log._id);
 
-          await removeTodoTasksForStudyItem(ctx, item._id);
+          await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
           await ctx.db.delete(item._id);
         }
       }
@@ -405,10 +548,12 @@ export const updateSubject = mutation({
       const removedKeys = oldSubject.conceptTrackers.filter(t => !newKeys.has(t.key)).map(t => t.key);
 
       for (const key of removedKeys) {
-        const studyItems = await ctx.db.query("studyItems")
-          .withIndex("by_subject", q => q.eq("subjectId", subjectId))
-          .filter(q => q.eq(q.field("type"), key))
-          .collect();
+        const studyItems = filterOwnedDocuments(
+          currentUser,
+          await ctx.db.query("studyItems")
+            .withIndex("by_subject", q => q.eq("subjectId", subjectId))
+            .collect(),
+        ).filter((item) => item.type === key);
 
         for (const item of studyItems) {
           // Delete logs for this item
@@ -417,7 +562,7 @@ export const updateSubject = mutation({
             .collect();
           for (const log of logs) await ctx.db.delete(log._id);
 
-          await removeTodoTasksForStudyItem(ctx, item._id);
+          await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
           await ctx.db.delete(item._id);
         }
       }
@@ -435,9 +580,8 @@ export const updateStudyLogMinutes = mutation({
     minutesSpent: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const log = await ctx.db.get(args.logId);
-    if (!log) throw new Error("Log not found");
+    const currentUser = await requireCurrentUser(ctx);
+    const log = await getOwnedStudyLogOrThrow(ctx, currentUser, args.logId);
     if (!log.isEditable) throw new Error("This log is not editable");
 
     // Only allow study_item_completed and concept_review
@@ -462,9 +606,8 @@ export const updateStudyLogMinutes = mutation({
 export const toggleChapterInNextTerm = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const chapter = await ctx.db.get(args.chapterId);
-    if (!chapter) throw new Error("Chapter not found");
+    const currentUser = await requireCurrentUser(ctx);
+    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
     await ctx.db.patch(args.chapterId, {
       inNextTerm: !chapter.inNextTerm,
     });
@@ -482,9 +625,23 @@ export const createChapter = mutation({
     priorityBoost: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
     const { slug, ...rest } = args;
+    if (slug) {
+      const siblingChapters = filterOwnedDocuments(
+        currentUser,
+        await ctx.db
+          .query("chapters")
+          .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
+          .collect(),
+      );
+      if (siblingChapters.some((chapter) => chapter.slug === slug)) {
+        throw new Error("A chapter with this slug already exists");
+      }
+    }
     const chapterId = await ctx.db.insert("chapters", {
+      userId: currentUser._id,
       ...rest,
       slug: slug || "", // Placeholder
     });
@@ -508,8 +665,25 @@ export const updateChapter = mutation({
     priorityBoost: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     const { chapterId, ...updates } = args;
+    const existingChapter = await getOwnedChapterOrThrow(ctx, currentUser, chapterId);
+    if (updates.slug && updates.slug !== existingChapter.slug) {
+      const siblingChapters = filterOwnedDocuments(
+        currentUser,
+        await ctx.db
+          .query("chapters")
+          .withIndex("by_subject", (q) => q.eq("subjectId", existingChapter.subjectId))
+          .collect(),
+      );
+      if (
+        siblingChapters.some(
+          (chapter) => chapter.slug === updates.slug && chapter._id !== chapterId,
+        )
+      ) {
+        throw new Error("A chapter with this slug already exists");
+      }
+    }
     await ctx.db.patch(chapterId, updates);
     await syncStudyItemsByChapter(ctx, chapterId);
   },
@@ -519,18 +693,19 @@ export const updateChapter = mutation({
 export const deleteChapter = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
     // Also delete associated concepts and studyItems
-    const concepts = await ctx.db
+    const concepts = filterOwnedDocuments(currentUser, await ctx.db
       .query("concepts")
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-      .collect();
+      .collect());
     
     for (const concept of concepts) {
-      const studyItems = await ctx.db
+      const studyItems = filterOwnedDocuments(currentUser, await ctx.db
         .query("studyItems")
         .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
-        .collect();
+        .collect());
       for (const item of studyItems) {
         // Delete logs for this item
         const logs = await ctx.db.query("studyLogs")
@@ -538,7 +713,7 @@ export const deleteChapter = mutation({
           .collect();
         for (const log of logs) await ctx.db.delete(log._id);
 
-        await removeTodoTasksForStudyItem(ctx, item._id);
+        await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
         await ctx.db.delete(item._id);
       }
 
@@ -547,7 +722,7 @@ export const deleteChapter = mutation({
         .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", concept._id))
         .collect();
       for (const log of revisionLogs) await ctx.db.delete(log._id);
-      await removeTodoTasksForConcept(ctx, concept._id);
+      await removeTodoTasksForConcept(ctx, currentUser, concept._id);
 
       const conceptWeeklyTarget = await ctx.db
         .query("weeklyTargets")
@@ -576,10 +751,10 @@ export const deleteChapter = mutation({
       await ctx.db.delete(coachingProgress._id);
     }
 
-    const chapterItems = await ctx.db
+    const chapterItems = filterOwnedDocuments(currentUser, await ctx.db
       .query("studyItems")
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-      .collect();
+      .collect());
     for (const item of chapterItems) {
       // Delete logs for this item
       const logs = await ctx.db.query("studyLogs")
@@ -587,7 +762,7 @@ export const deleteChapter = mutation({
         .collect();
       for (const log of logs) await ctx.db.delete(log._id);
 
-      await removeTodoTasksForStudyItem(ctx, item._id);
+      await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
       await ctx.db.delete(item._id);
     }
 
@@ -604,8 +779,12 @@ export const createConcept = mutation({
     difficulty: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    return await ctx.db.insert("concepts", args);
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+    return await ctx.db.insert("concepts", {
+      userId: currentUser._id,
+      ...args,
+    });
   },
 });
 
@@ -618,27 +797,23 @@ export const updateConcept = mutation({
     difficulty: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     const { conceptId, ...updates } = args;
+    await getOwnedConceptOrThrow(ctx, currentUser, conceptId);
     
     // Update the concept itself
     await ctx.db.patch(conceptId, updates);
 
     // Also update titles of associated studyItems to keep them in sync
     // Pattern: "${concept.name} — ${tracker.label}"
-    const concept = await ctx.db.get(conceptId);
-    if (!concept) return;
+    const concept = await getOwnedConceptOrThrow(ctx, currentUser, conceptId);
+    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, concept.chapterId);
+    const subject = await getOwnedSubjectOrThrow(ctx, currentUser, chapter.subjectId);
 
-    const chapter = await ctx.db.get(concept.chapterId);
-    if (!chapter) return;
-
-    const subject = await ctx.db.get(chapter.subjectId);
-    if (!subject) return;
-
-    const studyItems = await ctx.db
+    const studyItems = filterOwnedDocuments(currentUser, await ctx.db
       .query("studyItems")
       .withIndex("by_concept", (q) => q.eq("conceptId", conceptId))
-      .collect();
+      .collect());
 
     for (const item of studyItems) {
       const tracker = subject.conceptTrackers.find((t) => t.key === item.type);
@@ -652,19 +827,20 @@ export const updateConcept = mutation({
 export const deleteConcept = mutation({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
     // Delete associated studyItems first and their logs
-    const studyItems = await ctx.db
+    const studyItems = filterOwnedDocuments(currentUser, await ctx.db
       .query("studyItems")
       .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
-      .collect();
+      .collect());
     
     for (const item of studyItems) {
       const logs = await ctx.db.query("studyLogs")
         .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
         .collect();
       for (const log of logs) await ctx.db.delete(log._id);
-      await removeTodoTasksForStudyItem(ctx, item._id);
+      await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
       await ctx.db.delete(item._id);
     }
 
@@ -673,7 +849,7 @@ export const deleteConcept = mutation({
       .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", args.conceptId))
       .collect();
     for (const log of revisionLogs) await ctx.db.delete(log._id);
-    await removeTodoTasksForConcept(ctx, args.conceptId);
+    await removeTodoTasksForConcept(ctx, currentUser, args.conceptId);
 
     const weeklyTarget = await ctx.db
       .query("weeklyTargets")
@@ -691,12 +867,13 @@ export const deleteConcept = mutation({
 export const resetChapterProgress = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
     // 1. Reset all studyItems for this chapter
-    const studyItems = await ctx.db
+    const studyItems = filterOwnedDocuments(currentUser, await ctx.db
       .query("studyItems")
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-      .collect();
+      .collect());
 
     for (const item of studyItems) {
       // Delete logs for this item
@@ -717,10 +894,10 @@ export const resetChapterProgress = mutation({
     }
 
     // 2. Reset all concepts for this chapter (SR fields) and delete their logs
-    const concepts = await ctx.db
+    const concepts = filterOwnedDocuments(currentUser, await ctx.db
       .query("concepts")
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-      .collect();
+      .collect());
 
     for (const concept of concepts) {
       // Delete revision logs for this concept
@@ -728,7 +905,7 @@ export const resetChapterProgress = mutation({
         .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", concept._id))
         .collect();
       for (const log of revisionLogs) await ctx.db.delete(log._id);
-      await removeTodoTasksForConcept(ctx, concept._id);
+      await removeTodoTasksForConcept(ctx, currentUser, concept._id);
 
       await ctx.db.patch(concept._id, {
         reviewCount: undefined,
@@ -745,8 +922,8 @@ export const resetChapterProgress = mutation({
 export const ensureChapterStudyItems = mutation({
   args: { subjectId: v.id("subjects") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    return await ensureChapterStudyItemsForSubject(ctx, args.subjectId);
+    const currentUser = await requireCurrentUser(ctx);
+    return await ensureChapterStudyItemsForSubject(ctx, currentUser, args.subjectId);
   },
 });
 
@@ -755,8 +932,8 @@ export const ensureChapterStudyItems = mutation({
 export const ensureConceptStudyItems = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    return await ensureConceptStudyItemsForChapter(ctx, args.chapterId);
+    const currentUser = await requireCurrentUser(ctx);
+    return await ensureConceptStudyItemsForChapter(ctx, currentUser, args.chapterId);
   },
 });
 
@@ -851,11 +1028,12 @@ export const backfillStudyItemSearchText = mutation({
     cursor: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const currentVersionSetting = await ctx.db
-      .query("settings")
-      .withIndex("by_key", (q) => q.eq("key", STUDY_ITEM_SEARCH_VERSION_SETTING_KEY))
-      .unique();
+    const currentUser = await requireCurrentUser(ctx);
+    const currentVersionSetting = await getOwnedSettingByKey(
+      ctx,
+      currentUser,
+      STUDY_ITEM_SEARCH_VERSION_SETTING_KEY,
+    );
 
     if (
       !args.cursor &&
@@ -876,7 +1054,7 @@ export const backfillStudyItemSearchText = mutation({
         cursor: args.cursor ?? null,
       });
 
-    for (const item of page.page) {
+    for (const item of filterOwnedDocuments(currentUser, page.page)) {
       await syncStudyItemPresentation(ctx, item._id);
     }
 
@@ -887,6 +1065,7 @@ export const backfillStudyItemSearchText = mutation({
         });
       } else {
         await ctx.db.insert("settings", {
+          userId: currentUser._id,
           key: STUDY_ITEM_SEARCH_VERSION_SETTING_KEY,
           value: STUDY_ITEM_SEARCH_TEXT_VERSION,
         });
@@ -910,7 +1089,7 @@ export const createTodoTask = mutation({
     source: v.union(v.literal("manual"), v.literal("ai_accepted")),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
       throw new Error("Date must be a valid Dhaka day bucket");
     }
@@ -932,27 +1111,25 @@ export const createTodoTask = mutation({
       throw new Error("Todo task must end within the selected day");
     }
 
-    const studyItem = await ctx.db.get(args.studyItemId);
-    if (!studyItem) {
-      throw new Error("Study item not found");
-    }
+    const studyItem = await getOwnedStudyItemOrThrow(ctx, currentUser, args.studyItemId);
 
     if (studyItem.isCompleted) {
       throw new Error("Completed study items cannot be scheduled");
     }
 
-    const existingTodoTask = await ctx.db
+    const existingTodoTask = filterOwnedDocuments(currentUser, await ctx.db
       .query("todoTasks")
       .withIndex("by_date_and_studyItemId", (q) =>
         q.eq("date", args.date).eq("studyItemId", args.studyItemId),
       )
-      .unique();
+      .collect())[0] ?? null;
 
     if (existingTodoTask) {
       throw new Error("This study item is already scheduled for that day");
     }
 
     return await ctx.db.insert("todoTasks", {
+      userId: currentUser._id,
       ...args,
       kind: PLANNER_SUGGESTION_KIND.studyItem,
       sortOrder: args.startTimeMinutes,
@@ -966,16 +1143,13 @@ export const setPlannerSubjectPriority = mutation({
     priority: v.union(v.literal("normal"), v.literal("important")),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const subject = await ctx.db.get(args.subjectId);
-    if (!subject) {
-      throw new Error("Subject not found");
-    }
+    const currentUser = await requireCurrentUser(ctx);
+    const subject = await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
 
-    const existingPreference = await ctx.db
+    const existingPreference = filterOwnedDocuments(currentUser, await ctx.db
       .query("plannerSubjectPreferences")
       .withIndex("by_subjectId", (q) => q.eq("subjectId", args.subjectId))
-      .unique();
+      .collect())[0] ?? null;
 
     if (args.priority === "normal") {
       if (existingPreference) {
@@ -989,7 +1163,10 @@ export const setPlannerSubjectPriority = mutation({
       return existingPreference._id;
     }
 
-    return await ctx.db.insert("plannerSubjectPreferences", args);
+    return await ctx.db.insert("plannerSubjectPreferences", {
+      userId: currentUser._id,
+      ...args,
+    });
   },
 });
 
@@ -1003,16 +1180,13 @@ export const setCoachingChapterProgress = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const chapter = await ctx.db.get(args.chapterId);
-    if (!chapter) {
-      throw new Error("Chapter not found");
-    }
+    const currentUser = await requireCurrentUser(ctx);
+    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
 
-    const existingProgress = await ctx.db
+    const existingProgress = filterOwnedDocuments(currentUser, await ctx.db
       .query("coachingProgress")
       .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
-      .unique();
+      .collect())[0] ?? null;
 
     if (args.status === "not_started") {
       if (existingProgress) {
@@ -1026,7 +1200,10 @@ export const setCoachingChapterProgress = mutation({
       return existingProgress._id;
     }
 
-    return await ctx.db.insert("coachingProgress", args);
+    return await ctx.db.insert("coachingProgress", {
+      userId: currentUser._id,
+      ...args,
+    });
   },
 });
 
@@ -1037,17 +1214,14 @@ export const addWeeklyTarget = mutation({
     conceptId: v.optional(v.id("concepts")),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const chapter = await ctx.db.get(args.chapterId);
-    if (!chapter) {
-      throw new Error("Chapter not found");
-    }
+    const currentUser = await requireCurrentUser(ctx);
+    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
 
     if (args.kind === "chapter") {
-      const existingTargets = await ctx.db
+      const existingTargets = filterOwnedDocuments(currentUser, await ctx.db
         .query("weeklyTargets")
         .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
-        .collect();
+        .collect());
       const existingChapterTarget = existingTargets.find(
         (target) => target.kind === "chapter",
       );
@@ -1056,6 +1230,7 @@ export const addWeeklyTarget = mutation({
       }
 
       return await ctx.db.insert("weeklyTargets", {
+        userId: currentUser._id,
         kind: "chapter",
         subjectId: chapter.subjectId,
         chapterId: chapter._id,
@@ -1066,21 +1241,22 @@ export const addWeeklyTarget = mutation({
       throw new Error("Concept target requires a concept");
     }
 
-    const concept = await ctx.db.get(args.conceptId);
-    if (!concept || concept.chapterId !== chapter._id) {
+    const concept = await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
+    if (concept.chapterId !== chapter._id) {
       throw new Error("Concept not found");
     }
 
-    const existingTarget = await ctx.db
+    const existingTarget = filterOwnedDocuments(currentUser, await ctx.db
       .query("weeklyTargets")
       .withIndex("by_conceptId", (q) => q.eq("conceptId", args.conceptId))
-      .unique();
+      .collect())[0] ?? null;
 
     if (existingTarget) {
       return existingTarget._id;
     }
 
     return await ctx.db.insert("weeklyTargets", {
+      userId: currentUser._id,
       kind: "concept",
       subjectId: chapter.subjectId,
       chapterId: chapter._id,
@@ -1092,7 +1268,8 @@ export const addWeeklyTarget = mutation({
 export const removeWeeklyTarget = mutation({
   args: { weeklyTargetId: v.id("weeklyTargets") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedWeeklyTargetOrThrow(ctx, currentUser, args.weeklyTargetId);
     await ctx.db.delete(args.weeklyTargetId);
   },
 });
@@ -1102,7 +1279,7 @@ export const setDefaultRevisionMinutes = mutation({
     minutes: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     if (
       !Number.isInteger(args.minutes) ||
       args.minutes < 1 ||
@@ -1111,10 +1288,11 @@ export const setDefaultRevisionMinutes = mutation({
       throw new Error("Default revision minutes must be an integer from 1 to 600");
     }
 
-    const existingSetting = await ctx.db
-      .query("settings")
-      .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
-      .unique();
+    const existingSetting = await getOwnedSettingByKey(
+      ctx,
+      currentUser,
+      "defaultRevisionMinutes",
+    );
 
     if (existingSetting) {
       await ctx.db.patch(existingSetting._id, { value: args.minutes });
@@ -1122,6 +1300,7 @@ export const setDefaultRevisionMinutes = mutation({
     }
 
     return await ctx.db.insert("settings", {
+      userId: currentUser._id,
       key: "defaultRevisionMinutes",
       value: args.minutes,
     });
@@ -1134,7 +1313,7 @@ export const setDashboardTermDates = mutation({
     nextTermExamDate: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     if (
       !Number.isInteger(args.termStartDate) ||
       getDhakaDayBucket(args.termStartDate) !== args.termStartDate
@@ -1154,14 +1333,8 @@ export const setDashboardTermDates = mutation({
     }
 
     const [existingTermStartDate, existingNextTermExamDate] = await Promise.all([
-      ctx.db
-        .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", "termStartDate"))
-        .unique(),
-      ctx.db
-        .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", "nextTermExamDate"))
-        .unique(),
+      getOwnedSettingByKey(ctx, currentUser, "termStartDate"),
+      getOwnedSettingByKey(ctx, currentUser, "nextTermExamDate"),
     ]);
 
     if (existingTermStartDate) {
@@ -1170,6 +1343,7 @@ export const setDashboardTermDates = mutation({
       });
     } else {
       await ctx.db.insert("settings", {
+        userId: currentUser._id,
         key: "termStartDate",
         value: args.termStartDate,
       });
@@ -1183,6 +1357,7 @@ export const setDashboardTermDates = mutation({
     }
 
     return await ctx.db.insert("settings", {
+      userId: currentUser._id,
       key: "nextTermExamDate",
       value: args.nextTermExamDate,
     });
@@ -1196,7 +1371,7 @@ export const generatePlannerSuggestions = mutation({
     comment: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
       throw new Error("Date must be a valid Dhaka day bucket");
     }
@@ -1205,7 +1380,7 @@ export const generatePlannerSuggestions = mutation({
       throw new Error("Available minutes must be greater than zero");
     }
 
-    await ensurePlannerStudyItems(ctx);
+    await ensurePlannerStudyItems(ctx, currentUser);
 
     const [
       subjects,
@@ -1219,19 +1394,16 @@ export const generatePlannerSuggestions = mutation({
       existingSession,
       settings,
     ] = await Promise.all([
-      ctx.db.query("subjects").collect(),
-      ctx.db.query("chapters").collect(),
-      ctx.db.query("concepts").collect(),
-      ctx.db.query("studyItems").collect(),
-      ctx.db.query("plannerSubjectPreferences").collect(),
-      ctx.db.query("weeklyTargets").collect(),
-      ctx.db.query("coachingProgress").collect(),
-      ctx.db.query("todoTasks").withIndex("by_date", (q) => q.eq("date", args.date)).collect(),
-      ctx.db.query("plannerSessions").withIndex("by_date", (q) => q.eq("date", args.date)).unique(),
-      ctx.db
-        .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
-        .unique(),
+      filterOwnedDocuments(currentUser, await ctx.db.query("subjects").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("chapters").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("concepts").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("studyItems").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("plannerSubjectPreferences").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("weeklyTargets").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("coachingProgress").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("todoTasks").withIndex("by_date", (q) => q.eq("date", args.date)).collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("plannerSessions").withIndex("by_date", (q) => q.eq("date", args.date)).collect())[0] ?? null,
+      getOwnedSettingByKey(ctx, currentUser, "defaultRevisionMinutes"),
     ]);
 
     const defaultRevisionMinutes = (settings?.value as number) ?? 15;
@@ -1522,6 +1694,7 @@ export const generatePlannerSuggestions = mutation({
     const sessionId = existingSession
       ? existingSession._id
       : await ctx.db.insert("plannerSessions", {
+          userId: currentUser._id,
           date: args.date,
           latestGeneratedAt: now,
           generationCount: generationRound,
@@ -1541,6 +1714,7 @@ export const generatePlannerSuggestions = mutation({
     let nextRankOrder = existingSuggestions.length;
     for (const candidate of selection.selected) {
       await ctx.db.insert("plannerSuggestions", {
+        userId: currentUser._id,
         sessionId,
         date: args.date,
         kind: candidate.kind,
@@ -1570,40 +1744,46 @@ export const acceptPlannerSuggestion = mutation({
     suggestionId: v.id("plannerSuggestions"),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const suggestion = await ctx.db.get(args.suggestionId);
-    if (!suggestion) {
-      throw new Error("Suggestion not found");
-    }
+    const currentUser = await requireCurrentUser(ctx);
+    const suggestion = await getOwnedPlannerSuggestionOrThrow(
+      ctx,
+      currentUser,
+      args.suggestionId,
+    );
 
     if (suggestion.acceptedAt) {
       throw new Error("Suggestion already accepted");
     }
 
-    const sortOrder = await getNextTodoSortOrder(ctx, suggestion.date);
+    const sortOrder = await getNextTodoSortOrder(ctx, currentUser, suggestion.date);
 
     if (suggestion.kind === PLANNER_SUGGESTION_KIND.studyItem) {
       if (!suggestion.studyItemId) {
         throw new Error("Study item suggestion is invalid");
       }
 
-      const studyItem = await ctx.db.get(suggestion.studyItemId);
-      if (!studyItem || studyItem.isCompleted) {
+      const studyItem = await getOwnedStudyItemOrThrow(
+        ctx,
+        currentUser,
+        suggestion.studyItemId,
+      );
+      if (studyItem.isCompleted) {
         throw new Error("Study item is no longer available");
       }
 
-      const existingTodoTask = await ctx.db
+      const existingTodoTask = filterOwnedDocuments(currentUser, await ctx.db
         .query("todoTasks")
         .withIndex("by_date_and_studyItemId", (q) =>
           q.eq("date", suggestion.date).eq("studyItemId", suggestion.studyItemId),
         )
-        .unique();
+        .collect())[0] ?? null;
 
       if (existingTodoTask) {
         throw new Error("This study item is already in Todo for that day");
       }
 
       await ctx.db.insert("todoTasks", {
+        userId: currentUser._id,
         date: suggestion.date,
         kind: PLANNER_SUGGESTION_KIND.studyItem,
         studyItemId: suggestion.studyItemId,
@@ -1616,23 +1796,21 @@ export const acceptPlannerSuggestion = mutation({
         throw new Error("Revision suggestion is invalid");
       }
 
-      const concept = await ctx.db.get(suggestion.conceptId);
-      if (!concept) {
-        throw new Error("Concept is no longer available");
-      }
+      await getOwnedConceptOrThrow(ctx, currentUser, suggestion.conceptId);
 
-      const existingTodoTask = await ctx.db
+      const existingTodoTask = filterOwnedDocuments(currentUser, await ctx.db
         .query("todoTasks")
         .withIndex("by_date_and_conceptId", (q) =>
           q.eq("date", suggestion.date).eq("conceptId", suggestion.conceptId),
         )
-        .unique();
+        .collect())[0] ?? null;
 
       if (existingTodoTask) {
         throw new Error("This revision is already in Todo for that day");
       }
 
       await ctx.db.insert("todoTasks", {
+        userId: currentUser._id,
         date: suggestion.date,
         kind: PLANNER_SUGGESTION_KIND.conceptReview,
         conceptId: suggestion.conceptId,
@@ -1655,11 +1833,12 @@ export const dismissPlannerSuggestion = mutation({
     suggestionId: v.id("plannerSuggestions"),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const suggestion = await ctx.db.get(args.suggestionId);
-    if (!suggestion) {
-      throw new Error("Suggestion not found");
-    }
+    const currentUser = await requireCurrentUser(ctx);
+    const suggestion = await getOwnedPlannerSuggestionOrThrow(
+      ctx,
+      currentUser,
+      args.suggestionId,
+    );
 
     if (suggestion.acceptedAt) {
       throw new Error("Accepted suggestions cannot be removed");
@@ -1674,9 +1853,8 @@ export const dismissPlannerSuggestion = mutation({
 export const toggleStudyItemCompletion = mutation({
   args: { studyItemId: v.id("studyItems") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const item = await ctx.db.get(args.studyItemId);
-    if (!item) throw new Error("StudyItem not found");
+    const currentUser = await requireCurrentUser(ctx);
+    const item = await getOwnedStudyItemOrThrow(ctx, currentUser, args.studyItemId);
     
     const newIsCompleted = !item.isCompleted;
     const now = Date.now();
@@ -1697,6 +1875,7 @@ export const toggleStudyItemCompletion = mutation({
 
       // Insert 'completed' Log
       await ctx.db.insert("studyLogs", {
+        userId: currentUser._id,
         eventType: "study_item_completed",
         loggedAt: now,
         dayBucket,
@@ -1721,8 +1900,9 @@ export const toggleStudyItemCompletion = mutation({
           .query("studyItems")
           .withIndex("by_concept", (q) => q.eq("conceptId", item.conceptId))
           .collect();
+        const scopedConceptItems = filterOwnedDocuments(currentUser, conceptItems);
         
-        const allDone = conceptItems.every(si => si.isCompleted);
+        const allDone = scopedConceptItems.every(si => si.isCompleted);
         
         if (allDone) {
           const conceptRecord = await ctx.db.get(item.conceptId);
@@ -1755,9 +1935,8 @@ export const reviewConcept = mutation({
     rating: v.union(v.literal("hard"), v.literal("medium"), v.literal("easy")),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
-    const concept = await ctx.db.get(args.conceptId);
-    if (!concept) throw new Error("Concept not found");
+    const currentUser = await requireCurrentUser(ctx);
+    const concept = await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
 
     let level = concept.repetitionLevel ?? 0;
     
@@ -1784,18 +1963,18 @@ export const reviewConcept = mutation({
     });
 
     // Logging
-    const chapter = await ctx.db.get(concept.chapterId);
-    if (!chapter) throw new Error("Chapter not found for concept");
-    const subject = await ctx.db.get(chapter.subjectId);
-    if (!subject) throw new Error("Subject not found for chapter");
+    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, concept.chapterId);
+    const subject = await getOwnedSubjectOrThrow(ctx, currentUser, chapter.subjectId);
 
-    const settings = await ctx.db
-      .query("settings")
-      .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
-      .unique();
+    const settings = await getOwnedSettingByKey(
+      ctx,
+      currentUser,
+      "defaultRevisionMinutes",
+    );
     const defaultRevisionMinutes = (settings?.value as number) ?? 10;
 
     await ctx.db.insert("studyLogs", {
+      userId: currentUser._id,
       eventType: "concept_review",
       loggedAt: now,
       dayBucket: getDhakaDayBucket(now),
@@ -1819,7 +1998,8 @@ export const reviewConcept = mutation({
 export const resetConceptProgress = mutation({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
     // 1. Reset Concept SR fields
     await ctx.db.patch(args.conceptId, {
       reviewCount: undefined,
@@ -1829,10 +2009,10 @@ export const resetConceptProgress = mutation({
     });
 
     // 2. Reset associated StudyItems and delete their logs
-    const studyItems = await ctx.db
+    const studyItems = filterOwnedDocuments(currentUser, await ctx.db
       .query("studyItems")
       .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
-      .collect();
+      .collect());
 
     for (const item of studyItems) {
       // Delete logs for this item
@@ -1857,7 +2037,7 @@ export const resetConceptProgress = mutation({
       .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", args.conceptId))
       .collect();
     for (const log of revisionLogs) await ctx.db.delete(log._id);
-    await removeTodoTasksForConcept(ctx, args.conceptId);
+    await removeTodoTasksForConcept(ctx, currentUser, args.conceptId);
   },
 });
 
@@ -1868,7 +2048,8 @@ export const rescheduleConceptReview = mutation({
     newNextReviewAt: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
     await ctx.db.patch(args.conceptId, {
       nextReviewAt: args.newNextReviewAt,
     });

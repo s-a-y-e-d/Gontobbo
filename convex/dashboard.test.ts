@@ -7,6 +7,16 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
+async function createAuthenticatedTestContext(subject = "dashboard-owner") {
+  const t = convexTest(schema, modules).withIdentity({
+    subject,
+    tokenIdentifier: `test|${subject}`,
+    name: subject,
+  });
+  await t.mutation(api.auth.ensureCurrentUser, {});
+  return t;
+}
+
 function getDhakaDayBucket(timestamp: number) {
   const dhakaOffset = 6 * 60 * 60 * 1000;
   const dhakaTime = new Date(timestamp + dhakaOffset);
@@ -16,7 +26,7 @@ function getDhakaDayBucket(timestamp: number) {
 
 describe("dashboard", () => {
   test("stores and returns term dates through settings queries", async () => {
-    const t = convexTest(schema, modules);
+    const t = await createAuthenticatedTestContext();
     const termStartDate = Date.UTC(2026, 0, 1) - 6 * 60 * 60 * 1000;
     const nextTermExamDate = Date.UTC(2026, 5, 1) - 6 * 60 * 60 * 1000;
 
@@ -35,7 +45,7 @@ describe("dashboard", () => {
   });
 
   test("rejects inverted term dates", async () => {
-    const t = convexTest(schema, modules);
+    const t = await createAuthenticatedTestContext("dashboard-dates");
     const termStartDate = Date.UTC(2026, 5, 1) - 6 * 60 * 60 * 1000;
     const nextTermExamDate = Date.UTC(2026, 0, 1) - 6 * 60 * 60 * 1000;
 
@@ -48,7 +58,7 @@ describe("dashboard", () => {
   });
 
   test("computes next-term progress, overall progress, and subject progress separately", async () => {
-    const t = convexTest(schema, modules);
+    const t = await createAuthenticatedTestContext("dashboard-progress");
     const today = getDhakaDayBucket(Date.now());
     const termStartDate = today - 20 * 86400000;
     const nextTermExamDate = today + 40 * 86400000;

@@ -1,6 +1,6 @@
 import { query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { requireCurrentOwner } from "./auth";
+import { filterOwnedDocuments, requireCurrentUser } from "./auth";
 
 const DAY_MS = 86400000;
 const DASHBOARD_TODO_LIMIT = 5;
@@ -42,7 +42,7 @@ function getRoundedPercentage(completed: number, total: number) {
 export const getDashboardPageData = query({
   args: {},
   handler: async (ctx) => {
-    await requireCurrentOwner(ctx);
+    const currentUser = await requireCurrentUser(ctx);
     const today = getDhakaDayBucket(Date.now());
 
     const [
@@ -51,24 +51,23 @@ export const getDashboardPageData = query({
       concepts,
       studyItems,
       todayTodoTasks,
-      termStartDateSetting,
-      nextTermExamDateSetting,
+      settings,
     ] = await Promise.all([
-      ctx.db.query("subjects").collect(),
-      ctx.db.query("chapters").collect(),
-      ctx.db.query("concepts").collect(),
-      ctx.db.query("studyItems").collect(),
-      ctx.db.query("todoTasks").withIndex("by_date", (q) => q.eq("date", today)).collect(),
-      ctx.db
-        .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", "termStartDate"))
-        .unique(),
-      ctx.db
-        .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", "nextTermExamDate"))
-        .unique(),
+      filterOwnedDocuments(currentUser, await ctx.db.query("subjects").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("chapters").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("concepts").collect()),
+      filterOwnedDocuments(currentUser, await ctx.db.query("studyItems").collect()),
+      filterOwnedDocuments(
+        currentUser,
+        await ctx.db
+          .query("todoTasks")
+          .withIndex("by_date", (q) => q.eq("date", today))
+          .collect(),
+      ),
+      filterOwnedDocuments(currentUser, await ctx.db.query("settings").collect()),
     ]);
 
+    const settingByKey = new Map(settings.map((setting) => [setting.key, setting]));
     const subjectById = new Map(subjects.map((subject) => [subject._id, subject]));
     const chapterById = new Map(chapters.map((chapter) => [chapter._id, chapter]));
     const conceptById = new Map(concepts.map((concept) => [concept._id, concept]));
@@ -123,78 +122,78 @@ export const getDashboardPageData = query({
       });
 
     const todoCandidates = todayTodoTasks.map((todoTask) => {
-        if (todoTask.kind === "concept_review") {
-          if (!todoTask.conceptId) {
-            return null;
-          }
-
-          const concept = conceptById.get(todoTask.conceptId);
-          if (!concept) {
-            return null;
-          }
-
-          const chapter = chapterById.get(concept.chapterId);
-          if (!chapter) {
-            return null;
-          }
-
-          const subject = subjectById.get(chapter.subjectId);
-          if (!subject) {
-            return null;
-          }
-
-          return {
-            id: todoTask._id,
-            kind: "concept_review" as const,
-            title: `${concept.name} - রিভিশন`,
-            subjectName: subject.name,
-            chapterName: chapter.name,
-            subjectColor: subject.color ?? "gray",
-            durationMinutes: todoTask.durationMinutes,
-            startTimeMinutes: todoTask.startTimeMinutes,
-            isCompleted:
-              concept.lastReviewedAt !== undefined &&
-              getDhakaDayBucket(concept.lastReviewedAt) === today,
-            sortValue:
-              todoTask.startTimeMinutes ??
-              todoTask.sortOrder ??
-              todoTask._creationTime,
-            isScheduled: todoTask.startTimeMinutes !== undefined,
-          };
-        }
-
-        if (!todoTask.studyItemId) {
+      if (todoTask.kind === "concept_review") {
+        if (!todoTask.conceptId) {
           return null;
         }
 
-        const studyItem = studyItemById.get(todoTask.studyItemId);
-        if (!studyItem) {
+        const concept = conceptById.get(todoTask.conceptId);
+        if (!concept) {
           return null;
         }
 
-        const chapter = chapterById.get(studyItem.chapterId);
-        const subject = subjectById.get(studyItem.subjectId);
-        if (!chapter || !subject) {
+        const chapter = chapterById.get(concept.chapterId);
+        if (!chapter) {
+          return null;
+        }
+
+        const subject = subjectById.get(chapter.subjectId);
+        if (!subject) {
           return null;
         }
 
         return {
           id: todoTask._id,
-          kind: "study_item" as const,
-          title: studyItem.title,
+          kind: "concept_review" as const,
+          title: `${concept.name} - রিভিশন`,
           subjectName: subject.name,
           chapterName: chapter.name,
           subjectColor: subject.color ?? "gray",
           durationMinutes: todoTask.durationMinutes,
           startTimeMinutes: todoTask.startTimeMinutes,
-          isCompleted: studyItem.isCompleted,
+          isCompleted:
+            concept.lastReviewedAt !== undefined &&
+            getDhakaDayBucket(concept.lastReviewedAt) === today,
           sortValue:
             todoTask.startTimeMinutes ??
             todoTask.sortOrder ??
             todoTask._creationTime,
           isScheduled: todoTask.startTimeMinutes !== undefined,
         };
-      });
+      }
+
+      if (!todoTask.studyItemId) {
+        return null;
+      }
+
+      const studyItem = studyItemById.get(todoTask.studyItemId);
+      if (!studyItem) {
+        return null;
+      }
+
+      const chapter = chapterById.get(studyItem.chapterId);
+      const subject = subjectById.get(studyItem.subjectId);
+      if (!chapter || !subject) {
+        return null;
+      }
+
+      return {
+        id: todoTask._id,
+        kind: "study_item" as const,
+        title: studyItem.title,
+        subjectName: subject.name,
+        chapterName: chapter.name,
+        subjectColor: subject.color ?? "gray",
+        durationMinutes: todoTask.durationMinutes,
+        startTimeMinutes: todoTask.startTimeMinutes,
+        isCompleted: studyItem.isCompleted,
+        sortValue:
+          todoTask.startTimeMinutes ??
+          todoTask.sortOrder ??
+          todoTask._creationTime,
+        isScheduled: todoTask.startTimeMinutes !== undefined,
+      };
+    });
 
     const todoItems: DashboardTodoItem[] = [];
     for (const item of todoCandidates) {
@@ -211,6 +210,8 @@ export const getDashboardPageData = query({
       return left.sortValue - right.sortValue;
     });
 
+    const termStartDateSetting = settingByKey.get("termStartDate");
+    const nextTermExamDateSetting = settingByKey.get("nextTermExamDate");
     const termStartDate =
       typeof termStartDateSetting?.value === "number"
         ? termStartDateSetting.value
@@ -231,79 +232,79 @@ export const getDashboardPageData = query({
       termStartDate === undefined || nextTermExamDate === undefined
         ? null
         : (() => {
-          const totalWindow = Math.max(1, nextTermExamDate - termStartDate);
-          const elapsedWindow = clamp(today - termStartDate, 0, totalWindow);
-          const elapsedPercent = Math.round((elapsedWindow / totalWindow) * 100);
-          const timeLeftPercent = 100 - elapsedPercent;
-          const incompletionPercent = 100 - nextTermProgressPercentage;
-          const gap = incompletionPercent - timeLeftPercent;
-          const daysRemaining = Math.max(
-            0,
-            Math.ceil((nextTermExamDate - today) / DAY_MS),
-          );
-          const examPassed = today > nextTermExamDate;
+            const totalWindow = Math.max(1, nextTermExamDate - termStartDate);
+            const elapsedWindow = clamp(today - termStartDate, 0, totalWindow);
+            const elapsedPercent = Math.round((elapsedWindow / totalWindow) * 100);
+            const timeLeftPercent = 100 - elapsedPercent;
+            const incompletionPercent = 100 - nextTermProgressPercentage;
+            const gap = incompletionPercent - timeLeftPercent;
+            const daysRemaining = Math.max(
+              0,
+              Math.ceil((nextTermExamDate - today) / DAY_MS),
+            );
+            const examPassed = today > nextTermExamDate;
 
-          let status: "ahead" | "on_track" | "behind" | "overdue" = "on_track";
-          if (examPassed) {
-            status = "overdue";
-          } else if (gap > TRACK_STATUS_TOLERANCE) {
-            status = "behind";
-          } else if (gap < -TRACK_STATUS_TOLERANCE) {
-            status = "ahead";
-          }
+            let status: "ahead" | "on_track" | "behind" | "overdue" = "on_track";
+            if (examPassed) {
+              status = "overdue";
+            } else if (gap > TRACK_STATUS_TOLERANCE) {
+              status = "behind";
+            } else if (gap < -TRACK_STATUS_TOLERANCE) {
+              status = "ahead";
+            }
 
-          return {
-            elapsedPercent,
-            timeLeftPercent,
-            incompletionPercent,
-            daysRemaining,
-            examPassed,
-            status,
-          };
-        })();
+            return {
+              elapsedPercent,
+              timeLeftPercent,
+              incompletionPercent,
+              daysRemaining,
+              examPassed,
+              status,
+            };
+          })();
 
     const pace =
       termStartDate === undefined || nextTermExamDate === undefined
         ? null
         : (() => {
-          const elapsedDays = Math.max(
-            1,
-            Math.ceil((today - termStartDate) / DAY_MS) + 1,
-          );
-          const remainingItems = Math.max(
-            0,
-            nextTermStudyItems.length - nextTermCompletedItems,
-          );
-          const actualItemsPerDay = nextTermCompletedItems / elapsedDays;
-          const examPassed = today > nextTermExamDate;
+            const elapsedDays = Math.max(
+              1,
+              Math.ceil((today - termStartDate) / DAY_MS) + 1,
+            );
+            const remainingItems = Math.max(
+              0,
+              nextTermStudyItems.length - nextTermCompletedItems,
+            );
+            const actualItemsPerDay = nextTermCompletedItems / elapsedDays;
+            const examPassed = today > nextTermExamDate;
 
-          if (examPassed) {
+            if (examPassed) {
+              return {
+                actualItemsPerDay,
+                requiredItemsPerDay: null,
+                elapsedDays,
+                remainingDays: 0,
+                completedItems: nextTermCompletedItems,
+                remainingItems,
+                examPassed: true,
+              };
+            }
+
+            const remainingDays = Math.max(
+              1,
+              Math.ceil((nextTermExamDate - today) / DAY_MS),
+            );
+
             return {
               actualItemsPerDay,
-              requiredItemsPerDay: null,
+              requiredItemsPerDay: remainingItems / remainingDays,
               elapsedDays,
-              remainingDays: 0,
+              remainingDays,
               completedItems: nextTermCompletedItems,
               remainingItems,
-              examPassed: true,
+              examPassed: false,
             };
-          }
-
-          const remainingDays = Math.max(
-            1,
-            Math.ceil((nextTermExamDate - today) / DAY_MS),
-          );
-
-          return {
-            actualItemsPerDay,
-            requiredItemsPerDay: remainingItems / remainingDays,
-            elapsedDays,
-            remainingDays,
-            completedItems: nextTermCompletedItems,
-            remainingItems,
-            examPassed: false,
-          };
-        })();
+          })();
 
     return {
       today: {
