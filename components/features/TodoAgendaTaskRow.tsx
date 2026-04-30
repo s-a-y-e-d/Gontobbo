@@ -93,10 +93,10 @@ export default function TodoAgendaTaskRow({
               {task.title}
             </p>
             <span
-              className={`rounded-full px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em] ${
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em] ${
                 task.isCompleted
-                  ? "bg-surface-container/60 text-gray-400"
-                  : "bg-surface-container text-gray-500"
+                  ? "border-border-subtle bg-gray-100 text-gray-400 dark:border-white/10 dark:bg-white/[0.07] dark:text-neutral-500"
+                  : "border-transparent bg-surface-container text-gray-500 dark:bg-white/[0.09] dark:text-gray-400"
               }`}
             >
               {isScheduled
