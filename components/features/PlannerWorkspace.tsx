@@ -14,7 +14,6 @@ import {
   formatShortWeekday,
   getDhakaDayBucket,
 } from "./todoAgendaTime";
-import { getSubjectTheme } from "./subjectTheme";
 
 type PlannerDay = {
   date: number;
@@ -133,7 +132,7 @@ export default function PlannerWorkspace() {
 
   return (
     <div className="space-y-8">
-      <section className="rounded-[36px] border border-border-subtle bg-white p-6 shadow-[0_18px_60px_rgba(0,0,0,0.04)] md:p-8">
+      <section className="rounded-[36px] border border-border-subtle bg-white p-6 shadow-[0_18px_60px_rgba(0,0,0,0.04)] dark:bg-pure-white dark:shadow-none md:p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="font-mono-code text-[11px] uppercase tracking-[0.18em] text-brand-green">
@@ -148,7 +147,7 @@ export default function PlannerWorkspace() {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-full border border-border-subtle bg-pure-white p-1">
+            <div className="flex items-center rounded-full border border-border-subtle bg-pure-white p-1 dark:bg-surface-container">
               <button
                 type="button"
                 onClick={() => {
@@ -201,8 +200,8 @@ export default function PlannerWorkspace() {
                 day.isSelected
                   ? "bg-on-surface text-pure-white shadow-[0_6px_20px_rgba(0,0,0,0.08)]"
                   : day.isToday
-                    ? "bg-emerald-50 text-brand-green"
-                    : "text-gray-500 hover:bg-gray-100"
+                    ? "bg-emerald-50 text-brand-green dark:bg-emerald-900/20"
+                    : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-100"
               }`}
             >
               <div
@@ -231,7 +230,7 @@ export default function PlannerWorkspace() {
           onGenerate={handleGenerate}
         />
 
-        <div className="rounded-[32px] border border-border-subtle bg-white p-6 shadow-[0_18px_60px_rgba(0,0,0,0.04)]">
+        <div className="rounded-[32px] border border-border-subtle bg-white p-6 shadow-[0_18px_60px_rgba(0,0,0,0.04)] dark:bg-pure-white dark:shadow-none">
           <div className="flex items-start justify-between gap-4 border-b border-border-subtle pb-4">
             <div>
               <p className="font-mono-code text-[11px] uppercase tracking-[0.18em] text-gray-400">
@@ -298,7 +297,7 @@ function PlannerComposerCard({
   const [comment, setComment] = useState(session?.latestComment ?? "");
 
   return (
-    <div className="rounded-[32px] border border-border-subtle bg-white p-6 shadow-[0_18px_60px_rgba(0,0,0,0.04)]">
+    <div className="rounded-[32px] border border-border-subtle bg-white p-6 shadow-[0_18px_60px_rgba(0,0,0,0.04)] dark:bg-pure-white dark:shadow-none">
       <p className="font-mono-code text-[11px] uppercase tracking-[0.18em] text-gray-400">
         {selectedHeading}
       </p>
@@ -317,7 +316,7 @@ function PlannerComposerCard({
             step={5}
             value={availableMinutes}
             onChange={(event) => setAvailableMinutes(event.target.value)}
-            className="w-full rounded-full border border-border-medium bg-gray-50/60 px-4 py-3 font-body text-body text-on-surface outline-none transition-all focus:border-brand-green"
+            className="w-full rounded-full border border-border-medium bg-gray-50/60 px-4 py-3 font-body text-body text-on-surface outline-none transition-all focus:border-brand-green dark:bg-surface-container"
             placeholder="যেমন 120"
           />
         </div>
@@ -330,7 +329,7 @@ function PlannerComposerCard({
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             rows={5}
-            className="w-full rounded-[24px] border border-border-medium bg-gray-50/60 px-4 py-3 font-body text-body text-on-surface outline-none transition-all focus:border-brand-green"
+            className="w-full rounded-[24px] border border-border-medium bg-gray-50/60 px-4 py-3 font-body text-body text-on-surface outline-none transition-all focus:border-brand-green dark:bg-surface-container"
             placeholder="যেমন: আজ Physics-এ বেশি সময় দিতে চাই। অথবা, গতি অধ্যায়ে পরীক্ষা আছে।"
           />
         </div>
@@ -350,13 +349,13 @@ function PlannerComposerCard({
         ) : null}
 
         {errorMessage ? (
-          <div className="rounded-[20px] border border-[#f1c2bc] bg-[#fff4f2] px-4 py-3 text-sm text-[#c54f41]">
+          <div className="rounded-[20px] border border-[#f1c2bc] bg-[#fff4f2] px-4 py-3 text-sm text-[#c54f41] dark:border-red-400/20 dark:bg-red-950/20 dark:text-red-200">
             {errorMessage}
           </div>
         ) : null}
 
         {noticeMessage ? (
-          <div className="rounded-[20px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-brand-green-deep">
+          <div className="rounded-[20px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-brand-green-deep dark:border-emerald-300/15 dark:bg-emerald-950/20 dark:text-emerald-200">
             {noticeMessage}
           </div>
         ) : null}
@@ -396,34 +395,10 @@ function PlannerSuggestionCard({
   onAccept: () => void;
   onDismiss: () => void;
 }) {
-  const theme = getSubjectTheme(suggestion.subjectColor);
-  const statusLabel = suggestion.isCompleted
-    ? "সম্পন্ন"
-    : suggestion.isAccepted
-      ? "Todo-তে আছে"
-      : suggestion.kind === "concept_review"
-        ? "রিভিশন"
-        : "পড়া";
-
   return (
-    <div className="rounded-[28px] border border-border-subtle bg-white px-5 py-5 shadow-[0_12px_30px_rgba(0,0,0,0.03)]">
+    <div className="rounded-[28px] border border-border-subtle bg-white px-5 py-5 shadow-[0_12px_30px_rgba(0,0,0,0.03)] dark:bg-surface-container dark:shadow-none">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="rounded-full px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em]"
-              style={{
-                backgroundColor: `${theme.accentHex}18`,
-                color: theme.accentHex,
-              }}
-            >
-              Round {suggestion.generationRound}
-            </span>
-            <span className="rounded-full bg-surface-container px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em] text-gray-500">
-              {statusLabel}
-            </span>
-          </div>
-
           <h3 className="mt-3 font-sub-heading text-lg text-on-surface">
             {suggestion.title}
           </h3>
@@ -441,7 +416,7 @@ function PlannerSuggestionCard({
             <button
               type="button"
               onClick={onDismiss}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-border-subtle text-gray-400 transition-all hover:border-[#f1c2bc] hover:bg-[#fff4f2] hover:text-[#c54f41]"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-border-subtle text-gray-400 transition-all hover:border-[#f1c2bc] hover:bg-[#fff4f2] hover:text-[#c54f41] dark:hover:border-red-400/20 dark:hover:bg-red-950/20 dark:hover:text-red-200"
               aria-label="Remove suggestion"
             >
               <span className="material-symbols-outlined text-[18px]">close</span>

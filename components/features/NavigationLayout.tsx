@@ -262,7 +262,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
         <div className="flex-1 space-y-1">{primaryNavItems.map(renderSidebarLink)}</div>
         
         <div className="mt-auto px-4 py-4">
-          <button className="w-full bg-near-black text-white rounded-full py-2.5 font-medium text-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+          <button className="w-full bg-near-black text-pure-white rounded-full py-2.5 font-medium text-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
             <span className="material-symbols-outlined text-sm">add</span>
             New Study Session
           </button>
