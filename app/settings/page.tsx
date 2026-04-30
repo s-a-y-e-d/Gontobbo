@@ -1,5 +1,5 @@
-import PlannerSettings from "@/components/features/PlannerSettings";
+import SettingsWorkspace from "@/components/features/SettingsWorkspace";
 
 export default function SettingsPage() {
-  return <PlannerSettings />;
+  return <SettingsWorkspace />;
 }

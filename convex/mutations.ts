@@ -1072,6 +1072,96 @@ export const removeWeeklyTarget = mutation({
   },
 });
 
+export const setDefaultRevisionMinutes = mutation({
+  args: {
+    minutes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (
+      !Number.isInteger(args.minutes) ||
+      args.minutes < 1 ||
+      args.minutes > 600
+    ) {
+      throw new Error("Default revision minutes must be an integer from 1 to 600");
+    }
+
+    const existingSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
+      .unique();
+
+    if (existingSetting) {
+      await ctx.db.patch(existingSetting._id, { value: args.minutes });
+      return existingSetting._id;
+    }
+
+    return await ctx.db.insert("settings", {
+      key: "defaultRevisionMinutes",
+      value: args.minutes,
+    });
+  },
+});
+
+export const setDashboardTermDates = mutation({
+  args: {
+    termStartDate: v.number(),
+    nextTermExamDate: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (
+      !Number.isInteger(args.termStartDate) ||
+      getDhakaDayBucket(args.termStartDate) !== args.termStartDate
+    ) {
+      throw new Error("Term start date must be a valid Dhaka day bucket");
+    }
+
+    if (
+      !Number.isInteger(args.nextTermExamDate) ||
+      getDhakaDayBucket(args.nextTermExamDate) !== args.nextTermExamDate
+    ) {
+      throw new Error("Next-term exam date must be a valid Dhaka day bucket");
+    }
+
+    if (args.termStartDate >= args.nextTermExamDate) {
+      throw new Error("Term start date must be before the next-term exam date");
+    }
+
+    const [existingTermStartDate, existingNextTermExamDate] = await Promise.all([
+      ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", "termStartDate"))
+        .unique(),
+      ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", "nextTermExamDate"))
+        .unique(),
+    ]);
+
+    if (existingTermStartDate) {
+      await ctx.db.patch(existingTermStartDate._id, {
+        value: args.termStartDate,
+      });
+    } else {
+      await ctx.db.insert("settings", {
+        key: "termStartDate",
+        value: args.termStartDate,
+      });
+    }
+
+    if (existingNextTermExamDate) {
+      await ctx.db.patch(existingNextTermExamDate._id, {
+        value: args.nextTermExamDate,
+      });
+      return existingNextTermExamDate._id;
+    }
+
+    return await ctx.db.insert("settings", {
+      key: "nextTermExamDate",
+      value: args.nextTermExamDate,
+    });
+  },
+});
+
 export const generatePlannerSuggestions = mutation({
   args: {
     date: v.number(),

@@ -327,8 +327,8 @@ function RevisionButton({
         !isUnlocked
           ? "bg-gray-100 text-gray-300 cursor-not-allowed"
           : isDue
-            ? "bg-brand-green text-pure-white shadow-md hover:shadow-lg active:scale-95"
-            : "bg-surface-container text-gray-400 hover:bg-gray-200"
+            ? "bg-brand-green text-near-black shadow-md shadow-brand-green/20 hover:shadow-lg active:scale-95"
+            : "bg-brand-green-light text-brand-green-deep hover:bg-brand-green-light/80 dark:bg-brand-green/15 dark:text-brand-green"
       }`}
     >
       <span className="material-symbols-outlined text-xl">refresh</span>
@@ -397,7 +397,7 @@ function MobileConceptCard({
         })}
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-surface/50 p-3">
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-brand-green/20 bg-brand-green-light/55 p-3 dark:border-brand-green/20 dark:bg-brand-green/10">
         <div className="min-w-0">
           <p className="font-mono-code text-mono-code uppercase text-gray-500">Revision</p>
           <p className="mt-0.5 text-sm text-gray-500">

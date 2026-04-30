@@ -380,7 +380,7 @@ function MobileConceptProgress({ completed, total }: { completed: number; total:
   const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
 
   return (
-    <div className="rounded-2xl border border-border-subtle bg-surface/50 p-3">
+    <div className="rounded-2xl border border-brand-green/20 bg-brand-green-light/55 p-3 dark:border-brand-green/20 dark:bg-brand-green/10">
       <div className="mb-2 flex items-center justify-between gap-3">
         <span className="font-mono-code text-mono-code uppercase text-gray-500">
           Concepts
@@ -389,7 +389,7 @@ function MobileConceptProgress({ completed, total }: { completed: number; total:
           {total === 0 ? "-" : `${completed}/${total}`}
         </span>
       </div>
-      <div className="h-2.5 overflow-hidden rounded-full bg-surface-container">
+      <div className="h-2.5 overflow-hidden rounded-full bg-white/80 dark:bg-black/30">
         <div
           className={`h-full rounded-full transition-all duration-500 ${
             pct === 100 ? "bg-brand-green" : pct > 0 ? "bg-warm-amber" : "bg-gray-300"

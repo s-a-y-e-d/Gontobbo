@@ -12,8 +12,8 @@ type NavItem = {
 };
 
 const primaryNavItems: NavItem[] = [
-  { icon: "dashboard", label: "Dashboard" },
-  { icon: "auto_stories", label: "Subjects", href: "/" },
+  { icon: "dashboard", label: "Dashboard", href: "/" },
+  { icon: "auto_stories", label: "Subjects", href: "/subjects" },
   { icon: "psychology", label: "AI Planner", href: "/planner" },
   { icon: "calendar_today", label: "Todo", href: "/todo" },
   { icon: "query_stats", label: "Progress" },
@@ -23,11 +23,11 @@ const primaryNavItems: NavItem[] = [
 ];
 
 const bottomNavItems: NavItem[] = [
+  { icon: "dashboard", label: "Home", href: "/" },
+  { icon: "book", label: "Subjects", href: "/subjects" },
   { icon: "calendar_today", label: "Todo", href: "/todo" },
-  { icon: "book", label: "Subjects", href: "/" },
   { icon: "psychology", label: "AI Planner", href: "/planner" },
   { icon: "history_edu", label: "Revision", href: "/revision" },
-  { icon: "format_list_bulleted", label: "Logs", href: "/logs" },
 ];
 
 function Breadcrumbs() {
@@ -36,14 +36,16 @@ function Breadcrumbs() {
   // Build breadcrumb segments from the path
   const segments = pathname.split("/").filter(Boolean);
 
-  // Default: always show "Subjects" as root
+  // Default: always show "Dashboard" as root
   const crumbs: { label: string; href: string }[] = [
-    { label: "Subjects", href: "/" },
+    { label: "Dashboard", href: "/" },
   ];
 
+  if (segments[0] === "subjects") {
+    crumbs.push({ label: "Subjects", href: "/subjects" });
+  }
+
   if (segments[0] === "subjects" && segments[1]) {
-    // Subject page: /subjects/[slug]
-    // Capitalize slug for display (will be replaced by actual name via the page)
     const subjectSlug = segments[1];
     const displayName = decodeURIComponent(subjectSlug)
       .split("-")
@@ -121,7 +123,9 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
   }, [mounted]);
 
   // Determine active nav item
-  const isSubjectsActive = pathname === "/" || pathname.startsWith("/subjects");
+  const isDashboardActive = pathname === "/";
+  const isSubjectsActive =
+    pathname === "/subjects" || pathname.startsWith("/subjects/");
   const isLogsActive = pathname === "/logs" || pathname.startsWith("/logs");
   const isTodoActive = pathname === "/todo" || pathname.startsWith("/todo");
   const isRevisionActive = pathname === "/revision";
@@ -130,7 +134,8 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
 
   const getIsActive = (href?: string) => {
     if (!href) return false;
-    if (href === "/") return isSubjectsActive;
+    if (href === "/") return isDashboardActive;
+    if (href === "/subjects") return isSubjectsActive;
     if (href === "/todo") return isTodoActive;
     if (href === "/logs") return isLogsActive;
     if (href === "/revision") return isRevisionActive;

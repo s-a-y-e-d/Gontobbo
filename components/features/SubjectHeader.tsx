@@ -14,7 +14,7 @@ export default function SubjectHeader({ name, progressPercentage }: SubjectHeade
       <h1 className="font-section-heading text-[30px] leading-[1.12] font-bold text-on-surface break-words sm:text-[34px] md:text-section-heading">
         {name}
       </h1>
-      <div className="flex items-center gap-3 rounded-2xl border border-border-subtle bg-surface/50 p-3 md:border-0 md:bg-transparent md:p-0">
+      <div className="flex items-center gap-3 rounded-2xl border border-brand-green/20 bg-brand-green-light/60 p-3 dark:border-brand-green/20 dark:bg-brand-green/10 md:border-0 md:bg-transparent md:p-0 md:dark:bg-transparent">
         <CircularProgress percentage={progressPercentage} size={56} strokeWidth={5} />
         <div className="flex flex-col">
           <span className="font-mono-code text-mono-code text-gray-500 uppercase">

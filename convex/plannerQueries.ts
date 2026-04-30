@@ -1,4 +1,4 @@
-import { query } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
@@ -104,9 +104,7 @@ export const getPlannerPageData = query({
   },
 });
 
-export const getPlannerSettingsData = query({
-  args: {},
-  handler: async (ctx) => {
+async function getPlannerSettingsSubjects(ctx: QueryCtx) {
     const [subjects, chapters, concepts, studyItems, plannerPreferences, weeklyTargets, coachingStatuses] =
       await Promise.all([
         ctx.db.query("subjects").collect(),
@@ -201,9 +199,50 @@ export const getPlannerSettingsData = query({
         name: subject.name,
         color: subject.color,
         icon: subject.icon,
+        chapterTrackers: subject.chapterTrackers,
+        conceptTrackers: subject.conceptTrackers,
         priority: subjectPriorityById.get(subject._id) ?? "normal",
         chapters: subjectChapters,
       };
     });
+}
+
+async function getNumberSettingValue(ctx: QueryCtx, key: string) {
+  const setting = await ctx.db
+    .query("settings")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+
+  return typeof setting?.value === "number" ? setting.value : undefined;
+}
+
+export const getPlannerSettingsData = query({
+  args: {},
+  handler: async (ctx) => {
+    return await getPlannerSettingsSubjects(ctx);
+  },
+});
+
+export const getSettingsPageData = query({
+  args: {},
+  handler: async (ctx) => {
+    const [
+      subjects,
+      defaultRevisionMinutes,
+      termStartDate,
+      nextTermExamDate,
+    ] = await Promise.all([
+      getPlannerSettingsSubjects(ctx),
+      getNumberSettingValue(ctx, "defaultRevisionMinutes"),
+      getNumberSettingValue(ctx, "termStartDate"),
+      getNumberSettingValue(ctx, "nextTermExamDate"),
+    ]);
+
+    return {
+      subjects,
+      defaultRevisionMinutes: defaultRevisionMinutes ?? 15,
+      termStartDate,
+      nextTermExamDate,
+    };
   },
 });
