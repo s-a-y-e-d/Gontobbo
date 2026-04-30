@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -34,6 +35,39 @@ type ChapterTableProps = {
   subjectSlug: string;
   subjectId?: Id<"subjects">;
 };
+
+type FloatingMenuPosition = {
+  top: number;
+  left: number;
+  visibility: "hidden" | "visible";
+};
+
+function getFloatingMenuPosition(
+  triggerRect: DOMRect,
+  menuWidth: number,
+  menuHeight: number,
+): FloatingMenuPosition {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const gutter = 12;
+  const gap = 8;
+
+  let top = triggerRect.bottom + gap;
+  if (top + menuHeight > viewportHeight - gutter) {
+    top = Math.max(gutter, triggerRect.top - menuHeight - gap);
+  }
+
+  const left = Math.min(
+    Math.max(gutter, triggerRect.right - menuWidth),
+    viewportWidth - menuWidth - gutter,
+  );
+
+  return {
+    top,
+    left,
+    visibility: "visible",
+  };
+}
 
 function StatusBadge({ status }: { status: "NOT_STARTED" | "IN_PROGRESS" | "READY" }) {
   const config = {
@@ -141,15 +175,59 @@ function ActionMenu({
   const [open, setOpen] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
+  const [menuPosition, setMenuPosition] = useState<FloatingMenuPosition>({
+    top: 0,
+    left: 0,
+    visibility: "hidden",
+  });
 
   const toggleExam = useMutation(api.mutations.toggleChapterInNextTerm);
   const resetProgress = useMutation(api.mutations.resetChapterProgress);
 
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const updateMenuPosition = () => {
+      const button = buttonRef.current;
+      const menu = menuRef.current;
+
+      if (!button || !menu) {
+        return;
+      }
+
+      setMenuPosition(
+        getFloatingMenuPosition(
+          button.getBoundingClientRect(),
+          menu.offsetWidth || 220,
+          menu.offsetHeight || 260,
+        ),
+      );
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open, showConfirm]);
+
   // Close menu on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(target) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(target)
+      ) {
         setOpen(false);
         setShowConfirm(false);
       }
@@ -161,11 +239,28 @@ function ActionMenu({
   }, [open]);
 
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="relative">
       <button
+        ref={buttonRef}
         onClick={(e) => {
           e.stopPropagation();
-          setOpen(!open);
+          if (open) {
+            setOpen(false);
+            setMenuPosition({
+              top: 0,
+              left: 0,
+              visibility: "hidden",
+            });
+          } else {
+            setMenuPosition(
+              getFloatingMenuPosition(
+                e.currentTarget.getBoundingClientRect(),
+                220,
+                showConfirm ? 200 : 260,
+              ),
+            );
+            setOpen(true);
+          }
           setShowConfirm(false);
         }}
         className="text-gray-400 hover:text-on-surface transition-colors p-1 rounded-lg hover:bg-gray-100"
@@ -173,8 +268,12 @@ function ActionMenu({
         <span className="material-symbols-outlined text-xl">more_horiz</span>
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-1 bg-pure-white border border-border-subtle rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.08)] py-1.5 z-50 min-w-[220px] animate-in fade-in slide-in-from-top-1 duration-150">
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[120] min-w-[220px] animate-in fade-in rounded-2xl border border-border-subtle bg-pure-white py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.08)] duration-150"
+          style={menuPosition}
+        >
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -265,10 +364,11 @@ function ActionMenu({
                 >
                   বাতিল
                 </button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+        </div>,
+        document.body,
       )}
     </div>
   );
