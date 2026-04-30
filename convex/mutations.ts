@@ -12,6 +12,7 @@ import {
   ruleBasedPlannerCommentParser,
   type PlannerCandidate,
 } from "./planner";
+import { requireCurrentOwner } from "./auth";
 
 const TODO_DURATION_MINUTES = Array.from({ length: 16 }, (_, index) => (index + 1) * 15);
 const STUDY_ITEM_SEARCH_VERSION_SETTING_KEY = "study_item_search_text_version";
@@ -333,6 +334,7 @@ export const createSubject = mutation({
     order: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const { slug, ...rest } = args;
     const subjectId = await ctx.db.insert("subjects", {
       ...rest,
@@ -369,6 +371,7 @@ export const updateSubject = mutation({
     }))),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const { subjectId, ...updates } = args;
 
     const oldSubject = await ctx.db.get(subjectId);
@@ -432,6 +435,7 @@ export const updateStudyLogMinutes = mutation({
     minutesSpent: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const log = await ctx.db.get(args.logId);
     if (!log) throw new Error("Log not found");
     if (!log.isEditable) throw new Error("This log is not editable");
@@ -458,6 +462,7 @@ export const updateStudyLogMinutes = mutation({
 export const toggleChapterInNextTerm = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const chapter = await ctx.db.get(args.chapterId);
     if (!chapter) throw new Error("Chapter not found");
     await ctx.db.patch(args.chapterId, {
@@ -477,6 +482,7 @@ export const createChapter = mutation({
     priorityBoost: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const { slug, ...rest } = args;
     const chapterId = await ctx.db.insert("chapters", {
       ...rest,
@@ -502,6 +508,7 @@ export const updateChapter = mutation({
     priorityBoost: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const { chapterId, ...updates } = args;
     await ctx.db.patch(chapterId, updates);
     await syncStudyItemsByChapter(ctx, chapterId);
@@ -512,6 +519,7 @@ export const updateChapter = mutation({
 export const deleteChapter = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     // Also delete associated concepts and studyItems
     const concepts = await ctx.db
       .query("concepts")
@@ -596,6 +604,7 @@ export const createConcept = mutation({
     difficulty: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     return await ctx.db.insert("concepts", args);
   },
 });
@@ -609,6 +618,7 @@ export const updateConcept = mutation({
     difficulty: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const { conceptId, ...updates } = args;
     
     // Update the concept itself
@@ -642,6 +652,7 @@ export const updateConcept = mutation({
 export const deleteConcept = mutation({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     // Delete associated studyItems first and their logs
     const studyItems = await ctx.db
       .query("studyItems")
@@ -680,6 +691,7 @@ export const deleteConcept = mutation({
 export const resetChapterProgress = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     // 1. Reset all studyItems for this chapter
     const studyItems = await ctx.db
       .query("studyItems")
@@ -732,20 +744,27 @@ export const resetChapterProgress = mutation({
 // Called when user first visits a subject page
 export const ensureChapterStudyItems = mutation({
   args: { subjectId: v.id("subjects") },
-  handler: async (ctx, args) => ensureChapterStudyItemsForSubject(ctx, args.subjectId),
+  handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
+    return await ensureChapterStudyItemsForSubject(ctx, args.subjectId);
+  },
 });
 
 // ── Ensure concept-level studyItems exist (lazy creation) ────────
 // Called when user first visits a chapter page
 export const ensureConceptStudyItems = mutation({
   args: { chapterId: v.id("chapters") },
-  handler: async (ctx, args) => ensureConceptStudyItemsForChapter(ctx, args.chapterId),
+  handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
+    return await ensureConceptStudyItemsForChapter(ctx, args.chapterId);
+  },
 });
 
 // ── Fix subjects with non-ASCII tracker keys ────────────────────
 export const fixInvalidTrackerKeys = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     type TrackerConfig = {
       key: string;
       label: string;
@@ -832,6 +851,7 @@ export const backfillStudyItemSearchText = mutation({
     cursor: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const currentVersionSetting = await ctx.db
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", STUDY_ITEM_SEARCH_VERSION_SETTING_KEY))
@@ -890,6 +910,7 @@ export const createTodoTask = mutation({
     source: v.union(v.literal("manual"), v.literal("ai_accepted")),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
       throw new Error("Date must be a valid Dhaka day bucket");
     }
@@ -945,6 +966,7 @@ export const setPlannerSubjectPriority = mutation({
     priority: v.union(v.literal("normal"), v.literal("important")),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const subject = await ctx.db.get(args.subjectId);
     if (!subject) {
       throw new Error("Subject not found");
@@ -981,6 +1003,7 @@ export const setCoachingChapterProgress = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const chapter = await ctx.db.get(args.chapterId);
     if (!chapter) {
       throw new Error("Chapter not found");
@@ -1014,6 +1037,7 @@ export const addWeeklyTarget = mutation({
     conceptId: v.optional(v.id("concepts")),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const chapter = await ctx.db.get(args.chapterId);
     if (!chapter) {
       throw new Error("Chapter not found");
@@ -1068,6 +1092,7 @@ export const addWeeklyTarget = mutation({
 export const removeWeeklyTarget = mutation({
   args: { weeklyTargetId: v.id("weeklyTargets") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     await ctx.db.delete(args.weeklyTargetId);
   },
 });
@@ -1077,6 +1102,7 @@ export const setDefaultRevisionMinutes = mutation({
     minutes: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     if (
       !Number.isInteger(args.minutes) ||
       args.minutes < 1 ||
@@ -1108,6 +1134,7 @@ export const setDashboardTermDates = mutation({
     nextTermExamDate: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     if (
       !Number.isInteger(args.termStartDate) ||
       getDhakaDayBucket(args.termStartDate) !== args.termStartDate
@@ -1169,6 +1196,7 @@ export const generatePlannerSuggestions = mutation({
     comment: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
       throw new Error("Date must be a valid Dhaka day bucket");
     }
@@ -1542,6 +1570,7 @@ export const acceptPlannerSuggestion = mutation({
     suggestionId: v.id("plannerSuggestions"),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const suggestion = await ctx.db.get(args.suggestionId);
     if (!suggestion) {
       throw new Error("Suggestion not found");
@@ -1626,6 +1655,7 @@ export const dismissPlannerSuggestion = mutation({
     suggestionId: v.id("plannerSuggestions"),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const suggestion = await ctx.db.get(args.suggestionId);
     if (!suggestion) {
       throw new Error("Suggestion not found");
@@ -1644,6 +1674,7 @@ export const dismissPlannerSuggestion = mutation({
 export const toggleStudyItemCompletion = mutation({
   args: { studyItemId: v.id("studyItems") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const item = await ctx.db.get(args.studyItemId);
     if (!item) throw new Error("StudyItem not found");
     
@@ -1724,6 +1755,7 @@ export const reviewConcept = mutation({
     rating: v.union(v.literal("hard"), v.literal("medium"), v.literal("easy")),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const concept = await ctx.db.get(args.conceptId);
     if (!concept) throw new Error("Concept not found");
 
@@ -1787,6 +1819,7 @@ export const reviewConcept = mutation({
 export const resetConceptProgress = mutation({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     // 1. Reset Concept SR fields
     await ctx.db.patch(args.conceptId, {
       reviewCount: undefined,
@@ -1835,6 +1868,7 @@ export const rescheduleConceptReview = mutation({
     newNextReviewAt: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     await ctx.db.patch(args.conceptId, {
       nextReviewAt: args.newNextReviewAt,
     });
@@ -1847,6 +1881,7 @@ export const rescheduleConceptReview = mutation({
 export const migrateAndSeed = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     // 1. Delete all studyItems
     const studyItems = await ctx.db.query("studyItems").take(500);
     for (const item of studyItems) {
@@ -1991,6 +2026,7 @@ export const migrateAndSeed = mutation({
 export const seedChemistryConcepts = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     const chemistry = await ctx.db
       .query("subjects")
       .withIndex("by_slug", (q) => q.eq("slug", "chemistry"))

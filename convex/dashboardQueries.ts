@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { requireCurrentOwner } from "./auth";
 
 const DAY_MS = 86400000;
 const DASHBOARD_TODO_LIMIT = 5;
@@ -41,6 +42,7 @@ function getRoundedPercentage(completed: number, total: number) {
 export const getDashboardPageData = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     const today = getDhakaDayBucket(Date.now());
 
     const [

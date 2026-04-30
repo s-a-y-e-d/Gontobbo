@@ -1,6 +1,7 @@
 import { query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { requireCurrentOwner } from "./auth";
 import {
   buildStudyItemSearchArtifacts,
   normalizeStudyItemSearchQuery,
@@ -32,6 +33,7 @@ export const getTodoAgenda = query({
     days: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const clampedDays = Math.max(1, Math.min(args.days, 31));
     const endDate = args.startDate + (clampedDays - 1) * DAY_MS;
 
@@ -170,6 +172,7 @@ export const searchStudyItemsForTodo = query({
     searchText: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const normalizedSearchText = normalizeStudyItemSearchQuery(args.searchText);
     if (normalizedSearchText.length === 0) {
       return [];

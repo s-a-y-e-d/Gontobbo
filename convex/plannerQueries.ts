@@ -1,6 +1,7 @@
 import { query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { requireCurrentOwner } from "./auth";
 
 function getDhakaDayBucket(timestamp: number) {
   const dhakaOffset = 6 * 60 * 60 * 1000;
@@ -30,6 +31,7 @@ export const getPlannerPageData = query({
     date: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const session = await ctx.db
       .query("plannerSessions")
       .withIndex("by_date", (q) => q.eq("date", args.date))
@@ -105,6 +107,7 @@ export const getPlannerPageData = query({
 });
 
 async function getPlannerSettingsSubjects(ctx: QueryCtx) {
+    await requireCurrentOwner(ctx);
     const [subjects, chapters, concepts, studyItems, plannerPreferences, weeklyTargets, coachingStatuses] =
       await Promise.all([
         ctx.db.query("subjects").collect(),
@@ -219,6 +222,7 @@ async function getNumberSettingValue(ctx: QueryCtx, key: string) {
 export const getPlannerSettingsData = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     return await getPlannerSettingsSubjects(ctx);
   },
 });
@@ -226,6 +230,7 @@ export const getPlannerSettingsData = query({
 export const getSettingsPageData = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     const [
       subjects,
       defaultRevisionMinutes,

@@ -1,5 +1,6 @@
 "use client";
 
+import { UserButton } from "@clerk/nextjs";
 import React, { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -291,9 +292,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
             </button>
             <button className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"><span className="material-symbols-outlined">notifications</span></button>
           </div>
-          <div className="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 overflow-hidden flex items-center justify-center">
-            <img alt="Student Profile Avatar" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQHSCY5tzAn6ImxgAIUrvnBxTsfM4WmTIphkFjmEaY2epp7zaC9Y2wlcbffnn5OloFCXiSqmPi2bqza_G6nGrJqxpKlH7T-SEc74gcMiT7kZJ-EtwbqhvCSdcEHq13HqO6-Brm36_rAcQ6JTcrhe2JMiD8i6eC0NVeexm11d7JRwOSEV90OXqNTAH3HvP2rt5RmtHv-XAu-ZeDHWWx5THNCewM5F12i2jmu282tM6IuoC_47guCRzdAIL7uAi_oYGY0siibrFvnyu0"/>
-          </div>
+          <UserButton />
         </div>
       </header>
 
@@ -321,8 +320,8 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
               {mounted && resolvedTheme === "dark" ? "light_mode" : "dark_mode"}
             </span>
           </button>
-          <div className="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 overflow-hidden ml-1">
-            <img alt="Student Profile Avatar" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQHSCY5tzAn6ImxgAIUrvnBxTsfM4WmTIphkFjmEaY2epp7zaC9Y2wlcbffnn5OloFCXiSqmPi2bqza_G6nGrJqxpKlH7T-SEc74gcMiT7kZJ-EtwbqhvCSdcEHq13HqO6-Brm36_rAcQ6JTcrhe2JMiD8i6eC0NVeexm11d7JRwOSEV90OXqNTAH3HvP2rt5RmtHv-XAu-ZeDHWWx5THNCewM5F12i2jmu282tM6IuoC_47guCRzdAIL7uAi_oYGY0siibrFvnyu0"/>
+          <div className="ml-1">
+            <UserButton />
           </div>
         </div>
       </header>

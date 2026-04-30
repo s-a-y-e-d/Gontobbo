@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as dashboardQueries from "../dashboardQueries.js";
 import type * as mutations from "../mutations.js";
 import type * as planner from "../planner.js";
@@ -23,6 +24,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   dashboardQueries: typeof dashboardQueries;
   mutations: typeof mutations;
   planner: typeof planner;

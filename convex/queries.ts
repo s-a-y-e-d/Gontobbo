@@ -2,6 +2,7 @@ import { query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
+import { requireCurrentOwner } from "./auth";
 import {
   buildStudyItemSearchArtifacts,
   normalizeStudyItemSearchQuery,
@@ -32,6 +33,7 @@ export const getStudyLogsFeed = query({
     dayBucket: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     let q;
 
     // Choose best index based on provided filters
@@ -79,6 +81,7 @@ export const getStudyLogsFeed = query({
 export const getStudyLogSubjectsFilterData = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     const subjects = await ctx.db.query("subjects").collect();
     return subjects.map(s => ({
       _id: s._id,
@@ -91,6 +94,7 @@ export const getStudyLogSubjectsFilterData = query({
 export const getSubjects = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     return await ctx.db.query("subjects").collect();
   },
 });
@@ -99,6 +103,7 @@ export const getSubjects = query({
 export const getSubjectBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     return await ctx.db
       .query("subjects")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
@@ -110,6 +115,7 @@ export const getSubjectBySlug = query({
 export const getSubjectDetails = query({
   args: { subjectId: v.id("subjects") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     return await ctx.db.get(args.subjectId);
   },
 });
@@ -118,6 +124,7 @@ export const getSubjectDetails = query({
 export const getChaptersBySubject = query({
   args: { subjectId: v.id("subjects") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     return await ctx.db
       .query("chapters")
       .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
@@ -129,6 +136,7 @@ export const getChaptersBySubject = query({
 export const getConceptsByChapter = query({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     return await ctx.db
       .query("concepts")
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
@@ -140,6 +148,7 @@ export const getConceptsByChapter = query({
 export const getChapterStudyItems = query({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const items = await ctx.db
       .query("studyItems")
       .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
@@ -153,6 +162,7 @@ export const getChapterStudyItems = query({
 export const getConceptStudyItems = query({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     return await ctx.db
       .query("studyItems")
       .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
@@ -166,6 +176,7 @@ export const getConceptStudyItems = query({
 export const getSubjectPageData = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const subject = await ctx.db
       .query("subjects")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
@@ -278,6 +289,7 @@ export const getSubjectPageData = query({
 export const getSubjectsWithStats = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     const subjects = await ctx.db.query("subjects").collect();
 
     const subjectsWithStats = await Promise.all(
@@ -346,6 +358,7 @@ export const getReviewsDashboardData = query({
     subjectId: v.optional(v.id("subjects")),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     // 1. Get all concepts with nextReviewAt
     let concepts = await ctx.db.query("concepts").collect();
 
@@ -419,6 +432,7 @@ export const getTodoAgenda = query({
     days: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const clampedDays = Math.max(1, Math.min(args.days, 31));
     const endDate = args.startDate + (clampedDays - 1) * DAY_MS;
 
@@ -569,6 +583,7 @@ export const searchStudyItemsForTodo = query({
     searchText: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const normalizedSearchText = normalizeStudyItemSearchQuery(args.searchText);
     if (normalizedSearchText.length === 0) {
       return [];
@@ -692,6 +707,7 @@ export const searchStudyItemsForTodo = query({
 export const getSubjectsForFilter = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentOwner(ctx);
     const subjects = await ctx.db.query("subjects").collect();
     return subjects.map((s) => ({
       _id: s._id,
@@ -706,6 +722,7 @@ export const getSubjectsForFilter = query({
 export const countStudyItemsByType = query({
   args: { subjectId: v.id("subjects"), type: v.string() },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const items = await ctx.db
       .query("studyItems")
       .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
@@ -720,6 +737,7 @@ export const countStudyItemsByType = query({
 export const getChapterPageData = query({
   args: { subjectSlug: v.string(), chapterSlug: v.string() },
   handler: async (ctx, args) => {
+    await requireCurrentOwner(ctx);
     const subject = await ctx.db
       .query("subjects")
       .withIndex("by_slug", (q) => q.eq("slug", args.subjectSlug))
