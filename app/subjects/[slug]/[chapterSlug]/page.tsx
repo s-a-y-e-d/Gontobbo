@@ -71,7 +71,7 @@ export default function ChapterPage() {
       <div className="mt-8 flex justify-center">
         <Link
           href={`/subjects/${slug}`}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-full border border-border-subtle text-gray-500 hover:text-on-surface hover:bg-gray-50 transition-all font-body text-sm"
+          className="flex w-full items-center justify-center gap-2 px-6 py-3 rounded-full border border-border-subtle bg-pure-white text-gray-500 hover:text-on-surface hover:bg-gray-50 transition-all font-body text-sm sm:w-auto sm:py-2.5"
         >
           <span className="material-symbols-outlined text-lg">arrow_back</span>
           বিষয়ে ফিরে যান

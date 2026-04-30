@@ -209,6 +209,107 @@ function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; study
   );
 }
 
+function RevisionButton({
+  isUnlocked,
+  isDue,
+  onReview,
+}: {
+  isUnlocked: boolean;
+  isDue: boolean;
+  onReview: () => void;
+}) {
+  return (
+    <button
+      disabled={!isUnlocked}
+      onClick={onReview}
+      title={!isUnlocked ? "Complete all trackers first" : ""}
+      className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+        !isUnlocked
+          ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+          : isDue
+            ? "bg-brand-green text-pure-white shadow-md hover:shadow-lg active:scale-95"
+            : "bg-surface-container text-gray-400 hover:bg-gray-200"
+      }`}
+    >
+      <span className="material-symbols-outlined text-xl">refresh</span>
+    </button>
+  );
+}
+
+function MobileConceptCard({
+  concept,
+  trackerConfigs,
+  isUnlocked,
+  isDue,
+  onEdit,
+  onDelete,
+  onReset,
+  onReview,
+}: {
+  concept: ConceptRowData;
+  trackerConfigs: TrackerConfig[];
+  isUnlocked: boolean;
+  isDue: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onReset: () => void;
+  onReview: () => void;
+}) {
+  return (
+    <article className="rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container font-mono-code text-mono-code text-gray-500">
+          {String(concept.order).padStart(2, "0")}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-body text-[17px] font-semibold leading-snug text-on-surface break-words">
+            {concept.name}
+          </h3>
+          <div className="mt-2">
+            <StatusBadge status={concept.status} />
+          </div>
+        </div>
+        <ActionMenu
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onReset={onReset}
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {trackerConfigs.map((trackerConfig) => {
+          const tracker = concept.trackerData.find((data) => data.key === trackerConfig.key);
+
+          return (
+            <div
+              key={trackerConfig.key}
+              className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-pure-white px-3 py-2"
+            >
+              <span className="min-w-0 truncate font-mono-code text-mono-code uppercase text-gray-500">
+                {trackerConfig.label}
+              </span>
+              <TrackerCell
+                isCompleted={tracker?.isCompleted ?? false}
+                studyItemId={tracker?.studyItemId}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-surface/50 p-3">
+        <div className="min-w-0">
+          <p className="font-mono-code text-mono-code uppercase text-gray-500">Revision</p>
+          <p className="mt-0.5 text-sm text-gray-500">
+            {!isUnlocked ? "Locked" : isDue ? "Due now" : "Ready"}
+          </p>
+        </div>
+        <RevisionButton isUnlocked={isUnlocked} isDue={isDue} onReview={onReview} />
+      </div>
+    </article>
+  );
+}
+
 export default function ConceptTable({
   title,
   concepts,
@@ -242,17 +343,17 @@ export default function ConceptTable({
   if (concepts.length === 0) {
     return (
       <section className="mb-12">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="font-sub-heading text-sub-heading text-on-surface">{title}</h2>
+        <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="font-sub-heading text-[22px] leading-tight text-on-surface md:text-sub-heading">{title}</h2>
           <button 
             onClick={handleAdd}
-            className="flex items-center gap-2 px-4 py-2 bg-on-surface text-pure-white rounded-full font-label-uppercase text-xs hover:bg-brand-green transition-all shadow-sm"
+            className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-on-surface text-pure-white rounded-full font-label-uppercase text-xs hover:bg-brand-green transition-all shadow-sm sm:w-auto sm:py-2"
           >
             <span className="material-symbols-outlined text-base">add</span>
             নতুন কনসেপ্ট
           </button>
         </div>
-        <div className="text-center py-12 text-gray-400 border border-border-subtle rounded-2xl bg-pure-white">
+        <div className="text-center py-12 px-4 text-gray-400 border border-border-subtle rounded-2xl bg-pure-white">
           কোনো কনসেপ্ট পাওয়া যায়নি
         </div>
 
@@ -273,18 +374,38 @@ export default function ConceptTable({
 
   return (
     <section className="mb-12">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="font-sub-heading text-sub-heading text-on-surface">{title}</h2>
+      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="font-sub-heading text-[22px] leading-tight text-on-surface md:text-sub-heading">{title}</h2>
         <button 
           onClick={handleAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-on-surface text-pure-white rounded-full font-label-uppercase text-xs hover:bg-brand-green transition-all shadow-sm"
+          className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-on-surface text-pure-white rounded-full font-label-uppercase text-xs hover:bg-brand-green transition-all shadow-sm sm:w-auto sm:py-2"
         >
           <span className="material-symbols-outlined text-base">add</span>
           নতুন কনসেপ্ট
         </button>
       </div>
-      <div className="bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-        <table className="w-full border-separate border-spacing-0">
+      <div className="space-y-3 md:hidden">
+        {concepts.map((concept) => {
+          const isUnlocked = concept.completedItems === concept.totalItems && concept.totalItems > 0;
+          const isDue = concept.nextReviewAt ? concept.nextReviewAt <= now : false;
+
+          return (
+            <MobileConceptCard
+              key={concept._id}
+              concept={concept}
+              trackerConfigs={trackerConfigs}
+              isUnlocked={isUnlocked}
+              isDue={isDue}
+              onEdit={() => handleEdit(concept)}
+              onDelete={() => deleteConcept({ conceptId: concept._id })}
+              onReset={() => resetConcept({ conceptId: concept._id })}
+              onReview={() => handleReview(concept)}
+            />
+          );
+        })}
+      </div>
+      <div className="hidden overflow-x-auto bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] md:block">
+        <table className="w-full min-w-[720px] border-separate border-spacing-0">
           <thead>
             <tr className="border-b border-border-subtle">
               <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">

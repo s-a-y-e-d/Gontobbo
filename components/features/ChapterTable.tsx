@@ -276,6 +276,103 @@ function ActionMenu({
 
 import ChapterModal from "./ChapterModal";
 
+function MobileConceptProgress({ completed, total }: { completed: number; total: number }) {
+  const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+  return (
+    <div className="rounded-2xl border border-border-subtle bg-surface/50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="font-mono-code text-mono-code uppercase text-gray-500">
+          Concepts
+        </span>
+        <span className="font-mono-code text-mono-code text-on-surface">
+          {total === 0 ? "-" : `${completed}/${total}`}
+        </span>
+      </div>
+      <div className="h-2.5 overflow-hidden rounded-full bg-surface-container">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${
+            pct === 100 ? "bg-brand-green" : pct > 0 ? "bg-warm-amber" : "bg-gray-300"
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MobileChapterCard({
+  chapter,
+  trackerConfigs,
+  subjectSlug,
+  onEdit,
+  onDelete,
+  displayOrder,
+}: {
+  chapter: ChapterRowData;
+  trackerConfigs: TrackerConfig[];
+  subjectSlug: string;
+  onEdit: () => void;
+  onDelete: () => void;
+  displayOrder: string;
+}) {
+  const router = useRouter();
+
+  return (
+    <article className="rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container font-mono-code text-mono-code text-gray-500">
+          {displayOrder}
+        </span>
+        <div className="min-w-0 flex-1">
+          <button
+            onClick={() => router.push(`/subjects/${subjectSlug}/${chapter.slug}`)}
+            className="block w-full text-left font-body text-[17px] font-semibold leading-snug text-on-surface transition-colors hover:text-brand-green"
+          >
+            {chapter.name}
+          </button>
+          <div className="mt-2">
+            <StatusBadge status={chapter.status} />
+          </div>
+        </div>
+        <ActionMenu
+          chapterId={chapter._id}
+          inNextTerm={chapter.inNextTerm}
+          subjectSlug={subjectSlug}
+          chapterSlug={chapter.slug}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      </div>
+
+      <div className="mt-4">
+        <MobileConceptProgress completed={chapter.completedConcepts} total={chapter.totalConcepts} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {trackerConfigs.map((trackerConfig) => {
+          const tracker = chapter.trackerData.find((data) => data.key === trackerConfig.key);
+
+          return (
+            <div
+              key={trackerConfig.key}
+              className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-pure-white px-3 py-2"
+            >
+              <span className="min-w-0 truncate font-mono-code text-mono-code uppercase text-gray-500">
+                {trackerConfig.label}
+              </span>
+              <TrackerCell
+                isCompleted={tracker?.isCompleted ?? false}
+                studyItemId={tracker?.studyItemId}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
 export default function ChapterTable({
   title,
   chapters,
@@ -291,7 +388,7 @@ export default function ChapterTable({
     return (
       <section className="mb-12">
         <h2 className="font-sub-heading text-sub-heading text-on-surface mb-6">{title}</h2>
-        <div className="text-center py-12 text-gray-400 border border-border-subtle rounded-2xl bg-pure-white">
+        <div className="text-center py-12 px-4 text-gray-400 border border-border-subtle rounded-2xl bg-pure-white">
           কোনো অধ্যায় পাওয়া যায়নি
         </div>
       </section>
@@ -302,9 +399,26 @@ export default function ChapterTable({
 
   return (
     <section className="mb-12">
-      <h2 className="font-sub-heading text-sub-heading text-on-surface mb-6">{title}</h2>
-      <div className="bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-        <table className="w-full border-separate border-spacing-0">
+      <h2 className="font-sub-heading text-[22px] leading-tight text-on-surface mb-4 md:mb-6 md:text-sub-heading">{title}</h2>
+      <div className="space-y-3 md:hidden">
+        {chapters.map((chapter, idx) => (
+          <MobileChapterCard
+            key={chapter._id}
+            chapter={chapter}
+            trackerConfigs={trackerConfigs}
+            subjectSlug={subjectSlug}
+            displayOrder={
+              String(chapter.order).length > 2
+                ? String(idx + 1).padStart(2, "0")
+                : String(chapter.order).padStart(2, "0")
+            }
+            onEdit={() => setEditingChapter(chapter)}
+            onDelete={() => deleteChapter({ chapterId: chapter._id })}
+          />
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] md:block">
+        <table className="w-full min-w-[760px] border-separate border-spacing-0">
           <thead>
             <tr className="border-b border-border-subtle">
               <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">

@@ -54,10 +54,10 @@ export default function SubjectPage() {
         progressPercentage={progressPercentage}
       />
 
-      <div className="flex justify-end mb-8 -mt-4">
+      <div className="flex mb-8 md:-mt-4 md:justify-end">
         <button 
           onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-2 px-6 py-2.5 bg-on-surface text-pure-white rounded-full font-label-uppercase text-label-uppercase hover:bg-brand-green transition-all shadow-sm hover:shadow-md"
+          className="flex w-full items-center justify-center gap-2 px-6 py-3 bg-on-surface text-pure-white rounded-full font-label-uppercase text-label-uppercase hover:bg-brand-green transition-all shadow-sm hover:shadow-md sm:w-auto sm:py-2.5"
         >
           <span className="material-symbols-outlined text-lg">add</span>
           নতুন অধ্যায় যোগ
