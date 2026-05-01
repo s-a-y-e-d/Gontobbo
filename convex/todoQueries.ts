@@ -155,12 +155,24 @@ export const getTodoAgenda = query({
 
         return {
           date,
-          scheduledTasks: validTasks
-            .filter((task) => task.startTimeMinutes !== undefined)
-            .sort((a, b) => (a.startTimeMinutes ?? 0) - (b.startTimeMinutes ?? 0)),
-          unscheduledTasks: validTasks
-            .filter((task) => task.startTimeMinutes === undefined)
-            .sort((a, b) => a.sortOrder - b.sortOrder),
+          tasks: validTasks.sort((a, b) => {
+            const aHasStartTime = a.startTimeMinutes !== undefined;
+            const bHasStartTime = b.startTimeMinutes !== undefined;
+
+            if (aHasStartTime && bHasStartTime) {
+              return (a.startTimeMinutes ?? 0) - (b.startTimeMinutes ?? 0);
+            }
+
+            if (aHasStartTime) {
+              return -1;
+            }
+
+            if (bHasStartTime) {
+              return 1;
+            }
+
+            return a.sortOrder - b.sortOrder;
+          }),
         };
       }),
     );

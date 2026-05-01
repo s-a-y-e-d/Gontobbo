@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import TodoAgendaAddTaskModal from "./TodoAgendaAddTaskModal";
 import TodoAgendaDateStrip from "./TodoAgendaDateStrip";
 import TodoAgendaDaySection from "./TodoAgendaDaySection";
+import { TodoSkeleton } from "./LoadingSkeletons";
 import { TodoAgendaDay } from "./todoAgendaTypes";
 import {
   buildDayHeading,
@@ -52,11 +53,7 @@ export default function TodoAgenda() {
   }, [backfillStudyItemSearchText]);
 
   if (!agenda) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-brand-green" />
-      </div>
-    );
+    return <TodoSkeleton />;
   }
 
   const days: TodoAgendaDay[] = agenda.days.map((day) => ({

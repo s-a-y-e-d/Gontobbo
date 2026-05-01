@@ -7,6 +7,7 @@ import { api } from "@/convex/_generated/api";
 import SubjectHeader from "@/components/features/SubjectHeader";
 import ConceptTable from "@/components/features/ConceptTable";
 import Link from "next/link";
+import { ChapterDetailSkeleton } from "@/components/features/LoadingSkeletons";
 
 export default function ChapterPage() {
   const params = useParams();
@@ -28,11 +29,7 @@ export default function ChapterPage() {
   }, [data?.chapter?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (data === undefined) {
-    return (
-      <div className="flex justify-center items-center py-24">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green" />
-      </div>
-    );
+    return <ChapterDetailSkeleton />;
   }
 
   if (data === null) {

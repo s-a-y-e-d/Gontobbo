@@ -1,8 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import DurationPresetSelect, {
+  roundToNearestPresetDuration,
+} from "./DurationPresetSelect";
 
 type AddSubjectModalProps = {
   isOpen: boolean;
@@ -13,126 +16,6 @@ type TrackerEntry = {
   label: string;
   avgMinutes: number;
 };
-
-const DURATION_PRESETS = Array.from({ length: 16 }, (_, index) => (index + 1) * 15);
-
-function formatDurationLabel(minutes: number): string {
-  if (minutes < 60) {
-    return `${minutes} min`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-
-  if (remainingMinutes === 0) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h ${remainingMinutes} min`;
-}
-
-function DurationSelect({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (minutes: number) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
-
-  return (
-    <div ref={containerRef} className="relative w-40 shrink-0">
-      <button
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        className={`flex w-full items-center rounded-full border bg-pure-white py-2 pl-4 pr-3 text-left transition-all ${
-          isOpen
-            ? "border-brand-green ring-4 ring-brand-green/10"
-            : "border-border-medium hover:border-brand-green/35"
-        }`}
-      >
-        <span className="material-symbols-outlined text-[18px] text-brand-green">schedule</span>
-        <span className="ml-2.5 flex-1 font-medium text-on-surface">
-          {formatDurationLabel(value)}
-        </span>
-        <span
-          className={`material-symbols-outlined text-[18px] text-gray-400 transition-transform ${
-            isOpen ? "rotate-180" : ""
-          }`}
-        >
-          expand_more
-        </span>
-      </button>
-
-      {isOpen && (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-3xl border border-border-subtle bg-pure-white p-2 shadow-[0_20px_50px_rgba(15,23,42,0.16)]">
-          <div className="max-h-64 overflow-y-auto">
-            {DURATION_PRESETS.map((minutes) => {
-              const isSelected = minutes === value;
-
-              return (
-                <button
-                  key={minutes}
-                  type="button"
-                  onClick={() => {
-                    onChange(minutes);
-                    setIsOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-all ${
-                    isSelected
-                      ? "bg-brand-green/10 text-brand-green"
-                      : "text-on-surface hover:bg-gray-50"
-                  }`}
-                >
-                  <span
-                    className={`material-symbols-outlined text-[18px] ${
-                      isSelected ? "text-brand-green" : "text-gray-300"
-                    }`}
-                  >
-                    schedule
-                  </span>
-                  <span className="flex-1 font-medium">{formatDurationLabel(minutes)}</span>
-                  {isSelected && (
-                    <span className="material-symbols-outlined text-[18px] text-brand-green">
-                      check
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function toKey(label: string): string {
   return label
@@ -153,7 +36,7 @@ function ensureUniqueKeys(trackers: { label: string; avgMinutes: number }[]) {
       counter++;
     }
     keys.add(key);
-    return { ...t, key };
+    return { ...t, key, avgMinutes: roundToNearestPresetDuration(t.avgMinutes) };
   });
 }
 
@@ -192,8 +75,8 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
     { label: "বোর্ড", avgMinutes: 45 }
   ]);
   const [conceptTrackers, setConceptTrackers] = useState<TrackerEntry[]>([
-    { label: "ক্লাস ", avgMinutes: 20 },
-    { label: "বই", avgMinutes: 25 }
+    { label: "ক্লাস ", avgMinutes: 15 },
+    { label: "বই", avgMinutes: 30 }
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isIconDropdownOpen, setIsIconDropdownOpen] = useState(false);
@@ -408,7 +291,7 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
                     onChange={(e) => updateTracker("chapter", index, "label", e.target.value)}
                     className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
                   />
-                  <DurationSelect
+                  <DurationPresetSelect
                     value={tracker.avgMinutes}
                     onChange={(minutes) => updateTracker("chapter", index, "avgMinutes", minutes)}
                   />
@@ -451,7 +334,7 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
                     onChange={(e) => updateTracker("concept", index, "label", e.target.value)}
                     className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
                   />
-                  <DurationSelect
+                  <DurationPresetSelect
                     value={tracker.avgMinutes}
                     onChange={(minutes) => updateTracker("concept", index, "avgMinutes", minutes)}
                   />

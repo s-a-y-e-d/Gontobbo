@@ -107,7 +107,7 @@ describe("planner", () => {
     ).toBe(true);
   });
 
-  test("accepting a revision suggestion creates an unscheduled revision todo task", async () => {
+  test("accepting a revision suggestion creates a revision todo task", async () => {
     const t = await createAuthenticatedTestContext("planner-revision");
     const date = getDhakaDayBucket(Date.now());
 
@@ -160,7 +160,7 @@ describe("planner", () => {
       days: 1,
     });
 
-    expect(todo.days[0]?.unscheduledTasks).toEqual(
+    expect(todo.days[0]?.tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           kind: "concept_review",
@@ -168,6 +168,7 @@ describe("planner", () => {
         }),
       ]),
     );
+    expect(todo.days[0]?.tasks[0]).not.toHaveProperty("startTimeMinutes");
   });
 
   test("important subjects outrank slightly lower-completion normal subjects", async () => {

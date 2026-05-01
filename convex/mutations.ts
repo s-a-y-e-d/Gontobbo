@@ -102,6 +102,19 @@ async function getOwnedPlannerSuggestionOrThrow(
   return suggestion;
 }
 
+async function getOwnedTodoTaskOrThrow(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  todoTaskId: Id<"todoTasks">,
+) {
+  const todoTask = await ctx.db.get(todoTaskId);
+  if (!todoTask) {
+    throw new Error("Todo task not found");
+  }
+  assertCanAccessOwnedDocument(currentUser, todoTask);
+  return todoTask;
+}
+
 async function getOwnedWeeklyTargetOrThrow(
   ctx: MutationCtx,
   currentUser: CurrentUser,
@@ -210,6 +223,32 @@ async function getNextTodoSortOrder(
       return Math.max(max, sortOrder);
     }, -1) + 1
   );
+}
+
+function validateTodoSchedule(args: {
+  startTimeMinutes?: number;
+  durationMinutes: number;
+}) {
+  if (!TODO_DURATION_MINUTES.includes(args.durationMinutes)) {
+    throw new Error("Duration must be one of the preset values");
+  }
+
+  if (args.startTimeMinutes === undefined) {
+    return;
+  }
+
+  if (
+    !Number.isInteger(args.startTimeMinutes) ||
+    args.startTimeMinutes < 0 ||
+    args.startTimeMinutes > 1439 ||
+    args.startTimeMinutes % 15 !== 0
+  ) {
+    throw new Error("Start time must be in 15-minute steps");
+  }
+
+  if (args.startTimeMinutes + args.durationMinutes > 1440) {
+    throw new Error("Todo task must end within the selected day");
+  }
 }
 
 async function syncStudyItemPresentation(
@@ -1085,7 +1124,7 @@ export const createTodoTask = mutation({
   args: {
     date: v.number(),
     studyItemId: v.id("studyItems"),
-    startTimeMinutes: v.number(),
+    startTimeMinutes: v.optional(v.number()),
     durationMinutes: v.number(),
     source: v.union(v.literal("manual"), v.literal("ai_accepted")),
   },
@@ -1095,22 +1134,7 @@ export const createTodoTask = mutation({
       throw new Error("Date must be a valid Dhaka day bucket");
     }
 
-    if (
-      !Number.isInteger(args.startTimeMinutes) ||
-      args.startTimeMinutes < 0 ||
-      args.startTimeMinutes > 1439 ||
-      args.startTimeMinutes % 15 !== 0
-    ) {
-      throw new Error("Start time must be in 15-minute steps");
-    }
-
-    if (!TODO_DURATION_MINUTES.includes(args.durationMinutes)) {
-      throw new Error("Duration must be one of the preset values");
-    }
-
-    if (args.startTimeMinutes + args.durationMinutes > 1440) {
-      throw new Error("Todo task must end within the selected day");
-    }
+    validateTodoSchedule(args);
 
     const studyItem = await getOwnedStudyItemOrThrow(ctx, currentUser, args.studyItemId);
 
@@ -1133,8 +1157,56 @@ export const createTodoTask = mutation({
       userId: currentUser._id,
       ...args,
       kind: PLANNER_SUGGESTION_KIND.studyItem,
-      sortOrder: args.startTimeMinutes,
+      sortOrder:
+        args.startTimeMinutes ?? await getNextTodoSortOrder(ctx, currentUser, args.date),
     });
+  },
+});
+
+export const updateTodoTaskSchedule = mutation({
+  args: {
+    todoTaskId: v.id("todoTasks"),
+    startTimeMinutes: v.optional(v.number()),
+    durationMinutes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const todoTask = await getOwnedTodoTaskOrThrow(
+      ctx,
+      currentUser,
+      args.todoTaskId,
+    );
+
+    validateTodoSchedule(args);
+
+    await ctx.db.patch(todoTask._id, {
+      startTimeMinutes: args.startTimeMinutes,
+      durationMinutes: args.durationMinutes,
+      sortOrder:
+        args.startTimeMinutes ??
+        todoTask.sortOrder ??
+        await getNextTodoSortOrder(ctx, currentUser, todoTask.date),
+    });
+
+    return null;
+  },
+});
+
+export const deleteTodoTask = mutation({
+  args: {
+    todoTaskId: v.id("todoTasks"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const todoTask = await getOwnedTodoTaskOrThrow(
+      ctx,
+      currentUser,
+      args.todoTaskId,
+    );
+
+    await ctx.db.delete(todoTask._id);
+
+    return null;
   },
 });
 

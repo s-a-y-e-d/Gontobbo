@@ -12,6 +12,7 @@ import {
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 import NavigationLayout from "@/components/features/NavigationLayout";
 import { api } from "@/convex/_generated/api";
+import { AuthLoadingSkeleton } from "./LoadingSkeletons";
 
 type BootstrapState =
   | "idle"
@@ -172,7 +173,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setHasSyncedHscSyllabus(true);
+    startTransition(() => {
+      setHasSyncedHscSyllabus(true);
+    });
     void syncHscSyllabusForCurrentUser().catch(() => {
       startTransition(() => {
         setBootstrapState("error");
@@ -190,15 +193,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     <>
       <AuthLoading>
         <CenteredMessage>
-          <div className="space-y-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-600">
-              Clerk + Convex
-            </p>
-            <h1 className="text-2xl font-bold">অথেনটিকেশন লোড হচ্ছে</h1>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              আপনার সেশন যাচাই করা হচ্ছে।
-            </p>
-          </div>
+          <AuthLoadingSkeleton />
         </CenteredMessage>
       </AuthLoading>
 
@@ -210,7 +205,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             </p>
             <h1 className="text-3xl font-bold">আপনার স্টাডি সিস্টেমে ঢুকুন</h1>
             <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-              এই অ্যাপটি এখন Clerk দিয়ে সুরক্ষিত। চালিয়ে যেতে সাইন ইন করুন।
+              চালিয়ে যেতে আপনার অ্যাকাউন্টে সাইন ইন করুন।
             </p>
             <SignInButton mode="modal">
               <button className="inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600">
@@ -234,27 +229,17 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         ) : (
           <CenteredMessage>
             {bootstrapState === "bootstrapping" || bootstrapState === "idle" ? (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-600">
-                  প্রস্তুতি
-                </p>
-                <h1 className="text-2xl font-bold">
-                  আপনার প্রোফাইল সেট করা হচ্ছে
-                </h1>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  প্রথমবার সাইন ইন হলে আমরা আপনার Convex user record তৈরি করি।
-                </p>
-              </div>
+              <AuthLoadingSkeleton />
             ) : (
               <div className="space-y-3">
                 <p className="text-sm font-semibold uppercase tracking-[0.24em] text-rose-600">
-                  Sync failed
+                  সমস্যা হয়েছে
                 </p>
                 <h1 className="text-2xl font-bold">
-                  সেশন সেটআপ শেষ করা যায়নি
+                  আপনার অ্যাকাউন্ট প্রস্তুত করা যায়নি
                 </h1>
                 <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  Clerk সাইন ইন হয়েছে, কিন্তু Convex user bootstrap ব্যর্থ হয়েছে।
+                  সাইন ইন হয়েছে, কিন্তু অ্যাপ চালু করতে একটু সমস্যা হয়েছে।
                   আবার চেষ্টা করুন।
                 </p>
                 <button

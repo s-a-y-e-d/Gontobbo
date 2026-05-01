@@ -4,6 +4,9 @@ import React, { useState, useEffect } from "react";
 import { useMutation, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import DurationPresetSelect, {
+  roundToNearestPresetDuration,
+} from "./DurationPresetSelect";
 
 type EditSubjectModalProps = {
   isOpen: boolean;
@@ -48,7 +51,7 @@ function ensureUniqueKeys(trackers: TrackerEntry[]) {
     return { 
         key,
         label: t.label,
-        avgMinutes: t.avgMinutes
+        avgMinutes: roundToNearestPresetDuration(t.avgMinutes)
     };
   });
 }
@@ -86,8 +89,18 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
   const [examWeight, setExamWeight] = useState(
     subject.examWeight === undefined ? "" : String(subject.examWeight),
   );
-  const [chapterTrackers, setChapterTrackers] = useState<TrackerEntry[]>(subject.chapterTrackers);
-  const [conceptTrackers, setConceptTrackers] = useState<TrackerEntry[]>(subject.conceptTrackers);
+  const [chapterTrackers, setChapterTrackers] = useState<TrackerEntry[]>(
+    subject.chapterTrackers.map((tracker) => ({
+      ...tracker,
+      avgMinutes: roundToNearestPresetDuration(tracker.avgMinutes),
+    })),
+  );
+  const [conceptTrackers, setConceptTrackers] = useState<TrackerEntry[]>(
+    subject.conceptTrackers.map((tracker) => ({
+      ...tracker,
+      avgMinutes: roundToNearestPresetDuration(tracker.avgMinutes),
+    })),
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isIconDropdownOpen, setIsIconDropdownOpen] = useState(false);
   
@@ -331,13 +344,11 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
                       onChange={(e) => updateTracker("chapter", index, "label", e.target.value)}
                       className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
                     />
-                    <input 
-                      type="number" 
-                      placeholder="মিনিট"
-                      required
+                    <DurationPresetSelect
                       value={tracker.avgMinutes}
-                      onChange={(e) => updateTracker("chapter", index, "avgMinutes", parseInt(e.target.value) || 0)}
-                      className="w-24 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green text-center"
+                      onChange={(minutes) =>
+                        updateTracker("chapter", index, "avgMinutes", minutes)
+                      }
                     />
                     <button 
                       type="button" 
@@ -402,13 +413,11 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
                       onChange={(e) => updateTracker("concept", index, "label", e.target.value)}
                       className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
                     />
-                    <input 
-                      type="number" 
-                      placeholder="মিনিট"
-                      required
+                    <DurationPresetSelect
                       value={tracker.avgMinutes}
-                      onChange={(e) => updateTracker("concept", index, "avgMinutes", parseInt(e.target.value) || 0)}
-                      className="w-24 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green text-center"
+                      onChange={(minutes) =>
+                        updateTracker("concept", index, "avgMinutes", minutes)
+                      }
                     />
                     <button 
                       type="button" 

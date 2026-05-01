@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import ConceptReviewModal from "./ConceptReviewModal";
 import RescheduleModal from "./RescheduleModal";
+import { RevisionSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
 
 type ReviewConcept = {
@@ -37,11 +38,7 @@ export default function RevisionDashboard() {
   const subjects = useQuery(api.queries.getSubjectsForFilter);
 
   if (!dashboardData || !subjects) {
-    return (
-      <div className="flex justify-center items-center py-24">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green"></div>
-      </div>
-    );
+    return <RevisionSkeleton />;
   }
 
   const { overdue, dueToday, upcoming, stats } = dashboardData;

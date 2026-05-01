@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import DurationPresetSelect from "./DurationPresetSelect";
 import { getSubjectTheme } from "./subjectTheme";
 import { TodoStudyItemSearchResult } from "./todoAgendaTypes";
 import {
@@ -12,7 +13,6 @@ import {
   parseTimeInputValue,
   roundToNearestDuration,
   roundToNearestQuarterHour,
-  TODO_DURATION_OPTIONS,
 } from "./todoAgendaTime";
 
 type TodoAgendaAddTaskModalProps = {
@@ -129,15 +129,19 @@ export default function TodoAgendaAddTaskModal({
       return;
     }
 
-    const parsedStartTime = parseTimeInputValue(startTimeValue);
-    if (parsedStartTime === null) {
-      setErrorMessage("শুরুর সময় দিন।");
+    const parsedStartTime =
+      startTimeValue.length === 0 ? undefined : parseTimeInputValue(startTimeValue);
+    if (startTimeValue.length > 0 && parsedStartTime === null) {
+      setErrorMessage("শুরুর সময় ঠিক করে দিন।");
       return;
     }
 
-    const normalizedStartTime = roundToNearestQuarterHour(parsedStartTime);
-    if (normalizedStartTime !== parsedStartTime) {
-      setStartTimeValue(formatTimeInputValue(normalizedStartTime));
+    let normalizedStartTime: number | undefined;
+    if (typeof parsedStartTime === "number") {
+      normalizedStartTime = roundToNearestQuarterHour(parsedStartTime);
+      if (normalizedStartTime !== parsedStartTime) {
+        setStartTimeValue(formatTimeInputValue(normalizedStartTime));
+      }
     }
 
     if (durationMinutes === null) {
@@ -145,7 +149,10 @@ export default function TodoAgendaAddTaskModal({
       return;
     }
 
-    if (normalizedStartTime + durationMinutes > 1440) {
+    if (
+      normalizedStartTime !== undefined &&
+      normalizedStartTime + durationMinutes > 1440
+    ) {
       setErrorMessage("এই টাস্কটি নির্বাচিত দিনের বাইরে চলে যাবে।");
       return;
     }
@@ -263,7 +270,7 @@ export default function TodoAgendaAddTaskModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-2 block font-label-uppercase text-label-uppercase text-gray-500">
-                শুরুর সময়
+                শুরুর সময় (ঐচ্ছিক)
               </label>
               <input
                 type="time"
@@ -279,28 +286,17 @@ export default function TodoAgendaAddTaskModal({
               <label className="mb-2 block font-label-uppercase text-label-uppercase text-gray-500">
                 সময়কাল
               </label>
-              <select
-                value={durationMinutes === null ? "" : String(durationMinutes)}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  setDurationMinutes(Number.isFinite(nextValue) ? nextValue : null);
+              <DurationPresetSelect
+                value={durationMinutes ?? 15}
+                onChange={(minutes) => {
+                  setDurationMinutes(minutes);
                   setErrorMessage(null);
                 }}
-                className="w-full rounded-full border border-border-medium bg-gray-50/60 px-4 py-3 font-body text-body text-on-surface outline-none transition-all focus:border-brand-green"
-              >
-                <option value="">সময়কাল বেছে নিন</option>
-                {TODO_DURATION_OPTIONS.map((minutes) => (
-                  <option
-                    key={minutes}
-                    value={minutes}
-                    disabled={
-                      maxDurationMinutes !== null && minutes > maxDurationMinutes
-                    }
-                  >
-                    {formatDurationLabel(minutes)}
-                  </option>
-                ))}
-              </select>
+                className="w-full"
+                disabledOptions={(minutes) =>
+                  maxDurationMinutes !== null && minutes > maxDurationMinutes
+                }
+              />
             </div>
           </div>
 
@@ -338,8 +334,7 @@ export default function TodoAgendaAddTaskModal({
                 isSubmitting ||
                 !selectedStudyItem ||
                 durationMinutes === null ||
-                isDurationPastSelectedDay ||
-                startTimeValue.length === 0
+                isDurationPastSelectedDay
               }
               className="rounded-full bg-on-surface px-7 py-3 font-label-uppercase text-label-uppercase text-pure-white shadow-sm transition-all hover:bg-brand-green hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
             >

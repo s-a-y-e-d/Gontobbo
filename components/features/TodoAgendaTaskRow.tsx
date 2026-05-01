@@ -5,6 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import ConceptReviewModal from "./ConceptReviewModal";
+import TodoAgendaEditTaskModal from "./TodoAgendaEditTaskModal";
 import { getSubjectTheme } from "./subjectTheme";
 import { TodoAgendaTask } from "./todoAgendaTypes";
 import {
@@ -24,15 +25,27 @@ export default function TodoAgendaTaskRow({
   const theme = getSubjectTheme(task.subjectColor);
   const checkboxId = useId();
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const toggleStudyItemCompletion = useMutation(
     api.mutations.toggleStudyItemCompletion,
   );
+  const deleteTodoTask = useMutation(api.mutations.deleteTodoTask);
 
   const isStudyItemTask = task.kind === "study_item";
   const isScheduled = task.startTimeMinutes !== undefined;
   const metadataText = task.conceptName
     ? `${task.subjectName} • ${task.chapterName} • ${task.conceptName}`
     : `${task.subjectName} • ${task.chapterName}`;
+
+  const handleDelete = () => {
+    if (!window.confirm("এই টাস্কটি Todo থেকে সরিয়ে দেবেন?")) {
+      return;
+    }
+
+    void deleteTodoTask({
+      todoTaskId: task.id as Id<"todoTasks">,
+    });
+  };
 
   return (
     <>
@@ -92,20 +105,20 @@ export default function TodoAgendaTaskRow({
             >
               {task.title}
             </p>
-            <span
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em] ${
-                task.isCompleted
-                  ? "border-border-subtle bg-gray-100 text-gray-400 dark:border-white/10 dark:bg-white/[0.07] dark:text-neutral-500"
-                  : "border-transparent bg-surface-container text-gray-500 dark:bg-white/[0.09] dark:text-gray-400"
-              }`}
-            >
-              {isScheduled
-                ? formatTimeRangeLabel(
-                    task.startTimeMinutes as number,
-                    task.durationMinutes,
-                  )
-                : "Planner"}
-            </span>
+            {isScheduled ? (
+              <span
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em] ${
+                  task.isCompleted
+                    ? "border-border-subtle bg-gray-100 text-gray-400 dark:border-white/10 dark:bg-white/[0.07] dark:text-neutral-500"
+                    : "border-transparent bg-surface-container text-gray-500 dark:bg-white/[0.09] dark:text-gray-400"
+                }`}
+              >
+                {formatTimeRangeLabel(
+                  task.startTimeMinutes as number,
+                  task.durationMinutes,
+                )}
+              </span>
+            ) : null}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs md:text-sm">
@@ -120,6 +133,25 @@ export default function TodoAgendaTaskRow({
             </span>
           </div>
         </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setIsEditModalOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-on-surface"
+            aria-label="Edit todo"
+          >
+            <span className="material-symbols-outlined text-[18px]">edit</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-[#fff4f2] hover:text-error-red"
+            aria-label="Delete todo"
+          >
+            <span className="material-symbols-outlined text-[18px]">delete</span>
+          </button>
+        </div>
       </div>
 
       {!isStudyItemTask && task.conceptId ? (
@@ -132,6 +164,12 @@ export default function TodoAgendaTaskRow({
           }}
         />
       ) : null}
+
+      <TodoAgendaEditTaskModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        task={task}
+      />
     </>
   );
 }

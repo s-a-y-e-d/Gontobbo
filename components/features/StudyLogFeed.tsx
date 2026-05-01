@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { LogsSkeleton } from "./LoadingSkeletons";
 
 // Helper for event labels in Bengali
 const EVENT_LABELS = {
@@ -52,12 +53,7 @@ export default function StudyLogFeed() {
   const [editingLogId, setEditingLogId] = useState<Id<"studyLogs"> | null>(null);
   const [editMinutes, setEditMinutes] = useState<number>(0);
 
-  if (!logs) return (
-    <div className="flex flex-col items-center justify-center p-20 space-y-4">
-      <div className="w-10 h-10 border-4 border-brand-green/20 border-t-brand-green rounded-full animate-spin"></div>
-      <div className="text-slate-500 animate-pulse font-medium">লোডিং হচ্ছে...</div>
-    </div>
-  );
+  if (!logs) return <LogsSkeleton />;
 
   return (
     <div className="space-y-6">

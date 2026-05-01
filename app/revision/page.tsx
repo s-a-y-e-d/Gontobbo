@@ -1,5 +1,3 @@
-"use client";
-
 import RevisionDashboard from "@/components/features/RevisionDashboard";
 
 export default function RevisionPage() {

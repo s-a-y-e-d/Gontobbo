@@ -1,5 +1,3 @@
-"use client";
-
 import StudyLogFeed from "@/components/features/StudyLogFeed";
 
 export default function LogsPage() {
@@ -13,7 +11,7 @@ export default function LogsPage() {
         
         <div className="flex items-center gap-2 bg-brand-green/10 text-brand-green px-4 py-2 rounded-2xl border border-brand-green/20 self-start md:self-auto">
           <span className="material-symbols-outlined text-[20px]">analytics</span>
-          <span className="text-sm font-bold uppercase tracking-wider">Activity Feed</span>
+          <span className="text-sm font-bold uppercase tracking-wider">পড়ার ইতিহাস</span>
         </div>
       </div>
       

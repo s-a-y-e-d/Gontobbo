@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type TrackerConfig = {
   key: string;
@@ -176,7 +176,6 @@ function ActionMenu({
   const [showConfirm, setShowConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const router = useRouter();
   const [menuPosition, setMenuPosition] = useState<FloatingMenuPosition>({
     top: 0,
     left: 0,
@@ -274,17 +273,17 @@ function ActionMenu({
           className="fixed z-[120] min-w-[220px] animate-in fade-in rounded-2xl border border-border-subtle bg-pure-white py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.08)] duration-150"
           style={menuPosition}
         >
-          <button
+          <Link
+            href={`/subjects/${subjectSlug}/${chapterSlug}`}
             onClick={(e) => {
               e.stopPropagation();
-              router.push(`/subjects/${subjectSlug}/${chapterSlug}`);
               setOpen(false);
             }}
             className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-on-surface hover:bg-gray-100 transition-colors"
           >
             <span className="material-symbols-outlined text-lg text-gray-500">visibility</span>
             অধ্যায় দেখুন
-          </button>
+          </Link>
           
           <button
             onClick={(e) => {
@@ -416,8 +415,6 @@ function MobileChapterCard({
   onDelete: () => void;
   displayOrder: string;
 }) {
-  const router = useRouter();
-
   return (
     <article className="rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
       <div className="flex items-start gap-3">
@@ -425,12 +422,12 @@ function MobileChapterCard({
           {displayOrder}
         </span>
         <div className="min-w-0 flex-1">
-          <button
-            onClick={() => router.push(`/subjects/${subjectSlug}/${chapter.slug}`)}
+          <Link
+            href={`/subjects/${subjectSlug}/${chapter.slug}`}
             className="block w-full text-left font-body text-[17px] font-semibold leading-snug text-on-surface transition-colors hover:text-brand-green"
           >
             {chapter.name}
-          </button>
+          </Link>
           <div className="mt-2">
             <StatusBadge status={chapter.status} />
           </div>
@@ -480,7 +477,6 @@ export default function ChapterTable({
   subjectSlug,
   subjectId,
 }: ChapterTableProps) {
-  const router = useRouter();
   const [editingChapter, setEditingChapter] = useState<ChapterRowData | null>(null);
   const deleteChapter = useMutation(api.mutations.deleteChapter);
 
@@ -556,12 +552,12 @@ export default function ChapterTable({
                     <span className="font-mono-code text-mono-code text-gray-400 bg-surface-container w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0">
                       {String(chapter.order).length > 2 ? String(idx + 1).padStart(2, "0") : String(chapter.order).padStart(2, "0")}
                     </span>
-                    <button
-                      onClick={() => router.push(`/subjects/${subjectSlug}/${chapter.slug}`)}
+                    <Link
+                      href={`/subjects/${subjectSlug}/${chapter.slug}`}
                       className="font-body text-body text-on-surface leading-tight hover:text-brand-green transition-colors text-left"
                     >
                       {chapter.name}
-                    </button>
+                    </Link>
                   </div>
                 </td>
                 <td className="py-4 px-5">

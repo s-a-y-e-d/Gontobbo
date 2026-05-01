@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 import EditSubjectModal from "./EditSubjectModal";
 import { getSubjectTheme } from "./subjectTheme";
@@ -38,7 +38,6 @@ export default function SubjectCard(props: SubjectCardProps) {
     stats,
   } = props;
   
-  const router = useRouter();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const theme = getSubjectTheme(color);
 
@@ -52,11 +51,12 @@ export default function SubjectCard(props: SubjectCardProps) {
 
   return (
     <>
-      <div
-        onClick={() => router.push(`/subjects/${slug}`)}
-        className="group bg-pure-white border border-border-subtle rounded-2xl p-card-padding flex flex-col gap-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] transition-all hover:border-border-medium hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] cursor-pointer active:scale-[0.99]"
-      >
-        <div className="flex justify-between items-start">
+      <article className="group relative bg-pure-white border border-border-subtle rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] transition-all hover:border-border-medium hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] active:scale-[0.99]">
+        <Link
+          href={`/subjects/${slug}`}
+          className="flex flex-col gap-6 p-card-padding"
+        >
+        <div className="flex justify-between items-start pr-11">
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${theme.iconBg}`}>
               <span className={`material-symbols-outlined ${theme.iconColor}`}>{icon || "book"}</span>
@@ -68,34 +68,25 @@ export default function SubjectCard(props: SubjectCardProps) {
               </p>
             </div>
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsEditModalOpen(true);
-            }}
-            className="text-gray-400 hover:text-on-surface transition-colors p-2 hover:bg-gray-50 rounded-full"
-          >
-            <span className="material-symbols-outlined">more_horiz</span>
-          </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4 py-4 border-y border-border-subtle">
           <div className="flex flex-col gap-1">
-            <span className="font-mono-code text-mono-code text-gray-500 uppercase">Chapters</span>
+            <span className="font-mono-code text-mono-code text-gray-500 uppercase">অধ্যায়</span>
             <span className="font-sub-heading text-sub-heading text-on-surface">
               {displayStats.completedChapters}
               <span className="text-sm text-gray-400 font-normal">/{displayStats.totalChapters}</span>
             </span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="font-mono-code text-mono-code text-gray-500 uppercase">Tasks Pending</span>
+            <span className="font-mono-code text-mono-code text-gray-500 uppercase">বাকি কাজ</span>
             <span className="font-sub-heading text-sub-heading text-on-surface">{displayStats.tasksPending}</span>
           </div>
         </div>
 
         <div className="flex flex-col gap-2">
           <div className="flex justify-between items-center">
-            <span className="font-label-uppercase text-label-uppercase text-on-surface">Overall Progress</span>
+            <span className="font-label-uppercase text-label-uppercase text-on-surface">মোট অগ্রগতি</span>
             <span className={`font-mono-code text-mono-code px-2 py-0.5 rounded-full ${theme.progressBadgeBg} ${theme.progressBadgeText}`}>
               {displayStats.progressPercentage}%
             </span>
@@ -107,7 +98,15 @@ export default function SubjectCard(props: SubjectCardProps) {
             ></div>
           </div>
         </div>
-      </div>
+        </Link>
+        <button
+          onClick={() => setIsEditModalOpen(true)}
+          className="absolute right-6 top-6 text-gray-400 hover:text-on-surface transition-colors p-2 hover:bg-gray-50 rounded-full"
+          aria-label="বিষয় এডিট করুন"
+        >
+          <span className="material-symbols-outlined">more_horiz</span>
+        </button>
+      </article>
 
       <EditSubjectModal 
         key={_id}

@@ -10,9 +10,7 @@ export default function TodoAgendaDaySection({
   day,
   onAddTask,
 }: TodoAgendaDaySectionProps) {
-  const hasScheduledTasks = day.scheduledTasks.length > 0;
-  const hasUnscheduledTasks = day.unscheduledTasks.length > 0;
-  const hasAnyTasks = hasScheduledTasks || hasUnscheduledTasks;
+  const hasAnyTasks = day.tasks.length > 0;
 
   return (
     <section className="mb-8">
@@ -23,37 +21,15 @@ export default function TodoAgendaDaySection({
       </div>
 
       <div className="space-y-6 pt-2">
-        {hasUnscheduledTasks ? (
-          <div>
-            <p className="py-3 font-mono-code text-[11px] uppercase tracking-[0.18em] text-gray-400">
-              Planner Tasks
-            </p>
-            <div className="rounded-[28px] border border-border-subtle bg-white px-5">
-              {day.unscheduledTasks.map((task, index) => (
-                <TodoAgendaTaskRow
-                  key={`${day.date}-unscheduled-${task.id}-${index}`}
-                  task={task}
-                  isLast={index === day.unscheduledTasks.length - 1}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {hasScheduledTasks ? (
-          <div>
-            <p className="py-3 font-mono-code text-[11px] uppercase tracking-[0.18em] text-gray-400">
-              Scheduled
-            </p>
-            <div className="rounded-[28px] border border-border-subtle bg-white px-5">
-              {day.scheduledTasks.map((task, index) => (
-                <TodoAgendaTaskRow
-                  key={`${day.date}-scheduled-${task.id}-${index}`}
-                  task={task}
-                  isLast={index === day.scheduledTasks.length - 1}
-                />
-              ))}
-            </div>
+        {hasAnyTasks ? (
+          <div className="rounded-[28px] border border-border-subtle bg-white px-5">
+            {day.tasks.map((task, index) => (
+              <TodoAgendaTaskRow
+                key={`${day.date}-task-${task.id}-${index}`}
+                task={task}
+                isLast={index === day.tasks.length - 1}
+              />
+            ))}
           </div>
         ) : null}
 

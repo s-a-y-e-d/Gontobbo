@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useTheme } from "@/components/ThemeProvider";
+import { SettingsPageSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
 
 type ThemeMode = "light" | "system" | "dark";
@@ -76,6 +77,11 @@ type NavItem = {
   disabled?: boolean;
 };
 
+type SettingsSectionOptions = {
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+};
+
 const navItems: NavItem[] = [
   {
     id: "dashboard",
@@ -103,46 +109,46 @@ const navItems: NavItem[] = [
   },
   {
     id: "appearance",
-    label: "Appearance",
+    label: "দেখানোর ধরন",
     description: "থিম ও ডিসপ্লে",
     icon: "palette",
   },
   {
     id: "revision",
-    label: "Revision",
+    label: "রিভিশন",
     description: "রিভিশন ডিফল্ট",
     icon: "history_edu",
   },
   {
     id: "subjects",
-    label: "Subjects",
+    label: "বিষয়",
     description: "ট্র্যাকার ওভারভিউ",
     icon: "auto_stories",
   },
   {
     id: "data",
-    label: "Data",
+    label: "তথ্য",
     description: "শীঘ্রই আসছে",
     icon: "database",
     disabled: true,
   },
   {
     id: "notifications",
-    label: "Notifications",
+    label: "নোটিফিকেশন",
     description: "শীঘ্রই আসছে",
     icon: "notifications",
     disabled: true,
   },
   {
     id: "account",
-    label: "Account",
+    label: "অ্যাকাউন্ট",
     description: "শীঘ্রই আসছে",
     icon: "account_circle",
     disabled: true,
   },
   {
     id: "backup",
-    label: "Backup",
+    label: "ব্যাকআপ",
     description: "শীঘ্রই আসছে",
     icon: "cloud_sync",
     disabled: true,
@@ -156,39 +162,10 @@ const coachingOptions: { value: CoachingStatus; label: string }[] = [
 ];
 
 const themeOptions: { value: ThemeMode; label: string }[] = [
-  { value: "light", label: "Light" },
-  { value: "system", label: "System" },
-  { value: "dark", label: "Dark" },
+  { value: "light", label: "লাইট" },
+  { value: "system", label: "ডিভাইস অনুযায়ী" },
+  { value: "dark", label: "ডার্ক" },
 ];
-
-function SettingsSkeleton() {
-  return (
-    <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
-      <div className="hidden rounded-2xl border border-border-subtle bg-white p-3 lg:block">
-        {Array.from({ length: 7 }).map((_, index) => (
-          <div
-            key={index}
-            className="mb-2 h-12 animate-pulse rounded-xl bg-gray-100"
-          />
-        ))}
-      </div>
-      <div className="space-y-4">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <div
-            key={index}
-            className="rounded-2xl border border-border-subtle bg-white p-5"
-          >
-            <div className="h-5 w-40 animate-pulse rounded-full bg-gray-100" />
-            <div className="mt-4 space-y-3">
-              <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
-              <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function SettingsNav({
   activeSection,
@@ -231,34 +208,67 @@ function SettingsSection({
   description,
   icon,
   children,
+  collapsible = false,
+  defaultOpen = false,
 }: {
   title: string;
   description: string;
   icon?: string;
   children: React.ReactNode;
-}) {
+} & SettingsSectionOptions) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const shouldShowChildren = !collapsible || isOpen;
+  const headerContent = (
+    <div className="flex items-start gap-3">
+      {icon ? (
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-on-surface">
+          <span className="material-symbols-outlined text-[20px]">
+            {icon}
+          </span>
+        </span>
+      ) : null}
+      <div className="min-w-0 flex-1">
+        <h2 className="font-card-title text-lg leading-tight text-on-surface">
+          {title}
+        </h2>
+        <p className="mt-1 text-sm leading-6 text-gray-500">
+          {description}
+        </p>
+      </div>
+      {collapsible ? (
+        <span
+          className={`material-symbols-outlined mt-1 text-[22px] text-gray-400 transition-transform ${
+            isOpen ? "rotate-90" : ""
+          }`}
+          aria-hidden="true"
+        >
+          chevron_right
+        </span>
+      ) : null}
+    </div>
+  );
+
   return (
     <section className="overflow-hidden rounded-2xl border border-border-subtle bg-white">
-      <div className="border-b border-border-subtle px-4 py-4 sm:px-5">
-        <div className="flex items-start gap-3">
-          {icon ? (
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-on-surface">
-              <span className="material-symbols-outlined text-[20px]">
-                {icon}
-              </span>
-            </span>
-          ) : null}
-          <div className="min-w-0">
-            <h2 className="font-card-title text-lg leading-tight text-on-surface">
-              {title}
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-gray-500">
-              {description}
-            </p>
-          </div>
+      {collapsible ? (
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          onClick={() => setIsOpen((current) => !current)}
+          className={`w-full px-4 py-4 text-left transition-colors hover:bg-gray-100 sm:px-5 ${
+            shouldShowChildren ? "border-b border-border-subtle" : ""
+          }`}
+        >
+          {headerContent}
+        </button>
+      ) : (
+        <div className="border-b border-border-subtle px-4 py-4 sm:px-5">
+          {headerContent}
         </div>
-      </div>
-      <div className="divide-y divide-border-subtle">{children}</div>
+      )}
+      {shouldShowChildren ? (
+        <div className="divide-y divide-border-subtle">{children}</div>
+      ) : null}
     </section>
   );
 }
@@ -502,16 +512,7 @@ export default function SettingsWorkspace() {
   }, [data]);
 
   if (data === undefined) {
-    return (
-      <div className="space-y-6">
-        <HeaderSummary
-          importantSubjects={0}
-          weeklyTargets={0}
-          runningCoaching={0}
-        />
-        <SettingsSkeleton />
-      </div>
-    );
+    return <SettingsPageSkeleton />;
   }
 
   const revisionMinutes =
@@ -701,25 +702,30 @@ export default function SettingsWorkspace() {
         onTermStartDateChange={setTermStartDateDraft}
         onNextTermExamDateChange={setNextTermExamDateDraft}
         onSave={handleSaveDashboardTermDates}
+        sectionOptions={{ collapsible: true, defaultOpen: true }}
       />
       <PlannerSection
         subjects={data.subjects}
         savingKey={savingKey}
         onTogglePriority={handleSubjectPriority}
+        sectionOptions={{ collapsible: true }}
       />
       <TargetsSection
         subjects={data.subjects}
         onToggleChapter={handleChapterTarget}
         onToggleConcept={handleConceptTarget}
+        sectionOptions={{ collapsible: true }}
       />
       <CoachingSection
         subjects={data.subjects}
         savingKey={savingKey}
         onChangeStatus={handleCoachingStatus}
+        sectionOptions={{ collapsible: true }}
       />
       <AppearanceSection
         theme={theme}
         onThemeChange={(nextTheme) => setTheme(nextTheme)}
+        sectionOptions={{ collapsible: true }}
       />
       <RevisionSection
         minutes={revisionMinutes}
@@ -727,9 +733,13 @@ export default function SettingsWorkspace() {
         saving={savingKey === "revision-minutes"}
         onMinutesChange={setRevisionMinutesDraft}
         onSave={handleSaveRevisionMinutes}
+        sectionOptions={{ collapsible: true }}
       />
-      <SubjectsSection subjects={data.subjects} />
-      <FutureSettingsSection />
+      <SubjectsSection
+        subjects={data.subjects}
+        sectionOptions={{ collapsible: true }}
+      />
+      <FutureSettingsSection sectionOptions={{ collapsible: true }} />
     </div>
   );
 
@@ -763,6 +773,7 @@ function DashboardSettingsSection({
   onTermStartDateChange,
   onNextTermExamDateChange,
   onSave,
+  sectionOptions,
 }: {
   termStartDate: string;
   nextTermExamDate: string;
@@ -772,6 +783,7 @@ function DashboardSettingsSection({
   onTermStartDateChange: (value: string) => void;
   onNextTermExamDateChange: (value: string) => void;
   onSave: () => void;
+  sectionOptions?: SettingsSectionOptions;
 }) {
   const parsedTermStartDate = parseDateInputValue(termStartDate);
   const parsedNextTermExamDate = parseDateInputValue(nextTermExamDate);
@@ -788,6 +800,7 @@ function DashboardSettingsSection({
       title="ড্যাশবোর্ড টাইমলাইন"
       description="হোম ড্যাশবোর্ডের countdown, urgency আর progression rate এই দুই তারিখ থেকে হিসাব করবে।"
       icon="dashboard"
+      {...sectionOptions}
     >
       <SettingsRow
         title="টার্ম শুরুর তারিখ"
@@ -891,16 +904,19 @@ function PlannerSection({
   subjects,
   savingKey,
   onTogglePriority,
+  sectionOptions,
 }: {
   subjects: SettingsSubject[];
   savingKey: string | null;
   onTogglePriority: (subject: SettingsSubject) => void;
+  sectionOptions?: SettingsSectionOptions;
 }) {
   return (
     <SettingsSection
       title="প্ল্যানার"
       description="AI Planner কোন বিষয়গুলোকে বেশি গুরুত্ব দেবে তা এখানে ঠিক করুন।"
       icon="psychology"
+      {...sectionOptions}
     >
       {subjects.length === 0 ? (
         <EmptyState>এখনো কোনো বিষয় নেই।</EmptyState>
@@ -932,16 +948,19 @@ function TargetsSection({
   subjects,
   onToggleChapter,
   onToggleConcept,
+  sectionOptions,
 }: {
   subjects: SettingsSubject[];
   onToggleChapter: (chapter: SettingsChapter) => void;
   onToggleConcept: (chapter: SettingsChapter, concept: SettingsConcept) => void;
+  sectionOptions?: SettingsSectionOptions;
 }) {
   return (
     <SettingsSection
       title="সাপ্তাহিক টার্গেট"
       description="এই সপ্তাহে ফোকাস করার জন্য চ্যাপ্টার বা কনসেপ্ট বেছে নিন।"
       icon="flag"
+      {...sectionOptions}
     >
       {subjects.length === 0 ? (
         <EmptyState>টার্গেট বানানোর মতো কোনো বিষয় নেই।</EmptyState>
@@ -1032,13 +1051,15 @@ function CoachingSection({
   subjects,
   savingKey,
   onChangeStatus,
+  sectionOptions,
 }: {
   subjects: SettingsSubject[];
   savingKey: string | null;
   onChangeStatus: (chapter: SettingsChapter, status: CoachingStatus) => void;
+  sectionOptions?: SettingsSectionOptions;
 }) {
-  const chapterRows = subjects.flatMap((subject) =>
-    subject.chapters.map((chapter) => ({ subject, chapter })),
+  const subjectsWithChapters = subjects.filter(
+    (subject) => subject.chapters.length > 0,
   );
 
   return (
@@ -1046,46 +1067,115 @@ function CoachingSection({
       title="কোচিং অগ্রগতি"
       description="প্রতিটি চ্যাপ্টারের স্কুল/কোচিং স্ট্যাটাস আপডেট করুন।"
       icon="school"
+      {...sectionOptions}
     >
-      {chapterRows.length === 0 ? (
+      {subjectsWithChapters.length === 0 ? (
         <EmptyState>কোচিং ট্র্যাক করার মতো পরের টার্মের চ্যাপ্টার নেই।</EmptyState>
       ) : (
-        chapterRows.map(({ subject, chapter }) => (
-          <SettingsRow
-            key={chapter._id}
-            title={chapter.name}
-            description={subject.name}
-          >
-            <SegmentedControl
-              value={chapter.coachingStatus}
-              options={coachingOptions}
-              label={`${chapter.name} coaching status`}
-              disabled={savingKey === `coaching-${chapter._id}`}
-              onChange={(status) => onChangeStatus(chapter, status)}
-            />
-          </SettingsRow>
-        ))
+        <div className="divide-y divide-border-subtle">
+          {subjectsWithChapters.map((subject) => {
+            const theme = getSubjectTheme(subject.color);
+            const counts: Record<CoachingStatus, number> = {
+              not_started: 0,
+              running: 0,
+              finished: 0,
+            };
+
+            for (const chapter of subject.chapters) {
+              counts[chapter.coachingStatus] += 1;
+            }
+
+            return (
+              <details key={subject._id} className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 sm:px-5">
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${theme.iconBg} ${theme.iconColor}`}
+                  >
+                    <span className="material-symbols-outlined text-[19px]">
+                      {subject.icon ?? "menu_book"}
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-on-surface">
+                      {subject.name}
+                    </span>
+                    <span className="mt-2 flex flex-wrap gap-1.5">
+                      {coachingOptions.map((option) => (
+                        <StatusCountPill
+                          key={option.value}
+                          label={option.label}
+                          value={counts[option.value]}
+                        />
+                      ))}
+                    </span>
+                  </span>
+                  <span
+                    className="material-symbols-outlined text-[20px] text-gray-400 transition-transform group-open:rotate-90"
+                    aria-hidden="true"
+                  >
+                    chevron_right
+                  </span>
+                </summary>
+
+                <div className="divide-y divide-border-subtle border-t border-border-subtle">
+                  {subject.chapters.map((chapter) => (
+                    <SettingsRow
+                      key={chapter._id}
+                      title={chapter.name}
+                      description={subject.name}
+                    >
+                      <SegmentedControl
+                        value={chapter.coachingStatus}
+                        options={coachingOptions}
+                        label={`${chapter.name} coaching status`}
+                        disabled={savingKey === `coaching-${chapter._id}`}
+                        onChange={(status) => onChangeStatus(chapter, status)}
+                      />
+                    </SettingsRow>
+                  ))}
+                </div>
+              </details>
+            );
+          })}
+        </div>
       )}
     </SettingsSection>
+  );
+}
+
+function StatusCountPill({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-border-subtle bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500">
+      {label}: {value}
+    </span>
   );
 }
 
 function AppearanceSection({
   theme,
   onThemeChange,
+  sectionOptions,
 }: {
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
+  sectionOptions?: SettingsSectionOptions;
 }) {
   return (
     <SettingsSection
-      title="Appearance"
+      title="দেখানোর ধরন"
       description="অ্যাপের রঙ আপনার কাজের পরিবেশ অনুযায়ী রাখুন।"
       icon="palette"
+      {...sectionOptions}
     >
       <SettingsRow
-        title="Theme"
-        description="Light, Dark, বা ডিভাইসের system setting অনুসরণ করুন।"
+        title="থিম"
+        description="লাইট, ডার্ক, বা ডিভাইসের সেটিং অনুসরণ করুন।"
       >
         <SegmentedControl
           value={theme}
@@ -1104,12 +1194,14 @@ function RevisionSection({
   saving,
   onMinutesChange,
   onSave,
+  sectionOptions,
 }: {
   minutes: string;
   savedMinutes: number;
   saving: boolean;
   onMinutesChange: (value: string) => void;
   onSave: () => void;
+  sectionOptions?: SettingsSectionOptions;
 }) {
   const parsedMinutes = Number(minutes);
   const isValid =
@@ -1118,12 +1210,13 @@ function RevisionSection({
 
   return (
     <SettingsSection
-      title="Revision"
+      title="রিভিশন"
       description="রিভিশন লগে ডিফল্ট সময় কত মিনিট ধরা হবে তা ঠিক করুন।"
       icon="history_edu"
+      {...sectionOptions}
     >
       <SettingsRow
-        title="Default revision minutes"
+        title="রিভিশনের সময়"
         description="কনসেপ্ট রিভিউ করলে এই সময়টি study log-এ বসবে।"
       >
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
@@ -1141,7 +1234,7 @@ function RevisionSection({
             onClick={onSave}
             className="h-10 flex-1 rounded-full bg-on-surface px-4 text-sm font-semibold text-pure-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
           >
-            {saving ? "Saving" : "Save"}
+            {saving ? "সেভ হচ্ছে" : "সেভ করুন"}
           </button>
         </div>
       </SettingsRow>
@@ -1154,15 +1247,22 @@ function RevisionSection({
   );
 }
 
-function SubjectsSection({ subjects }: { subjects: SettingsSubject[] }) {
+function SubjectsSection({
+  subjects,
+  sectionOptions,
+}: {
+  subjects: SettingsSubject[];
+  sectionOptions?: SettingsSectionOptions;
+}) {
   return (
     <SettingsSection
-      title="Subjects"
+      title="বিষয়"
       description="প্রতিটি বিষয়ের ট্র্যাকার কনফিগারেশন এক জায়গায় দেখুন।"
       icon="auto_stories"
+      {...sectionOptions}
     >
       {subjects.length === 0 ? (
-        <EmptyState>এখনো কোনো subject নেই।</EmptyState>
+        <EmptyState>এখনো কোনো বিষয় নেই।</EmptyState>
       ) : (
         subjects.map((subject) => {
           const theme = getSubjectTheme(subject.color);
@@ -1181,15 +1281,15 @@ function SubjectsSection({ subjects }: { subjects: SettingsSubject[] }) {
                     {subject.name}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {subject.chapterTrackers.length} chapter trackers,{" "}
-                    {subject.conceptTrackers.length} concept trackers
+                    অধ্যায়ের কাজ {subject.chapterTrackers.length}টি,{" "}
+                    কনসেপ্টের কাজ {subject.conceptTrackers.length}টি
                   </p>
                 </div>
               </div>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <TrackerGroup title="Chapter trackers" items={subject.chapterTrackers} />
-                <TrackerGroup title="Concept trackers" items={subject.conceptTrackers} />
+                <TrackerGroup title="অধ্যায়ের কাজ" items={subject.chapterTrackers} />
+                <TrackerGroup title="কনসেপ্টের কাজ" items={subject.conceptTrackers} />
               </div>
             </div>
           );
@@ -1232,19 +1332,22 @@ function TrackerGroup({
 function FutureSection({ item }: { item?: NavItem }) {
   return (
     <SettingsSection
-      title={item?.label ?? "Coming soon"}
+      title={item?.label ?? "পরে আসছে"}
       description="এই সেটিংস সেকশন পরে যোগ করা হবে।"
       icon={item?.icon ?? "more_horiz"}
     >
       <EmptyState>
-        এই অংশটি future-ready placeholder. এখনকার redesign-এ core study
-        settings live করা হয়েছে।
+        এই অংশটি পরে যোগ করা হবে। এখন পড়াশোনার দরকারি সেটিংসগুলো চালু আছে।
       </EmptyState>
     </SettingsSection>
   );
 }
 
-function FutureSettingsSection() {
+function FutureSettingsSection({
+  sectionOptions,
+}: {
+  sectionOptions?: SettingsSectionOptions;
+}) {
   const futureItems = navItems.filter((item) => item.disabled);
 
   return (
@@ -1252,6 +1355,7 @@ function FutureSettingsSection() {
       title="আরও সেটিংস"
       description="এই অংশগুলো ভবিষ্যতে live করা হবে।"
       icon="more_horiz"
+      {...sectionOptions}
     >
       {futureItems.map((item) => (
         <SettingsRow
@@ -1260,7 +1364,7 @@ function FutureSettingsSection() {
           description={item.description}
         >
           <span className="inline-flex rounded-full border border-border-subtle bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
-            Coming soon
+            পরে আসছে
           </span>
         </SettingsRow>
       ))}

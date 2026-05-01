@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { PlannerSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
 
 export default function PlannerSettings() {
@@ -19,11 +20,7 @@ export default function PlannerSettings() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (data === undefined) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-brand-green" />
-      </div>
-    );
+    return <PlannerSkeleton />;
   }
 
   const handleToggleSubjectPriority = async (

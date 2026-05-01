@@ -17,8 +17,7 @@ export type TodoAgendaTask = {
 
 export type TodoAgendaDay = {
   date: number;
-  scheduledTasks: TodoAgendaTask[];
-  unscheduledTasks: TodoAgendaTask[];
+  tasks: TodoAgendaTask[];
   isToday: boolean;
   isSelected: boolean;
   dayNumber: string;

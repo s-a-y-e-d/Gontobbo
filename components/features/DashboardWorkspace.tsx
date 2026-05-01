@@ -15,6 +15,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import ConceptReviewModal from "./ConceptReviewModal";
+import { DashboardSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
 import {
   formatClockTime,
@@ -71,7 +72,7 @@ function getUrgencyLabel(status: "ahead" | "on_track" | "behind" | "overdue") {
   if (status === "ahead") return "এগিয়ে";
   if (status === "behind") return "পিছিয়ে";
   if (status === "overdue") return "সময় পেরিয়েছে";
-  return "On track";
+  return "ঠিক পথে";
 }
 
 function getUrgencyTone(status: "ahead" | "on_track" | "behind" | "overdue") {
@@ -84,11 +85,7 @@ export default function DashboardWorkspace() {
   const dashboard = useQuery(api.dashboardQueries.getDashboardPageData);
 
   if (dashboard === undefined) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-brand-green" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (

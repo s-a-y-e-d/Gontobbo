@@ -11,7 +11,7 @@ export default function SubjectGrid({ subjects }: SubjectGridProps) {
   if (!subjects || subjects.length === 0) {
     return (
       <div className="py-12 text-center text-gray-500">
-        No subjects found. Start by adding a new subject.
+        এখনো কোনো বিষয় যোগ করা হয়নি।
       </div>
     );
   }

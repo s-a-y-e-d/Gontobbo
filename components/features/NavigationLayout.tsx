@@ -13,21 +13,21 @@ type NavItem = {
 };
 
 const primaryNavItems: NavItem[] = [
-  { icon: "dashboard", label: "Dashboard", href: "/" },
-  { icon: "auto_stories", label: "Subjects", href: "/subjects" },
+  { icon: "dashboard", label: "ড্যাশবোর্ড", href: "/" },
+  { icon: "auto_stories", label: "বিষয়", href: "/subjects" },
   { icon: "psychology", label: "AI Planner", href: "/planner" },
   { icon: "calendar_today", label: "Todo", href: "/todo" },
-  { icon: "history_edu", label: "Revision", href: "/revision" },
-  { icon: "format_list_bulleted", label: "Logs", href: "/logs" },
-  { icon: "settings", label: "Settings", href: "/settings" },
+  { icon: "history_edu", label: "রিভিশন", href: "/revision" },
+  { icon: "format_list_bulleted", label: "লগ", href: "/logs" },
+  { icon: "settings", label: "সেটিংস", href: "/settings" },
 ];
 
 const bottomNavItems: NavItem[] = [
-  { icon: "dashboard", label: "Home", href: "/" },
-  { icon: "book", label: "Subjects", href: "/subjects" },
+  { icon: "dashboard", label: "হোম", href: "/" },
+  { icon: "book", label: "বিষয়", href: "/subjects" },
   { icon: "calendar_today", label: "Todo", href: "/todo" },
   { icon: "psychology", label: "AI Planner", href: "/planner" },
-  { icon: "history_edu", label: "Revision", href: "/revision" },
+  { icon: "history_edu", label: "রিভিশন", href: "/revision" },
 ];
 
 function Breadcrumbs() {
@@ -36,13 +36,13 @@ function Breadcrumbs() {
   // Build breadcrumb segments from the path
   const segments = pathname.split("/").filter(Boolean);
 
-  // Default: always show "Dashboard" as root
+  // Default: always show dashboard as root
   const crumbs: { label: string; href: string }[] = [
-    { label: "Dashboard", href: "/" },
+    { label: "ড্যাশবোর্ড", href: "/" },
   ];
 
   if (segments[0] === "subjects") {
-    crumbs.push({ label: "Subjects", href: "/subjects" });
+    crumbs.push({ label: "বিষয়", href: "/subjects" });
   }
 
   if (segments[0] === "subjects" && segments[1]) {
@@ -66,9 +66,9 @@ function Breadcrumbs() {
       });
     }
   } else if (segments[0] === "logs") {
-    crumbs.push({ label: "Logs", href: "/logs" });
+    crumbs.push({ label: "লগ", href: "/logs" });
   } else if (segments[0] === "revision") {
-    crumbs.push({ label: "Revision", href: "/revision" });
+    crumbs.push({ label: "রিভিশন", href: "/revision" });
   } else if (segments[0] === "todo") {
     crumbs.push({ label: "করণীয়", href: "/todo" });
   }
@@ -76,7 +76,7 @@ function Breadcrumbs() {
   if (segments[0] === "planner") {
     crumbs.push({ label: "AI Planner", href: "/planner" });
   } else if (segments[0] === "settings") {
-    crumbs.push({ label: "Settings", href: "/settings" });
+    crumbs.push({ label: "সেটিংস", href: "/settings" });
   }
 
   return (
@@ -119,7 +119,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
 
   const currentDate = useMemo(() => {
     if (!mounted) return "";
-    return new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    return new Date().toLocaleDateString("bn-BD", { month: "long", day: "numeric", year: "numeric" });
   }, [mounted]);
 
   // Determine active nav item
@@ -260,7 +260,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
           <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
           <div>
             <div className="text-lg font-black text-slate-900 dark:text-white leading-tight">StudyOS</div>
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-0.5">Productivity Suite</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-0.5">পড়ার সিস্টেম</div>
           </div>
         </div>
         
