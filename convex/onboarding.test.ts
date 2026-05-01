@@ -51,14 +51,27 @@ describe("HSC onboarding", () => {
       const chapters = await t.run(async (ctx) => {
         return await ctx.db.query("chapters").collect();
       });
+      const concepts = await t.run(async (ctx) => {
+        return await ctx.db.query("concepts").collect();
+      });
 
       const physicsFirst = subjects.find((subject) => subject.slug === "physics-1");
       const biologyFirst = subjects.find((subject) => subject.slug === "biology-1");
+      const chemistryFirst = subjects.find((subject) => subject.slug === "chemistry-1");
       const physicsFirstChapters = chapters
         .filter((chapter) => chapter.subjectId === physicsFirst?._id)
         .sort((left, right) => left.order - right.order);
       const biologyFirstChapters = chapters
         .filter((chapter) => chapter.subjectId === biologyFirst?._id)
+        .sort((left, right) => left.order - right.order);
+      const chemistryFirstChapters = chapters
+        .filter((chapter) => chapter.subjectId === chemistryFirst?._id)
+        .sort((left, right) => left.order - right.order);
+      const vectorChapterConcepts = concepts
+        .filter((concept) => concept.chapterId === physicsFirstChapters[1]?._id)
+        .sort((left, right) => left.order - right.order);
+      const chemistryChangeConcepts = concepts
+        .filter((concept) => concept.chapterId === chemistryFirstChapters[3]?._id)
         .sort((left, right) => left.order - right.order);
 
       expect(result).toMatchObject({
@@ -69,6 +82,7 @@ describe("HSC onboarding", () => {
       expect(status.classLevel).toBe("hsc");
       expect(status.onboardingCompletedAt).toBe(Date.now());
       expect(subjects).toHaveLength(8);
+      expect(concepts).toHaveLength(362);
       expect(subjects.map((subject) => subject.slug).sort()).toEqual([
         "biology-1",
         "biology-2",
@@ -95,7 +109,7 @@ describe("HSC onboarding", () => {
         "ভৌত জগৎ ও পরিমাপ",
         "ভেক্টর",
         "গতিবিদ্যা",
-        "নিউটনীয় বলবিদ্যা",
+        "নিউটনিয়ান বলবিদ্যা",
         "কাজ, শক্তি ও ক্ষমতা",
         "মহাকর্ষ ও অভিকর্ষ",
         "পদার্থের গাঠনিক ধর্ম",
@@ -116,6 +130,28 @@ describe("HSC onboarding", () => {
         "chapter-9",
         "chapter-10",
       ]);
+      expect(vectorChapterConcepts.map((concept) => concept.name)).toEqual([
+        "ভেক্টরের প্রকারভেদ ও আয়ত একক ভেক্টর দ্বারা ভেক্টরের প্রকাশ",
+        "দুইটি ভেক্টরের লব্ধি",
+        "ভেক্টরের উপাংশ",
+        "নদী ও নৌকা",
+        "ভেক্টর বিয়োগ ও আপেক্ষিক বেগ",
+        "দুইয়ের অধিক ভেক্টরের লব্ধি",
+        "ভেক্টরের ডট গুণন",
+        "দিক কোসাইন",
+        "ভেক্টরের ক্রস গুণন",
+        "ভেক্টর ক্যালকুলাস",
+      ]);
+      expect(chemistryFirstChapters[3]?.name).toBe("রাসায়নিক পরিবর্তন");
+      expect(chemistryChangeConcepts.map((concept) => concept.name)).toEqual([
+        "বিক্রিয়ার হার (Rate of Reaction)",
+        "লা-শাতেলিয়ারের নীতি (Le Chatelier's Principle)",
+        "ভরক্রিয়ার সূত্র ও সাম্যাঙ্ক",
+        "অম্ল-ক্ষার এবং pH (Acid-Base and pH)",
+        "বাফার দ্রবণ ও বাফার দ্রবণের ক্রিয়াকৌশল",
+        "তাপ রসায়ন (Thermochemistry)",
+      ]);
+      expect(biologyFirstChapters[6]?.name).toBe("নগ্নবীজী ও আবৃতবীজী");
       expect(biologyFirstChapters[11]?.name).toBe(
         "জীবের পরিবেশ, বিস্তার ও সংরক্ষণ",
       );
@@ -137,13 +173,86 @@ describe("HSC onboarding", () => {
       return {
         subjects: subjects.length,
         chapters: chapters.length,
+        concepts: (await ctx.db.query("concepts").collect()).length,
       };
     });
 
     expect(counts).toEqual({
       subjects: 8,
       chapters: 75,
+      concepts: 362,
     });
+  });
+
+  test("syncing HSC appends missing concepts and keeps custom concepts", async () => {
+    const t = convexTest(schema, modules).withIdentity(createIdentity("sync-existing-hsc-user"));
+
+    await t.mutation(api.auth.ensureCurrentUser, {});
+    await t.mutation(api.onboarding.selectClassAndSeedSyllabus, { classLevel: "hsc" });
+
+    await t.run(async (ctx) => {
+      const biology = await ctx.db
+        .query("subjects")
+        .withIndex("by_slug", (q) => q.eq("slug", "biology-1"))
+        .unique();
+      expect(biology).not.toBeNull();
+      const chapter = await ctx.db
+        .query("chapters")
+        .withIndex("by_subject_slug", (q) =>
+          q.eq("subjectId", biology!._id).eq("slug", "chapter-7"),
+        )
+        .unique();
+      expect(chapter).not.toBeNull();
+      await ctx.db.patch(chapter!._id, {
+        name: "নগ্নবীজী ও আবৃতবীজী উদ্ভিদ",
+      });
+      const concepts = await ctx.db
+        .query("concepts")
+        .withIndex("by_chapter", (q) => q.eq("chapterId", chapter!._id))
+        .collect();
+      for (const concept of concepts) {
+        await ctx.db.delete(concept._id);
+      }
+      await ctx.db.insert("concepts", {
+        userId: biology!.userId,
+        chapterId: chapter!._id,
+        name: "নিজের যোগ করা টপিক",
+        order: 1,
+      });
+    });
+
+    await t.mutation(api.onboarding.syncHscSyllabusForCurrentUser, {});
+
+    const result = await t.run(async (ctx) => {
+      const biology = await ctx.db
+        .query("subjects")
+        .withIndex("by_slug", (q) => q.eq("slug", "biology-1"))
+        .unique();
+      const chapter = await ctx.db
+        .query("chapters")
+        .withIndex("by_subject_slug", (q) =>
+          q.eq("subjectId", biology!._id).eq("slug", "chapter-7"),
+        )
+        .unique();
+      const concepts = await ctx.db
+        .query("concepts")
+        .withIndex("by_chapter", (q) => q.eq("chapterId", chapter!._id))
+        .collect();
+      return {
+        chapterName: chapter?.name,
+        conceptNames: concepts
+          .sort((left, right) => left.order - right.order)
+          .map((concept) => concept.name),
+      };
+    });
+
+    expect(result.chapterName).toBe("নগ্নবীজী ও আবৃতবীজী");
+    expect(result.conceptNames).toEqual([
+      "নিজের যোগ করা টপিক",
+      "নগ্নবীজী উদ্ভিদ: Cycas",
+      "আবৃতবীজী উদ্ভিদ: পুষ্পপ্রতীক ও পুষ্পসংকেত",
+      "গোত্র পরিচিতি: Poaceae (একবীজপত্রী) ও Malvaceae (দ্বিবীজপত্রী)",
+    ]);
   });
 
   test("a user with existing subjects skips onboarding", async () => {

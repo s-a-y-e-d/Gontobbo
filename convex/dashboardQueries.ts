@@ -7,6 +7,7 @@ const DASHBOARD_TODO_LIMIT = 5;
 const TRACK_STATUS_TOLERANCE = 5;
 const STUDY_VOLUME_DAYS = 90;
 const EFFORT_UNDER_STUDIED_GAP = 10;
+const MAX_PROGRESSION_CHART_POINTS = 120;
 
 type DashboardTodoItem = {
   id: Id<"todoTasks">;
@@ -359,8 +360,19 @@ export const getDashboardPageData = query({
               .sort((left, right) => left - right);
             let completedCount = 0;
 
-            const points = Array.from({ length: elapsedDays + 1 }, (_, index) => {
-              const date = termStartDate + index * DAY_MS;
+            const pointCount = Math.min(
+              elapsedDays + 1,
+              MAX_PROGRESSION_CHART_POINTS,
+            );
+            const dayIndexes =
+              pointCount <= 1
+                ? [0]
+                : Array.from({ length: pointCount }, (_, index) =>
+                    Math.round((elapsedDays * index) / (pointCount - 1)),
+                  );
+
+            const points = dayIndexes.map((dayIndex) => {
+              const date = termStartDate + dayIndex * DAY_MS;
               while (
                 completedCount < completionDays.length &&
                 completionDays[completedCount] <= date
@@ -375,7 +387,7 @@ export const getDashboardPageData = query({
                   nextTermStudyItems.length,
                 ),
                 requiredPercentage: clamp(
-                  Math.round((index / totalWindowDays) * 100),
+                  Math.round((dayIndex / totalWindowDays) * 100),
                   0,
                   100,
                 ),

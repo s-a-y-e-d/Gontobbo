@@ -94,9 +94,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const selectClassAndSeedSyllabus = useMutation(
     api.onboarding.selectClassAndSeedSyllabus,
   );
+  const syncHscSyllabusForCurrentUser = useMutation(
+    api.onboarding.syncHscSyllabusForCurrentUser,
+  );
   const [bootstrapState, setBootstrapState] =
     useState<BootstrapState>("idle");
   const [isCompletingOnboarding, setIsCompletingOnboarding] = useState(false);
+  const [hasSyncedHscSyllabus, setHasSyncedHscSyllabus] = useState(false);
   const onboardingStatus = useQuery(
     api.onboarding.getOnboardingStatus,
     bootstrapState === "ready" ? {} : "skip",
@@ -127,6 +131,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
     try {
       await selectClassAndSeedSyllabus({ classLevel: "hsc" });
+      startTransition(() => {
+        setHasSyncedHscSyllabus(true);
+      });
     } catch {
       startTransition(() => {
         setBootstrapState("error");
@@ -142,6 +149,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated) {
       startTransition(() => {
         setBootstrapState("idle");
+        setHasSyncedHscSyllabus(false);
       });
       return;
     }
@@ -152,6 +160,31 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
     void bootstrapUser();
   }, [bootstrapState, isAuthenticated]);
+
+  useEffect(() => {
+    if (
+      bootstrapState !== "ready" ||
+      onboardingStatus === undefined ||
+      onboardingStatus.requiresOnboarding ||
+      onboardingStatus.classLevel !== "hsc" ||
+      hasSyncedHscSyllabus
+    ) {
+      return;
+    }
+
+    setHasSyncedHscSyllabus(true);
+    void syncHscSyllabusForCurrentUser().catch(() => {
+      startTransition(() => {
+        setBootstrapState("error");
+        setHasSyncedHscSyllabus(false);
+      });
+    });
+  }, [
+    bootstrapState,
+    hasSyncedHscSyllabus,
+    onboardingStatus,
+    syncHscSyllabusForCurrentUser,
+  ]);
 
   return (
     <>

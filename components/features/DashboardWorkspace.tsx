@@ -835,8 +835,8 @@ function ProgressLineChart({ points }: { points: ProgressionPoint[] }) {
 
   return (
     <div className="rounded-[22px] border border-border-subtle bg-[#f7fbf8] px-3 py-3 dark:border-white/10 dark:bg-[#101614]">
-      <div className="h-44 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-44 min-h-44 w-full min-w-0 overflow-hidden">
+        <ResponsiveContainer width="100%" height={176} minWidth={0}>
           <LineChart
             data={chartData}
             margin={{ top: 10, right: 12, bottom: 4, left: -8 }}
