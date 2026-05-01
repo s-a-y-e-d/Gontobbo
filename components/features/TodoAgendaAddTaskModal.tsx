@@ -375,7 +375,7 @@ function SelectedStudyItemCard({
           className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
           style={{ backgroundColor: `${theme.accentHex}18`, color: theme.accentHex }}
         >
-          <span className="material-symbols-outlined text-[18px]">book_2</span>
+          <span className="material-symbols-outlined text-[18px]">task_alt</span>
         </span>
 
         <div className="min-w-0">

@@ -3,6 +3,15 @@
 import { useId, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import ConceptReviewModal from "./ConceptReviewModal";
@@ -52,10 +61,10 @@ function formatRateLabel(value: number) {
 
 function formatHoursLabel(minutes: number) {
   if (minutes < 60) {
-    return `${numberFormatter.format(minutes)}মি`;
+    return `${numberFormatter.format(minutes)} মিনিট`;
   }
 
-  return `${decimalFormatter.format(minutes / 60)}ঘ`;
+  return `${decimalFormatter.format(minutes / 60)} ঘণ্টা`;
 }
 
 function getUrgencyLabel(status: "ahead" | "on_track" | "behind" | "overdue") {
@@ -243,7 +252,7 @@ function DashboardTodoCard({ task }: { task: DashboardTodoTask }) {
       <article
         className={`rounded-[22px] border px-4 py-4 transition-colors ${
           task.isCompleted
-            ? "border-border-subtle bg-surface-container/60"
+            ? "border-border-subtle bg-white"
             : "border-border-subtle bg-white hover:border-border-medium"
         }`}
       >
@@ -266,13 +275,7 @@ function DashboardTodoCard({ task }: { task: DashboardTodoTask }) {
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span
-                className="material-symbols-outlined text-[18px]"
-                style={{ color: theme.accentHex }}
-              >
-                {isStudyItemTask ? "menu_book" : "history_edu"}
-              </span>
+            <div className="flex flex-wrap items-center gap-2">
               <p
                 className={`truncate text-sm font-semibold ${
                   task.isCompleted
@@ -282,24 +285,30 @@ function DashboardTodoCard({ task }: { task: DashboardTodoTask }) {
               >
                 {task.title}
               </p>
+              <span
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.14em] ${
+                  task.isCompleted
+                    ? "border-border-subtle bg-gray-100 text-gray-400 dark:border-white/10 dark:bg-white/[0.07] dark:text-neutral-500"
+                    : "border-transparent bg-surface-container text-gray-500 dark:bg-white/[0.09] dark:text-gray-400"
+                }`}
+              >
+                {task.startTimeMinutes === undefined
+                  ? "Planner"
+                  : formatClockTime(task.startTimeMinutes)}
+              </span>
             </div>
-            <p className="mt-2 line-clamp-2 text-xs text-gray-500">
-              <span style={{ color: theme.accentHex }}>{task.subjectName}</span>
-              <span className="text-gray-300"> · </span>
-              {task.chapterName}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs md:text-sm">
+              <span
+                className={task.isCompleted ? "font-medium opacity-55" : "font-medium"}
+                style={{ color: theme.accentHex }}
+              >
+                {task.subjectName} · {task.chapterName}
+              </span>
+              <span className={task.isCompleted ? "text-gray-400/80" : "text-gray-400"}>
+                {formatDurationLabel(task.durationMinutes)}
+              </span>
+            </div>
           </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-surface-container px-3 py-1.5 text-xs font-mono-code uppercase tracking-[0.14em] text-gray-500">
-            {task.startTimeMinutes === undefined
-              ? "Planner"
-              : formatClockTime(task.startTimeMinutes)}
-          </span>
-          <span className="rounded-full border border-border-subtle px-3 py-1.5 text-xs text-gray-500">
-            {formatDurationLabel(task.durationMinutes)}
-          </span>
         </div>
       </article>
 
@@ -577,13 +586,13 @@ function StudyVolumeCard({
           />
         </div>
 
-        <div className="overflow-x-auto pb-1">
-          <div className="grid w-max grid-flow-col grid-rows-7 gap-1">
+        <div className="rounded-[22px] border border-border-subtle bg-[#f7fbf8] p-3 dark:bg-[#101614]">
+          <div className="grid grid-flow-col grid-cols-[repeat(13,minmax(0,1fr))] grid-rows-7 gap-1">
             {studyVolume.days.map((day) => (
               <div
                 key={day.date}
                 title={`${formatShortDate(day.date)} · ${formatHoursLabel(day.minutesSpent)}`}
-                className={`h-3 w-3 rounded-[3px] ${getHeatmapColor(day.intensity)}`}
+                className={`aspect-square w-full min-w-2.5 max-w-4 rounded-[3px] ${getHeatmapColor(day.intensity)}`}
               />
             ))}
           </div>
@@ -645,12 +654,6 @@ function EffortWeightageCard({
   return (
     <DashboardCard eyebrow="Efficiency" title="Effort vs Weightage">
       <div className="space-y-4">
-        {effortWeightage.missingWeightCount > 0 ? (
-          <p className="rounded-[18px] bg-[#fff8ec] px-4 py-3 text-sm text-warm-amber">
-            {numberFormatter.format(effortWeightage.missingWeightCount)}টি subject-এ weight set করা নেই।
-          </p>
-        ) : null}
-
         {effortWeightage.subjects.map((subject) => {
           const theme = getSubjectTheme(subject.color);
 
@@ -789,7 +792,7 @@ function ProgressRing({
     circumference - (clampPercentage(percentage) / 100) * circumference;
 
   return (
-    <div className="flex items-center justify-center rounded-[28px] bg-surface-container px-6 py-6">
+    <div className="flex items-center justify-center rounded-[28px] bg-surface-container px-6 py-6 dark:bg-[#101614]">
       <div className="relative h-36 w-36">
         <svg className="h-full w-full -rotate-90" viewBox="0 0 140 140" aria-hidden>
           <circle
@@ -797,7 +800,7 @@ function ProgressRing({
             cy="70"
             r={radius}
             fill="none"
-            stroke="rgba(0,0,0,0.08)"
+            className="stroke-black/10 dark:stroke-white/15"
             strokeWidth="10"
           />
           <circle
@@ -824,35 +827,74 @@ function ProgressRing({
 }
 
 function ProgressLineChart({ points }: { points: ProgressionPoint[] }) {
-  const width = 520;
-  const height = 180;
-  const padding = 18;
-  const actualPath = buildLinePath(points, "actualPercentage", width, height, padding);
-  const requiredPath = buildLinePath(points, "requiredPercentage", width, height, padding);
+  const chartData = points.map((point) => ({
+    dateLabel: formatShortDate(point.date),
+    actualPercentage: clampPercentage(point.actualPercentage),
+    requiredPercentage: clampPercentage(point.requiredPercentage),
+  }));
 
   return (
-    <div className="rounded-[22px] border border-border-subtle bg-surface-container/40 px-3 py-3">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-44 w-full" aria-hidden>
-        {[0, 25, 50, 75, 100].map((tick) => {
-          const y = getChartY(tick, height, padding);
-          return (
-            <g key={tick}>
-              <line
-                x1={padding}
-                x2={width - padding}
-                y1={y}
-                y2={y}
-                stroke="rgba(0,0,0,0.06)"
-              />
-              <text x="0" y={y + 4} className="fill-gray-400 text-[10px]">
-                {tick}
-              </text>
-            </g>
-          );
-        })}
-        <path d={requiredPath} fill="none" stroke="#3772cf" strokeDasharray="7 7" strokeWidth="4" />
-        <path d={actualPath} fill="none" stroke="#18E299" strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" />
-      </svg>
+    <div className="rounded-[22px] border border-border-subtle bg-[#f7fbf8] px-3 py-3 dark:border-white/10 dark:bg-[#101614]">
+      <div className="h-44 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={chartData}
+            margin={{ top: 10, right: 12, bottom: 4, left: -8 }}
+          >
+            <CartesianGrid
+              stroke="var(--color-border-subtle)"
+              strokeDasharray="0"
+              vertical={false}
+            />
+            <XAxis dataKey="dateLabel" hide />
+            <YAxis
+              axisLine={false}
+              domain={[0, 100]}
+              tick={{ fill: "var(--color-gray-400)", fontSize: 10 }}
+              tickFormatter={(value) => numberFormatter.format(value)}
+              tickLine={false}
+              ticks={[0, 25, 50, 75, 100]}
+              width={34}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "var(--color-pure-white)",
+                border: "1px solid var(--color-border-subtle)",
+                borderRadius: 16,
+                boxShadow: "0 18px 50px rgb(0 0 0 / 0.18)",
+                color: "var(--color-on-surface)",
+              }}
+              formatter={(value, name) => [
+                `${numberFormatter.format(Number(value))}%`,
+                name === "actualPercentage" ? "Actual" : "Required",
+              ]}
+              itemStyle={{ color: "var(--color-on-surface)" }}
+              labelStyle={{ color: "var(--color-gray-500)", marginBottom: 6 }}
+              separator=": "
+            />
+            <Line
+              type="monotone"
+              dataKey="requiredPercentage"
+              stroke="#4f8cff"
+              strokeDasharray="7 7"
+              strokeWidth={4}
+              dot={false}
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="actualPercentage"
+              stroke="#18E299"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={5}
+              dot={false}
+              activeDot={{ r: 5, fill: "#18E299", stroke: "#101614", strokeWidth: 2 }}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
       <div className="flex flex-wrap items-center gap-4 px-1 text-xs text-gray-500">
         <span className="flex items-center gap-2">
           <span className="h-2 w-5 rounded-full bg-brand-green" />
@@ -993,37 +1035,12 @@ function GroupedShareBar({
   );
 }
 
-function buildLinePath(
-  points: ProgressionPoint[],
-  key: "actualPercentage" | "requiredPercentage",
-  width: number,
-  height: number,
-  padding: number,
-) {
-  if (points.length === 0) {
-    return "";
-  }
-
-  const maxIndex = Math.max(points.length - 1, 1);
-  return points
-    .map((point, index) => {
-      const x = padding + (index / maxIndex) * (width - padding * 2);
-      const y = getChartY(point[key], height, padding);
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
-}
-
-function getChartY(value: number, height: number, padding: number) {
-  return height - padding - (clampPercentage(value) / 100) * (height - padding * 2);
-}
-
 function getHeatmapColor(intensity: number) {
   if (intensity >= 4) return "bg-brand-green-deep";
   if (intensity === 3) return "bg-brand-green";
   if (intensity === 2) return "bg-[#8cf2c7]";
-  if (intensity === 1) return "bg-brand-green-light";
-  return "bg-surface-container";
+  if (intensity === 1) return "bg-brand-green-light dark:bg-emerald-500/35";
+  return "bg-surface-container dark:bg-white/10 dark:ring-1 dark:ring-white/5";
 }
 
 function clampPercentage(value: number) {

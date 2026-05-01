@@ -17,7 +17,6 @@ const primaryNavItems: NavItem[] = [
   { icon: "auto_stories", label: "Subjects", href: "/subjects" },
   { icon: "psychology", label: "AI Planner", href: "/planner" },
   { icon: "calendar_today", label: "Todo", href: "/todo" },
-  { icon: "query_stats", label: "Progress" },
   { icon: "history_edu", label: "Revision", href: "/revision" },
   { icon: "format_list_bulleted", label: "Logs", href: "/logs" },
   { icon: "settings", label: "Settings", href: "/settings" },
@@ -267,12 +266,6 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
         
         <div className="flex-1 space-y-1">{primaryNavItems.map(renderSidebarLink)}</div>
         
-        <div className="mt-auto px-4 py-4">
-          <button className="w-full bg-near-black text-pure-white rounded-full py-2.5 font-medium text-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
-            <span className="material-symbols-outlined text-sm">add</span>
-            New Study Session
-          </button>
-        </div>
       </nav>
 
       {/* TopNavBar */}
@@ -356,12 +349,6 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
               {renderMobileMenuLink(primaryNavItems[primaryNavItems.length - 1])}
             </div>
             
-            <div className="p-4 mt-auto border-t border-black/5 dark:border-white/5">
-              <button className="w-full bg-brand-green text-white rounded-2xl py-3 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-green/20">
-                <span className="material-symbols-outlined">add</span>
-                Study Session
-              </button>
-            </div>
           </div>
         </div>
       )}
