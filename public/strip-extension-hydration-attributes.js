@@ -1,9 +1,17 @@
 (() => {
-  const attributeName = "bis_skin_checked";
+  const attributeNames = [
+    "bis_skin_checked",
+    "bis_use",
+    "data-bis-config",
+    "data-dynamic-id"
+  ];
+
   const strip = (root) => {
     if (!root || !root.querySelectorAll) return;
-    root.querySelectorAll("[" + attributeName + "]").forEach((element) => {
-      element.removeAttribute(attributeName);
+    attributeNames.forEach((attr) => {
+      root.querySelectorAll("[" + attr + "]").forEach((element) => {
+        element.removeAttribute(attr);
+      });
     });
   };
 
@@ -11,16 +19,18 @@
 
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      if (mutation.type === "attributes" && mutation.attributeName === attributeName) {
-        mutation.target.removeAttribute(attributeName);
+      if (mutation.type === "attributes" && attributeNames.includes(mutation.attributeName)) {
+        mutation.target.removeAttribute(mutation.attributeName);
       }
 
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType !== Node.ELEMENT_NODE) return;
 
-        if (node.hasAttribute?.(attributeName)) {
-          node.removeAttribute(attributeName);
-        }
+        attributeNames.forEach((attr) => {
+          if (node.hasAttribute?.(attr)) {
+            node.removeAttribute(attr);
+          }
+        });
         strip(node);
       });
     }
@@ -28,7 +38,7 @@
 
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: [attributeName],
+    attributeFilter: attributeNames,
     childList: true,
     subtree: true,
   });

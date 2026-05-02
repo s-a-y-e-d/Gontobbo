@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono, Inter, Baloo_Da_2 } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import AuthGate from "@/components/features/AuthGate";
@@ -45,10 +44,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <Script
+        <script
           id="strip-extension-hydration-attributes"
-          strategy="beforeInteractive"
           src="/strip-extension-hydration-attributes.js"
+          suppressHydrationWarning
         />
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
       </head>
