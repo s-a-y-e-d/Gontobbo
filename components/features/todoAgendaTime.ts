@@ -4,7 +4,7 @@ export const DAY_COUNT = 7;
 export const DAY_MS = 86400000;
 export const DHAKA_TIMEZONE = "Asia/Dhaka";
 export const TODO_DURATION_OPTIONS = Array.from(
-  { length: 16 },
+  { length: 48 },
   (_, index) => (index + 1) * 15,
 );
 

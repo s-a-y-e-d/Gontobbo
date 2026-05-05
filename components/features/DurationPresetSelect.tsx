@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 export const DURATION_PRESETS = Array.from(
-  { length: 16 },
+  { length: 48 },
   (_, index) => (index + 1) * 15,
 );
 

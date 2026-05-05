@@ -137,6 +137,56 @@ describe("dashboard", () => {
     expect(dashboard.studyVolume.days).toHaveLength(90);
   });
 
+  test("counts study item completions and concept reviews in study volume", async () => {
+    const t = await createAuthenticatedTestContext("dashboard-study-volume");
+    const today = getDhakaDayBucket(Date.now());
+
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-volume",
+      color: "blue",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+
+    const chapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+
+    const conceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Velocity",
+      order: 1,
+    });
+
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId });
+    const chapterItems = await t.query(api.queries.getChapterStudyItems, {
+      chapterId,
+    });
+
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: chapterItems[0]!._id,
+    });
+    await t.mutation(api.mutations.reviewConcept, {
+      conceptId,
+      rating: "medium",
+    });
+
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+    const todayVolume = dashboard.studyVolume.days.find((day) => day.date === today);
+
+    expect(dashboard.studyVolume.totalActivities).toBe(2);
+    expect(dashboard.studyVolume.activeDays).toBe(1);
+    expect(todayVolume).toMatchObject({
+      activityCount: 2,
+      intensity: 2,
+    });
+  });
+
   test("sorts subject progress high to low", async () => {
     const t = await createAuthenticatedTestContext("dashboard-subject-sort");
 

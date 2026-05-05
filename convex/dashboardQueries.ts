@@ -44,11 +44,11 @@ function getRoundedPercentage(completed: number, total: number) {
   return Math.round((completed / total) * 100);
 }
 
-function getHeatmapIntensity(minutesSpent: number) {
-  if (minutesSpent >= 240) return 4;
-  if (minutesSpent >= 120) return 3;
-  if (minutesSpent >= 60) return 2;
-  if (minutesSpent > 0) return 1;
+function getHeatmapIntensity(activityCount: number) {
+  if (activityCount >= 5) return 4;
+  if (activityCount >= 3) return 3;
+  if (activityCount >= 2) return 2;
+  if (activityCount > 0) return 1;
   return 0;
 }
 
@@ -403,14 +403,21 @@ export const getDashboardPageData = query({
             };
           })();
 
-    const minutesByDay = new Map<number, number>();
+    const activitiesByDay = new Map<number, number>();
     const minutesBySubjectId = new Map<Id<"subjects">, number>();
     let totalRecentMinutes = 0;
+    let totalRecentActivities = 0;
     for (const log of recentStudyLogs) {
-      minutesByDay.set(
-        log.dayBucket,
-        (minutesByDay.get(log.dayBucket) ?? 0) + log.minutesSpent,
-      );
+      if (
+        log.eventType === "study_item_completed" ||
+        log.eventType === "concept_review"
+      ) {
+        activitiesByDay.set(
+          log.dayBucket,
+          (activitiesByDay.get(log.dayBucket) ?? 0) + 1,
+        );
+        totalRecentActivities += 1;
+      }
       minutesBySubjectId.set(
         log.subjectId,
         (minutesBySubjectId.get(log.subjectId) ?? 0) + log.minutesSpent,
@@ -420,11 +427,11 @@ export const getDashboardPageData = query({
 
     const studyVolumeDays = Array.from({ length: STUDY_VOLUME_DAYS }, (_, index) => {
       const date = today - (STUDY_VOLUME_DAYS - 1 - index) * DAY_MS;
-      const minutesSpent = minutesByDay.get(date) ?? 0;
+      const activityCount = activitiesByDay.get(date) ?? 0;
       return {
         date,
-        minutesSpent,
-        intensity: getHeatmapIntensity(minutesSpent),
+        activityCount,
+        intensity: getHeatmapIntensity(activityCount),
       };
     });
 
@@ -503,8 +510,8 @@ export const getDashboardPageData = query({
       progression,
       studyVolume: {
         days: studyVolumeDays,
-        totalMinutes: totalRecentMinutes,
-        activeDays: studyVolumeDays.filter((day) => day.minutesSpent > 0).length,
+        totalActivities: totalRecentActivities,
+        activeDays: studyVolumeDays.filter((day) => day.activityCount > 0).length,
       },
       effortWeightage: {
         subjects: effortWeightageSubjects,

@@ -133,6 +133,40 @@ describe("todo", () => {
     ).rejects.toThrow("Todo task must end within the selected day");
   });
 
+  test("accepts 12-hour todo durations", async () => {
+    const { t, date, studyItemId } = await createStudyItemFixture("todo-long-duration");
+
+    await t.mutation(api.mutations.createTodoTask, {
+      date,
+      studyItemId,
+      durationMinutes: 720,
+      source: "manual",
+    });
+
+    const agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+
+    expect(agenda.days[0]?.tasks[0]).toMatchObject({
+      studyItemId,
+      durationMinutes: 720,
+    });
+  });
+
+  test("rejects todo durations outside the presets", async () => {
+    const { t, date, studyItemId } = await createStudyItemFixture("todo-invalid-duration");
+
+    await expect(
+      t.mutation(api.mutations.createTodoTask, {
+        date,
+        studyItemId,
+        durationMinutes: 735,
+        source: "manual",
+      }),
+    ).rejects.toThrow("Duration must be one of the preset values");
+  });
+
   test("updates an untimed todo to timed", async () => {
     const { t, date, studyItemId } = await createStudyItemFixture("todo-update-timed");
 

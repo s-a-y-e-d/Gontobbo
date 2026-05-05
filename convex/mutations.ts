@@ -19,7 +19,7 @@ import {
   type CurrentUser,
 } from "./auth";
 
-const TODO_DURATION_MINUTES = Array.from({ length: 16 }, (_, index) => (index + 1) * 15);
+const TODO_DURATION_MINUTES = Array.from({ length: 48 }, (_, index) => (index + 1) * 15);
 const STUDY_ITEM_SEARCH_VERSION_SETTING_KEY = "study_item_search_text_version";
 const STUDY_ITEM_SEARCH_BACKFILL_BATCH_SIZE = 64;
 const requireCurrentOwner = requireCurrentUser;

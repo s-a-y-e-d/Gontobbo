@@ -68,6 +68,12 @@ function formatHoursLabel(minutes: number) {
   return `${decimalFormatter.format(minutes / 60)} ঘণ্টা`;
 }
 
+function formatActivityCountLabel(count: number) {
+  return `${numberFormatter.format(count)} ${
+    count === 1 ? "activity" : "activities"
+  }`;
+}
+
 function getUrgencyLabel(status: "ahead" | "on_track" | "behind" | "overdue") {
   if (status === "ahead") return "এগিয়ে";
   if (status === "behind") return "পিছিয়ে";
@@ -550,11 +556,11 @@ function StudyVolumeCard({
   studyVolume,
 }: {
   studyVolume: {
-    totalMinutes: number;
+    totalActivities: number;
     activeDays: number;
     days: Array<{
       date: number;
-      minutesSpent: number;
+      activityCount: number;
       intensity: number;
     }>;
   };
@@ -573,7 +579,7 @@ function StudyVolumeCard({
         <div className="grid gap-3 text-sm md:grid-cols-2">
           <MetricPill
             label="Total"
-            value={formatHoursLabel(studyVolume.totalMinutes)}
+            value={formatActivityCountLabel(studyVolume.totalActivities)}
             tone="bg-brand-green-light text-brand-green-deep"
           />
           <MetricPill
@@ -588,7 +594,7 @@ function StudyVolumeCard({
             {studyVolume.days.map((day) => (
               <div
                 key={day.date}
-                title={`${formatShortDate(day.date)} · ${formatHoursLabel(day.minutesSpent)}`}
+                title={`${formatShortDate(day.date)} · ${formatActivityCountLabel(day.activityCount)}`}
                 className={`aspect-square w-full min-w-2.5 max-w-4 rounded-[3px] ${getHeatmapColor(day.intensity)}`}
               />
             ))}

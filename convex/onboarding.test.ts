@@ -82,7 +82,7 @@ describe("HSC onboarding", () => {
       expect(status.classLevel).toBe("hsc");
       expect(status.onboardingCompletedAt).toBe(Date.now());
       expect(subjects).toHaveLength(8);
-      expect(concepts).toHaveLength(362);
+      expect(concepts).toHaveLength(379);
       expect(subjects.map((subject) => subject.slug).sort()).toEqual([
         "biology-1",
         "biology-2",
@@ -180,7 +180,7 @@ describe("HSC onboarding", () => {
     expect(counts).toEqual({
       subjects: 8,
       chapters: 75,
-      concepts: 362,
+      concepts: 379,
     });
   });
 
@@ -249,9 +249,11 @@ describe("HSC onboarding", () => {
     expect(result.chapterName).toBe("নগ্নবীজী ও আবৃতবীজী");
     expect(result.conceptNames).toEqual([
       "নিজের যোগ করা টপিক",
-      "নগ্নবীজী উদ্ভিদ: Cycas",
-      "আবৃতবীজী উদ্ভিদ: পুষ্পপ্রতীক ও পুষ্পসংকেত",
-      "গোত্র পরিচিতি: Poaceae (একবীজপত্রী) ও Malvaceae (দ্বিবীজপত্রী)",
+      "নগ্নবীজী উদ্ভিদ",
+      "Cycas",
+      "আবৃতবীজী উদ্ভিদ ও গোত্র পরিচিতি সংক্রান্ত কতিপয় সংজ্ঞা ও পুষ্পপ্রতীক",
+      "একবীজপত্রী উদ্ভিদের গোত্র: Poaceae",
+      "দ্বিবীজপত্রী উদ্ভিদের গোত্র: Malvaceae",
     ]);
   });
 
