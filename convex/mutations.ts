@@ -1,4 +1,4 @@
-import { mutation, type MutationCtx } from "./_generated/server";
+import { internalMutation, mutation, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import {
@@ -22,7 +22,6 @@ import {
 const TODO_DURATION_MINUTES = Array.from({ length: 48 }, (_, index) => (index + 1) * 15);
 const STUDY_ITEM_SEARCH_VERSION_SETTING_KEY = "study_item_search_text_version";
 const STUDY_ITEM_SEARCH_BACKFILL_BATCH_SIZE = 64;
-const requireCurrentOwner = requireCurrentUser;
 
 async function getOwnedSubjectOrThrow(
   ctx: MutationCtx,
@@ -987,10 +986,9 @@ export const ensureConceptStudyItems = mutation({
 });
 
 // ── Fix subjects with non-ASCII tracker keys ────────────────────
-export const fixInvalidTrackerKeys = mutation({
+export const fixInvalidTrackerKeys = internalMutation({
   args: {},
   handler: async (ctx) => {
-    await requireCurrentOwner(ctx);
     type TrackerConfig = {
       key: string;
       label: string;
@@ -1317,7 +1315,7 @@ export const setPlannerSubjectPriority = mutation({
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    const subject = await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
+    await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
 
     const existingPreference = filterOwnedDocuments(currentUser, await ctx.db
       .query("plannerSubjectPreferences")
@@ -1354,7 +1352,7 @@ export const setCoachingChapterProgress = mutation({
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+    await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
 
     const existingProgress = filterOwnedDocuments(currentUser, await ctx.db
       .query("coachingProgress")
@@ -2237,10 +2235,9 @@ export const rescheduleConceptReview = mutation({
 // ── MIGRATION: Clear old data & seed fresh ───────────────────────
 // Clears all old-schema documents and seeds Chemistry with 5 chapters.
 // Run once from the Convex dashboard or a temporary button.
-export const migrateAndSeed = mutation({
+export const migrateAndSeed = internalMutation({
   args: {},
   handler: async (ctx) => {
-    await requireCurrentOwner(ctx);
     // 1. Delete all studyItems
     const studyItems = await ctx.db.query("studyItems").take(500);
     for (const item of studyItems) {
@@ -2382,10 +2379,9 @@ export const migrateAndSeed = mutation({
   },
 });
 // ── Seed Chemistry Concepts ─────────────────────────────────────
-export const seedChemistryConcepts = mutation({
+export const seedChemistryConcepts = internalMutation({
   args: {},
   handler: async (ctx) => {
-    await requireCurrentOwner(ctx);
     const chemistry = await ctx.db
       .query("subjects")
       .withIndex("by_slug", (q) => q.eq("slug", "chemistry"))

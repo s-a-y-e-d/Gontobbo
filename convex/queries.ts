@@ -1,6 +1,5 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
 import { query, type QueryCtx } from "./_generated/server";
 import {
   assertCanAccessOwnedDocument,

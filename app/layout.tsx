@@ -5,6 +5,7 @@ import "./globals.css";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import AuthGate from "@/components/features/AuthGate";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,15 +44,13 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${balooDa2.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script
           id="strip-extension-hydration-attributes"
           src="/strip-extension-hydration-attributes.js"
           suppressHydrationWarning
         />
-        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
-      </head>
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ClerkProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             <ConvexClientProvider>
@@ -59,6 +58,7 @@ export default function RootLayout({
             </ConvexClientProvider>
           </ThemeProvider>
         </ClerkProvider>
+        <Analytics />
       </body>
     </html>
   );
