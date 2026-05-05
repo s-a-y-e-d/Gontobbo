@@ -7,7 +7,7 @@ export default defineSchema({
     clerkUserId: v.string(),
     role: v.union(v.literal("owner"), v.literal("viewer")),
     legacyWorkspaceOwner: v.optional(v.boolean()),
-    classLevel: v.optional(v.literal("hsc")),
+    classLevel: v.optional(v.union(v.literal("hsc"), v.literal("other"))),
     onboardingCompletedAt: v.optional(v.number()),
     name: v.optional(v.string()),
     email: v.optional(v.string()),
@@ -280,9 +280,11 @@ export default defineSchema({
   todoTasks: defineTable({
     userId: v.optional(v.id("users")),
     date: v.number(),              // unix ms (start of day in Dhaka)
-    kind: v.optional(v.union(v.literal("study_item"), v.literal("concept_review"))),
+    kind: v.optional(v.union(v.literal("study_item"), v.literal("concept_review"), v.literal("custom"))),
     studyItemId: v.optional(v.id("studyItems")),
     conceptId: v.optional(v.id("concepts")),
+    customTitle: v.optional(v.string()),
+    isCompleted: v.optional(v.boolean()),
     startTimeMinutes: v.optional(v.number()),  // minutes from local day start
     sortOrder: v.optional(v.number()),
     durationMinutes: v.number(),

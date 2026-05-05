@@ -66,6 +66,30 @@ export const getTodoAgenda = query({
           dayTasks.map(async (todoTask) => {
             const kind = todoTask.kind ?? "study_item";
 
+            if (kind === "custom") {
+              if (!todoTask.customTitle) {
+                return null;
+              }
+
+              return {
+                id: todoTask._id,
+                kind: "custom" as const,
+                title: todoTask.customTitle,
+                isCompleted: todoTask.isCompleted ?? false,
+                subjectName: undefined,
+                chapterName: undefined,
+                conceptName: undefined,
+                subjectColor: undefined,
+                startTimeMinutes: todoTask.startTimeMinutes,
+                durationMinutes: todoTask.durationMinutes,
+                source: todoTask.source,
+                sortOrder:
+                  todoTask.sortOrder ??
+                  todoTask.startTimeMinutes ??
+                  todoTask._creationTime,
+              };
+            }
+
             if (kind === "concept_review") {
               if (!todoTask.conceptId) {
                 return null;

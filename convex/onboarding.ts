@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
 import {
   filterOwnedDocuments,
   isLegacyWorkspaceOwner,
@@ -27,6 +26,8 @@ type HscChapterSeed = {
   name: string;
   concepts: string[];
 };
+
+const classLevelValidator = v.union(v.literal("hsc"), v.literal("other"));
 
 const HSC_CHAPTER_TRACKERS: TrackerConfig[] = [
   { key: "mcq", label: "MCQ", avgMinutes: 30 },
@@ -635,13 +636,15 @@ export const getOnboardingStatus = query({
 
 export const selectClassAndSeedSyllabus = mutation({
   args: {
-    classLevel: v.literal("hsc"),
+    classLevel: classLevelValidator,
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
 
-    for (const subject of HSC_SUBJECTS) {
-      await ensureHscSubject(ctx, currentUser, subject);
+    if (args.classLevel === "hsc") {
+      for (const subject of HSC_SUBJECTS) {
+        await ensureHscSubject(ctx, currentUser, subject);
+      }
     }
 
     const completedAt = currentUser.onboardingCompletedAt ?? Date.now();
@@ -652,6 +655,38 @@ export const selectClassAndSeedSyllabus = mutation({
 
     return {
       classLevel: args.classLevel,
+      onboardingCompletedAt: completedAt,
+      seededSubjectCount: args.classLevel === "hsc" ? HSC_SUBJECTS.length : 0,
+    };
+  },
+});
+
+export const importHscSyllabusForCurrentUser = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const currentUser = await requireCurrentUser(ctx);
+
+    if (currentUser.classLevel !== "other") {
+      throw new Error("Only users who selected other can import the HSC syllabus here.");
+    }
+
+    const hasSubjects = await userHasAnySubjects(ctx, currentUser);
+    if (hasSubjects) {
+      throw new Error("HSC syllabus can only be imported before adding custom subjects.");
+    }
+
+    for (const subject of HSC_SUBJECTS) {
+      await ensureHscSubject(ctx, currentUser, subject);
+    }
+
+    const completedAt = currentUser.onboardingCompletedAt ?? Date.now();
+    await ctx.db.patch(currentUser._id, {
+      classLevel: "hsc",
+      onboardingCompletedAt: completedAt,
+    });
+
+    return {
+      classLevel: "hsc" as const,
       onboardingCompletedAt: completedAt,
       seededSubjectCount: HSC_SUBJECTS.length,
     };

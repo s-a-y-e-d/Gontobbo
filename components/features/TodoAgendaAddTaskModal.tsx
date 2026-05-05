@@ -29,7 +29,10 @@ export default function TodoAgendaAddTaskModal({
   dayHeading,
 }: TodoAgendaAddTaskModalProps) {
   const createTodoTask = useMutation(api.mutations.createTodoTask);
+  const createCustomTodoTask = useMutation(api.mutations.createCustomTodoTask);
+  const [taskMode, setTaskMode] = useState<"study_item" | "custom">("study_item");
   const [searchText, setSearchText] = useState("");
+  const [customTitle, setCustomTitle] = useState("");
   const deferredSearchText = useDeferredValue(searchText.trim());
   const [selectedStudyItem, setSelectedStudyItem] =
     useState<TodoStudyItemSearchResult | null>(null);
@@ -40,7 +43,7 @@ export default function TodoAgendaAddTaskModal({
 
   const searchResults = useQuery(
     api.todoQueries.searchStudyItemsForTodo,
-    isOpen && deferredSearchText.length > 0
+    isOpen && taskMode === "study_item" && deferredSearchText.length > 0
       ? { date, searchText: deferredSearchText }
       : "skip",
   );
@@ -63,11 +66,38 @@ export default function TodoAgendaAddTaskModal({
   if (!isOpen) return null;
 
   const canShowResults =
-    selectedStudyItem === null && deferredSearchText.length > 0;
+    taskMode === "study_item" &&
+    selectedStudyItem === null &&
+    deferredSearchText.length > 0;
+  const normalizedCustomTitle = customTitle.trim();
   const isDurationPastSelectedDay =
     durationMinutes !== null &&
     maxDurationMinutes !== null &&
     durationMinutes > maxDurationMinutes;
+  const canSubmit =
+    !isSubmitting &&
+    durationMinutes !== null &&
+    !isDurationPastSelectedDay &&
+    (taskMode === "study_item"
+      ? selectedStudyItem !== null
+      : normalizedCustomTitle.length > 0);
+
+  const handleTaskModeChange = (mode: "study_item" | "custom") => {
+    setTaskMode(mode);
+    setErrorMessage(null);
+
+    if (mode === "custom") {
+      setSearchText("");
+      setSelectedStudyItem(null);
+      setDurationMinutes((current) => current ?? 15);
+      return;
+    }
+
+    setCustomTitle("");
+    if (!selectedStudyItem) {
+      setDurationMinutes(null);
+    }
+  };
 
   const handleSelectStudyItem = (studyItem: TodoStudyItemSearchResult) => {
     const roundedDuration = roundToNearestDuration(studyItem.estimatedMinutes);
@@ -124,8 +154,13 @@ export default function TodoAgendaAddTaskModal({
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!selectedStudyItem) {
+    if (taskMode === "study_item" && !selectedStudyItem) {
       setErrorMessage("একটি স্টাডি আইটেম সিলেক্ট করুন।");
+      return;
+    }
+
+    if (taskMode === "custom" && normalizedCustomTitle.length === 0) {
+      setErrorMessage("টাস্কের নাম লিখুন।");
       return;
     }
 
@@ -161,13 +196,22 @@ export default function TodoAgendaAddTaskModal({
     setErrorMessage(null);
 
     try {
-      await createTodoTask({
-        date,
-        studyItemId: selectedStudyItem._id as Id<"studyItems">,
-        startTimeMinutes: normalizedStartTime,
-        durationMinutes,
-        source: "manual",
-      });
+      if (taskMode === "custom") {
+        await createCustomTodoTask({
+          date,
+          title: normalizedCustomTitle,
+          startTimeMinutes: normalizedStartTime,
+          durationMinutes,
+        });
+      } else if (selectedStudyItem) {
+        await createTodoTask({
+          date,
+          studyItemId: selectedStudyItem._id as Id<"studyItems">,
+          startTimeMinutes: normalizedStartTime,
+          durationMinutes,
+          source: "manual",
+        });
+      }
       onClose();
     } catch (error) {
       console.error("Failed to create todo task:", error);
@@ -207,10 +251,37 @@ export default function TodoAgendaAddTaskModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6 px-6 py-6 sm:px-8">
+          <div className="grid grid-cols-2 rounded-full border border-border-subtle bg-surface-container p-1">
+            <button
+              type="button"
+              onClick={() => handleTaskModeChange("study_item")}
+              className={`rounded-full px-4 py-2.5 text-sm font-medium transition-all ${
+                taskMode === "study_item"
+                  ? "bg-pure-white text-on-surface shadow-sm"
+                  : "text-gray-500 hover:text-on-surface"
+              }`}
+            >
+              স্টাডি আইটেম
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTaskModeChange("custom")}
+              className={`rounded-full px-4 py-2.5 text-sm font-medium transition-all ${
+                taskMode === "custom"
+                  ? "bg-pure-white text-on-surface shadow-sm"
+                  : "text-gray-500 hover:text-on-surface"
+              }`}
+            >
+              নিজস্ব টাস্ক
+            </button>
+          </div>
+
           <div className="relative">
             <label className="mb-2 block font-label-uppercase text-label-uppercase text-gray-500">
               টাস্ক
             </label>
+            {taskMode === "study_item" ? (
+              <>
             <input
               type="text"
               value={searchText}
@@ -223,6 +294,20 @@ export default function TodoAgendaAddTaskModal({
             {selectedStudyItem ? (
               <SelectedStudyItemCard studyItem={selectedStudyItem} />
             ) : null}
+              </>
+            ) : (
+              <input
+                type="text"
+                value={customTitle}
+                onChange={(event) => {
+                  setCustomTitle(event.target.value);
+                  setErrorMessage(null);
+                }}
+                className="w-full rounded-full border border-border-medium bg-gray-50/60 px-4 py-3 font-body text-body text-on-surface outline-none transition-all focus:border-brand-green"
+                placeholder="যেমন: স্কুলে যাওয়া, ঘুম, ব্যাগ গুছানো..."
+                autoComplete="off"
+              />
+            )}
 
             {canShowResults ? (
               <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[24px] border border-border-subtle bg-pure-white shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
@@ -300,7 +385,7 @@ export default function TodoAgendaAddTaskModal({
             </div>
           </div>
 
-          {selectedStudyItem && durationMinutes !== null ? (
+          {taskMode === "study_item" && selectedStudyItem && durationMinutes !== null ? (
             <div className="rounded-[24px] border border-border-subtle bg-surface-container px-4 py-3 text-sm text-gray-600">
               <span className="font-medium text-on-surface">
                 ডিফল্ট সময়:
@@ -330,12 +415,7 @@ export default function TodoAgendaAddTaskModal({
             </button>
             <button
               type="submit"
-              disabled={
-                isSubmitting ||
-                !selectedStudyItem ||
-                durationMinutes === null ||
-                isDurationPastSelectedDay
-              }
+              disabled={!canSubmit}
               className="rounded-full bg-on-surface px-7 py-3 font-label-uppercase text-label-uppercase text-pure-white shadow-sm transition-all hover:bg-brand-green hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSubmitting ? "যোগ হচ্ছে..." : "টাস্ক যোগ করুন"}

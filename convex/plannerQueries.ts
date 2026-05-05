@@ -285,6 +285,7 @@ export const getSettingsPageData = query({
 
     return {
       subjects,
+      classLevel: currentUser.classLevel ?? null,
       defaultRevisionMinutes: defaultRevisionMinutes ?? 15,
       termStartDate,
       nextTermExamDate,

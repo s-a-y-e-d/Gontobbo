@@ -154,6 +154,150 @@ describe("todo", () => {
     });
   });
 
+  test("creates a custom todo with a start time", async () => {
+    const t = await createAuthenticatedTestContext("todo-custom-timed");
+    const date = getDhakaDayBucket(Date.now());
+
+    await t.mutation(api.mutations.createCustomTodoTask, {
+      date,
+      title: "Going to school",
+      startTimeMinutes: 7 * 60,
+      durationMinutes: 45,
+    });
+
+    const agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+
+    expect(agenda.days[0]?.tasks).toEqual([
+      expect.objectContaining({
+        kind: "custom",
+        title: "Going to school",
+        isCompleted: false,
+        startTimeMinutes: 7 * 60,
+        durationMinutes: 45,
+        source: "manual",
+      }),
+    ]);
+    expect(agenda.days[0]?.tasks[0]).not.toHaveProperty("studyItemId");
+  });
+
+  test("rejects blank custom todo titles", async () => {
+    const t = await createAuthenticatedTestContext("todo-custom-blank");
+    const date = getDhakaDayBucket(Date.now());
+
+    await expect(
+      t.mutation(api.mutations.createCustomTodoTask, {
+        date,
+        title: "   ",
+        durationMinutes: 15,
+      }),
+    ).rejects.toThrow("Custom todo title is required");
+  });
+
+  test("toggles custom todo completion without changing study progress", async () => {
+    const { t, date, chapterId } = await createStudyItemFixture("todo-custom-toggle");
+    const todoTaskId = await t.mutation(api.mutations.createCustomTodoTask, {
+      date,
+      title: "Sleep",
+      durationMinutes: 60,
+    });
+
+    await t.mutation(api.mutations.toggleCustomTodoTaskCompletion, {
+      todoTaskId: todoTaskId as Id<"todoTasks">,
+    });
+
+    const agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+    const studyItems = await t.query(api.queries.getChapterStudyItems, {
+      chapterId,
+    });
+    const studyLogs = await t.query(api.queries.getStudyLogsFeed, {
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    expect(agenda.days[0]?.tasks[0]).toMatchObject({
+      id: todoTaskId,
+      kind: "custom",
+      isCompleted: true,
+    });
+    expect(studyItems.every((item) => !item.isCompleted)).toBe(true);
+    expect(studyLogs.page).toEqual([]);
+  });
+
+  test("updates a custom todo title and schedule", async () => {
+    const t = await createAuthenticatedTestContext("todo-custom-update");
+    const date = getDhakaDayBucket(Date.now());
+    const todoTaskId = await t.mutation(api.mutations.createCustomTodoTask, {
+      date,
+      title: "School",
+      durationMinutes: 30,
+    });
+
+    await t.mutation(api.mutations.updateCustomTodoTask, {
+      todoTaskId: todoTaskId as Id<"todoTasks">,
+      title: "Going to school",
+      startTimeMinutes: 8 * 60,
+      durationMinutes: 90,
+    });
+
+    const agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+
+    expect(agenda.days[0]?.tasks[0]).toMatchObject({
+      id: todoTaskId,
+      kind: "custom",
+      title: "Going to school",
+      startTimeMinutes: 8 * 60,
+      durationMinutes: 90,
+    });
+  });
+
+  test("dashboard excludes custom todos and keeps study stats study-only", async () => {
+    const { t, date } = await createStudyItemFixture("todo-custom-dashboard");
+
+    await t.mutation(api.mutations.createCustomTodoTask, {
+      date,
+      title: "Pack bag",
+      durationMinutes: 15,
+    });
+
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+
+    expect(dashboard.today.totalCount).toBe(0);
+    expect(dashboard.today.completedCount).toBe(0);
+    expect(dashboard.today.tasks).toEqual([]);
+    expect(dashboard.completion.allSyllabus.completedItems).toBe(0);
+    expect(dashboard.studyVolume.totalActivities).toBe(0);
+  });
+
+  test("dashboard still includes study item todos", async () => {
+    const { t, date, studyItemId } = await createStudyItemFixture("todo-study-dashboard");
+
+    await t.mutation(api.mutations.createTodoTask, {
+      date,
+      studyItemId,
+      durationMinutes: 30,
+      source: "manual",
+    });
+
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+
+    expect(dashboard.today.totalCount).toBe(1);
+    expect(dashboard.today.tasks).toEqual([
+      expect.objectContaining({
+        kind: "study_item",
+        studyItemId,
+        durationMinutes: 30,
+      }),
+    ]);
+  });
+
   test("rejects todo durations outside the presets", async () => {
     const { t, date, studyItemId } = await createStudyItemFixture("todo-invalid-duration");
 

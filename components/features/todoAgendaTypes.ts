@@ -1,12 +1,12 @@
 export type TodoAgendaTask = {
   id: string;
-  kind: "study_item" | "concept_review";
+  kind: "study_item" | "concept_review" | "custom";
   studyItemId?: string;
   conceptId?: string;
   title: string;
   isCompleted: boolean;
-  subjectName: string;
-  chapterName: string;
+  subjectName?: string;
+  chapterName?: string;
   conceptName?: string;
   subjectColor?: string;
   startTimeMinutes?: number;

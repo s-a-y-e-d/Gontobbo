@@ -24,6 +24,9 @@ export default function TodoAgendaEditTaskModal({
   task,
 }: TodoAgendaEditTaskModalProps) {
   const updateTodoTaskSchedule = useMutation(api.mutations.updateTodoTaskSchedule);
+  const updateCustomTodoTask = useMutation(api.mutations.updateCustomTodoTask);
+  const isCustomTask = task.kind === "custom";
+  const [title, setTitle] = useState(task.title);
   const [startTimeValue, setStartTimeValue] = useState(() =>
     task.startTimeMinutes === undefined
       ? ""
@@ -93,6 +96,11 @@ export default function TodoAgendaEditTaskModal({
       return;
     }
 
+    if (isCustomTask && title.trim().length === 0) {
+      setErrorMessage("টাস্কের নাম লিখুন।");
+      return;
+    }
+
     let normalizedStartTime: number | undefined;
     if (typeof parsedStartTime === "number") {
       normalizedStartTime = roundToNearestQuarterHour(parsedStartTime);
@@ -113,11 +121,20 @@ export default function TodoAgendaEditTaskModal({
     setErrorMessage(null);
 
     try {
-      await updateTodoTaskSchedule({
-        todoTaskId: task.id as Id<"todoTasks">,
-        startTimeMinutes: normalizedStartTime,
-        durationMinutes,
-      });
+      if (isCustomTask) {
+        await updateCustomTodoTask({
+          todoTaskId: task.id as Id<"todoTasks">,
+          title: title.trim(),
+          startTimeMinutes: normalizedStartTime,
+          durationMinutes,
+        });
+      } else {
+        await updateTodoTaskSchedule({
+          todoTaskId: task.id as Id<"todoTasks">,
+          startTimeMinutes: normalizedStartTime,
+          durationMinutes,
+        });
+      }
       onClose();
     } catch (error) {
       console.error("Failed to update todo task:", error);
@@ -160,6 +177,24 @@ export default function TodoAgendaEditTaskModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6 px-6 py-6 sm:px-8">
+          {isCustomTask ? (
+            <div>
+              <label className="mb-2 block font-label-uppercase text-label-uppercase text-gray-500">
+                টাস্ক
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(event) => {
+                  setTitle(event.target.value);
+                  setErrorMessage(null);
+                }}
+                className="w-full rounded-full border border-border-medium bg-gray-50/60 px-4 py-3 font-body text-body text-on-surface outline-none transition-all focus:border-brand-green"
+                autoComplete="off"
+              />
+            </div>
+          ) : null}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-2 block font-label-uppercase text-label-uppercase text-gray-500">
@@ -209,7 +244,11 @@ export default function TodoAgendaEditTaskModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || isDurationPastSelectedDay}
+              disabled={
+                isSubmitting ||
+                isDurationPastSelectedDay ||
+                (isCustomTask && title.trim().length === 0)
+              }
               className="rounded-full bg-on-surface px-7 py-3 font-label-uppercase text-label-uppercase text-pure-white shadow-sm transition-all hover:bg-brand-green hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSubmitting ? "সেভ হচ্ছে..." : "সেভ করুন"}

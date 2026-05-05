@@ -51,6 +51,7 @@ type SettingsSubject = {
 
 type SettingsPageData = {
   subjects: SettingsSubject[];
+  classLevel: "hsc" | "other" | null;
   defaultRevisionMinutes: number;
   termStartDate?: number;
   nextTermExamDate?: number;
@@ -464,6 +465,9 @@ export default function SettingsWorkspace() {
   const setDefaultRevisionMinutes = useMutation(
     api.mutations.setDefaultRevisionMinutes,
   );
+  const importHscSyllabusForCurrentUser = useMutation(
+    api.onboarding.importHscSyllabusForCurrentUser,
+  );
   const { theme, setTheme } = useTheme();
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -530,6 +534,12 @@ export default function SettingsWorkspace() {
       await action();
     } catch (error) {
       console.error("Settings update failed:", error);
+      if (error instanceof Error && error.message.includes("custom subjects")) {
+        setErrorMessage(
+          "HSC সিলেবাস ইমপোর্ট করতে হলে আগে কোনো কাস্টম বিষয় থাকা যাবে না।",
+        );
+        return;
+      }
       setErrorMessage("সেটিংস আপডেট করা যায়নি। আবার চেষ্টা করুন।");
     } finally {
       setSavingKey(null);
@@ -591,6 +601,20 @@ export default function SettingsWorkspace() {
     const minutes = Number(revisionMinutes);
     void runMutation("revision-minutes", () =>
       setDefaultRevisionMinutes({ minutes }),
+    );
+  };
+
+  const handleImportHscSyllabus = () => {
+    const shouldImport = window.confirm(
+      "HSC সিলেবাস ইমপোর্ট করলে ৮টি বিষয় এবং তাদের অধ্যায়/কনসেপ্ট তৈরি হবে। চালিয়ে যাবেন?",
+    );
+
+    if (!shouldImport) {
+      return;
+    }
+
+    void runMutation("import-hsc-syllabus", () =>
+      importHscSyllabusForCurrentUser(),
     );
   };
 
@@ -684,7 +708,14 @@ export default function SettingsWorkspace() {
     }
 
     if (activeSection === "subjects") {
-      return <SubjectsSection subjects={data.subjects} />;
+      return (
+        <SubjectsSection
+          subjects={data.subjects}
+          classLevel={data.classLevel}
+          isImportingHsc={savingKey === "import-hsc-syllabus"}
+          onImportHsc={handleImportHscSyllabus}
+        />
+      );
     }
 
     return <FutureSection item={navItems.find((item) => item.id === activeSection)} />;
@@ -737,6 +768,9 @@ export default function SettingsWorkspace() {
       />
       <SubjectsSection
         subjects={data.subjects}
+        classLevel={data.classLevel}
+        isImportingHsc={savingKey === "import-hsc-syllabus"}
+        onImportHsc={handleImportHscSyllabus}
         sectionOptions={{ collapsible: true }}
       />
       <FutureSettingsSection sectionOptions={{ collapsible: true }} />
@@ -1249,9 +1283,15 @@ function RevisionSection({
 
 function SubjectsSection({
   subjects,
+  classLevel,
+  isImportingHsc,
+  onImportHsc,
   sectionOptions,
 }: {
   subjects: SettingsSubject[];
+  classLevel: "hsc" | "other" | null;
+  isImportingHsc: boolean;
+  onImportHsc: () => void;
   sectionOptions?: SettingsSectionOptions;
 }) {
   return (
@@ -1261,6 +1301,24 @@ function SubjectsSection({
       icon="auto_stories"
       {...sectionOptions}
     >
+      {classLevel === "other" ? (
+        <SettingsRow
+          title="HSC সিলেবাস ইমপোর্ট"
+          description="শুধু খালি ওয়ার্কস্পেসে প্রস্তুত HSC বিষয়, অধ্যায় ও কনসেপ্ট যোগ করা যাবে।"
+        >
+          <button
+            type="button"
+            disabled={isImportingHsc}
+            onClick={onImportHsc}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-on-surface px-4 text-sm font-semibold text-pure-white transition-opacity disabled:cursor-wait disabled:opacity-50 sm:w-auto"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              download
+            </span>
+            {isImportingHsc ? "ইমপোর্ট হচ্ছে" : "HSC ইমপোর্ট"}
+          </button>
+        </SettingsRow>
+      ) : null}
       {subjects.length === 0 ? (
         <EmptyState>এখনো কোনো বিষয় নেই।</EmptyState>
       ) : (

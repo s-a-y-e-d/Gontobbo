@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -14,7 +14,6 @@ import {
 } from "recharts";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import ConceptReviewModal from "./ConceptReviewModal";
 import { DashboardSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
 import {
@@ -30,9 +29,8 @@ const decimalFormatter = new Intl.NumberFormat("bn-BD", {
 
 type DashboardTodoTask = {
   id: string;
-  kind: "study_item" | "concept_review";
-  studyItemId?: string;
-  conceptId?: string;
+  kind: "study_item";
+  studyItemId: string;
   title: string;
   subjectName: string;
   chapterName: string;
@@ -230,28 +228,18 @@ function TodoStrip({
 
 function DashboardTodoCard({ task }: { task: DashboardTodoTask }) {
   const checkboxId = useId();
-  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const toggleStudyItemCompletion = useMutation(
     api.mutations.toggleStudyItemCompletion,
   );
   const theme = getSubjectTheme(task.subjectColor);
-  const isStudyItemTask = task.kind === "study_item";
 
   const handleToggle = () => {
-    if (isStudyItemTask && task.studyItemId) {
-      void toggleStudyItemCompletion({
-        studyItemId: task.studyItemId as Id<"studyItems">,
-      });
-      return;
-    }
-
-    if (task.conceptId) {
-      setIsReviewModalOpen(true);
-    }
+    void toggleStudyItemCompletion({
+      studyItemId: task.studyItemId as Id<"studyItems">,
+    });
   };
 
   return (
-    <>
       <article
         className={`rounded-[22px] border px-4 py-4 transition-colors ${
           task.isCompleted
@@ -314,18 +302,6 @@ function DashboardTodoCard({ task }: { task: DashboardTodoTask }) {
           </div>
         </div>
       </article>
-
-      {!isStudyItemTask && task.conceptId ? (
-        <ConceptReviewModal
-          isOpen={isReviewModalOpen}
-          onClose={() => setIsReviewModalOpen(false)}
-          concept={{
-            _id: task.conceptId as Id<"concepts">,
-            name: task.title.replace(" - Revision", ""),
-          }}
-        />
-      ) : null}
-    </>
   );
 }
 

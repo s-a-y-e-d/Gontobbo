@@ -11,9 +11,8 @@ const MAX_PROGRESSION_CHART_POINTS = 120;
 
 type DashboardTodoItem = {
   id: Id<"todoTasks">;
-  kind: "study_item" | "concept_review";
-  studyItemId?: Id<"studyItems">;
-  conceptId?: Id<"concepts">;
+  kind: "study_item";
+  studyItemId: Id<"studyItems">;
   title: string;
   subjectName: string;
   chapterName: string;
@@ -70,7 +69,6 @@ export const getDashboardPageData = query({
     const [
       subjects,
       chapters,
-      concepts,
       studyItems,
       todayTodoTasks,
       recentStudyLogs,
@@ -78,7 +76,6 @@ export const getDashboardPageData = query({
     ] = await Promise.all([
       filterOwnedDocuments(currentUser, await ctx.db.query("subjects").collect()),
       filterOwnedDocuments(currentUser, await ctx.db.query("chapters").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("concepts").collect()),
       filterOwnedDocuments(currentUser, await ctx.db.query("studyItems").collect()),
       filterOwnedDocuments(
         currentUser,
@@ -102,7 +99,6 @@ export const getDashboardPageData = query({
     const settingByKey = new Map(settings.map((setting) => [setting.key, setting]));
     const subjectById = new Map(subjects.map((subject) => [subject._id, subject]));
     const chapterById = new Map(chapters.map((chapter) => [chapter._id, chapter]));
-    const conceptById = new Map(concepts.map((concept) => [concept._id, concept]));
     const studyItemById = new Map(studyItems.map((studyItem) => [studyItem._id, studyItem]));
     const nextTermChapterIds = new Set(
       chapters.filter((chapter) => chapter.inNextTerm).map((chapter) => chapter._id),
@@ -156,48 +152,7 @@ export const getDashboardPageData = query({
       });
 
     const todoCandidates = todayTodoTasks.map((todoTask) => {
-      if (todoTask.kind === "concept_review") {
-        if (!todoTask.conceptId) {
-          return null;
-        }
-
-        const concept = conceptById.get(todoTask.conceptId);
-        if (!concept) {
-          return null;
-        }
-
-        const chapter = chapterById.get(concept.chapterId);
-        if (!chapter) {
-          return null;
-        }
-
-        const subject = subjectById.get(chapter.subjectId);
-        if (!subject) {
-          return null;
-        }
-
-        return {
-          id: todoTask._id,
-          kind: "concept_review" as const,
-          conceptId: concept._id,
-          title: `${concept.name} - Revision`,
-          subjectName: subject.name,
-          chapterName: chapter.name,
-          subjectColor: subject.color ?? "gray",
-          durationMinutes: todoTask.durationMinutes,
-          startTimeMinutes: todoTask.startTimeMinutes,
-          isCompleted:
-            concept.lastReviewedAt !== undefined &&
-            getDhakaDayBucket(concept.lastReviewedAt) === today,
-          sortValue:
-            todoTask.startTimeMinutes ??
-            todoTask.sortOrder ??
-            todoTask._creationTime,
-          isScheduled: todoTask.startTimeMinutes !== undefined,
-        };
-      }
-
-      if (!todoTask.studyItemId) {
+      if ((todoTask.kind ?? "study_item") !== "study_item" || !todoTask.studyItemId) {
         return null;
       }
 
@@ -475,7 +430,6 @@ export const getDashboardPageData = query({
           id: item.id,
           kind: item.kind,
           studyItemId: item.studyItemId,
-          conceptId: item.conceptId,
           title: item.title,
           subjectName: item.subjectName,
           chapterName: item.chapterName,

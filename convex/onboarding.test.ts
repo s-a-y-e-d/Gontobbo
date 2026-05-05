@@ -160,6 +160,60 @@ describe("HSC onboarding", () => {
     }
   });
 
+  test("selecting other completes onboarding without seeding data", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-02T06:00:00.000Z"));
+
+    try {
+      const t = convexTest(schema, modules).withIdentity(createIdentity("other-user"));
+
+      await t.mutation(api.auth.ensureCurrentUser, {});
+      const firstResult = await t.mutation(api.onboarding.selectClassAndSeedSyllabus, {
+        classLevel: "other",
+      });
+      vi.setSystemTime(new Date("2026-05-03T06:00:00.000Z"));
+      const secondResult = await t.mutation(api.onboarding.selectClassAndSeedSyllabus, {
+        classLevel: "other",
+      });
+
+      const status = await t.query(api.onboarding.getOnboardingStatus, {});
+      const counts = await t.run(async (ctx) => {
+        return {
+          subjects: (await ctx.db.query("subjects").collect()).length,
+          chapters: (await ctx.db.query("chapters").collect()).length,
+          concepts: (await ctx.db.query("concepts").collect()).length,
+          studyItems: (await ctx.db.query("studyItems").collect()).length,
+          studyLogs: (await ctx.db.query("studyLogs").collect()).length,
+          weeklyTargets: (await ctx.db.query("weeklyTargets").collect()).length,
+          plannerSessions: (await ctx.db.query("plannerSessions").collect()).length,
+        };
+      });
+
+      expect(firstResult).toMatchObject({
+        classLevel: "other",
+        seededSubjectCount: 0,
+      });
+      expect(secondResult.onboardingCompletedAt).toBe(firstResult.onboardingCompletedAt);
+      expect(status).toMatchObject({
+        classLevel: "other",
+        onboardingCompletedAt: firstResult.onboardingCompletedAt,
+        hasSubjects: false,
+        requiresOnboarding: false,
+      });
+      expect(counts).toEqual({
+        subjects: 0,
+        chapters: 0,
+        concepts: 0,
+        studyItems: 0,
+        studyLogs: 0,
+        weeklyTargets: 0,
+        plannerSessions: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("HSC seeding is idempotent", async () => {
     const t = convexTest(schema, modules).withIdentity(createIdentity("idempotent-hsc-user"));
 
@@ -296,5 +350,79 @@ describe("HSC onboarding", () => {
       secondSubjects.map((subject) => subject.slug).sort(),
     );
     expect(firstSubjects[0]?._id).not.toBe(secondSubjects[0]?._id);
+  });
+
+  test("other user with no subjects can import HSC later", async () => {
+    const t = convexTest(schema, modules).withIdentity(createIdentity("other-import-user"));
+
+    await t.mutation(api.auth.ensureCurrentUser, {});
+    await t.mutation(api.onboarding.selectClassAndSeedSyllabus, { classLevel: "other" });
+
+    const result = await t.mutation(api.onboarding.importHscSyllabusForCurrentUser, {});
+    const status = await t.query(api.onboarding.getOnboardingStatus, {});
+    const counts = await t.run(async (ctx) => {
+      return {
+        subjects: (await ctx.db.query("subjects").collect()).length,
+        chapters: (await ctx.db.query("chapters").collect()).length,
+        concepts: (await ctx.db.query("concepts").collect()).length,
+      };
+    });
+
+    expect(result).toMatchObject({
+      classLevel: "hsc",
+      seededSubjectCount: 8,
+    });
+    expect(status.classLevel).toBe("hsc");
+    expect(status.requiresOnboarding).toBe(false);
+    expect(counts).toEqual({
+      subjects: 8,
+      chapters: 75,
+      concepts: 379,
+    });
+  });
+
+  test("other user with custom subjects cannot import HSC later", async () => {
+    const t = convexTest(schema, modules).withIdentity(createIdentity("other-custom-user"));
+
+    await t.mutation(api.auth.ensureCurrentUser, {});
+    await t.mutation(api.onboarding.selectClassAndSeedSyllabus, { classLevel: "other" });
+    await t.mutation(api.mutations.createSubject, {
+      name: "Custom Physics",
+      slug: "custom-physics",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [],
+    });
+
+    await expect(
+      t.mutation(api.onboarding.importHscSyllabusForCurrentUser, {}),
+    ).rejects.toThrow("custom subjects");
+
+    const counts = await t.run(async (ctx) => {
+      return {
+        subjects: (await ctx.db.query("subjects").collect()).length,
+        chapters: (await ctx.db.query("chapters").collect()).length,
+        concepts: (await ctx.db.query("concepts").collect()).length,
+      };
+    });
+    const status = await t.query(api.onboarding.getOnboardingStatus, {});
+
+    expect(status.classLevel).toBe("other");
+    expect(counts).toEqual({
+      subjects: 1,
+      chapters: 0,
+      concepts: 0,
+    });
+  });
+
+  test("non-other user cannot use the HSC import action", async () => {
+    const t = convexTest(schema, modules).withIdentity(createIdentity("hsc-import-user"));
+
+    await t.mutation(api.auth.ensureCurrentUser, {});
+    await t.mutation(api.onboarding.selectClassAndSeedSyllabus, { classLevel: "hsc" });
+
+    await expect(
+      t.mutation(api.onboarding.importHscSyllabusForCurrentUser, {}),
+    ).rejects.toThrow("Only users who selected other");
   });
 });

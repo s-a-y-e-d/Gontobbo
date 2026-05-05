@@ -29,13 +29,35 @@ export default function TodoAgendaTaskRow({
   const toggleStudyItemCompletion = useMutation(
     api.mutations.toggleStudyItemCompletion,
   );
+  const toggleCustomTodoTaskCompletion = useMutation(
+    api.mutations.toggleCustomTodoTaskCompletion,
+  );
   const deleteTodoTask = useMutation(api.mutations.deleteTodoTask);
 
   const isStudyItemTask = task.kind === "study_item";
+  const isCustomTask = task.kind === "custom";
   const isScheduled = task.startTimeMinutes !== undefined;
   const metadataText = task.conceptName
     ? `${task.subjectName} • ${task.chapterName} • ${task.conceptName}`
     : `${task.subjectName} • ${task.chapterName}`;
+
+  const handleToggle = () => {
+    if (isStudyItemTask) {
+      void toggleStudyItemCompletion({
+        studyItemId: task.studyItemId as Id<"studyItems">,
+      });
+      return;
+    }
+
+    if (isCustomTask) {
+      void toggleCustomTodoTaskCompletion({
+        todoTaskId: task.id as Id<"todoTasks">,
+      });
+      return;
+    }
+
+    setIsReviewModalOpen(true);
+  };
 
   const handleDelete = () => {
     if (!window.confirm("এই টাস্কটি Todo থেকে সরিয়ে দেবেন?")) {
@@ -61,11 +83,7 @@ export default function TodoAgendaTaskRow({
               id={checkboxId}
               type="checkbox"
               checked={task.isCompleted}
-              onChange={() =>
-                void toggleStudyItemCompletion({
-                  studyItemId: task.studyItemId as Id<"studyItems">,
-                })
-              }
+              onChange={handleToggle}
             />
             <label className="cbx" htmlFor={checkboxId} aria-label={task.title}>
               <span>
@@ -82,7 +100,7 @@ export default function TodoAgendaTaskRow({
               id={checkboxId}
               type="checkbox"
               checked={task.isCompleted}
-              onChange={() => setIsReviewModalOpen(true)}
+              onChange={handleToggle}
             />
             <label className="cbx" htmlFor={checkboxId} aria-label={task.title}>
               <span>
@@ -126,7 +144,7 @@ export default function TodoAgendaTaskRow({
               className={task.isCompleted ? "font-medium opacity-55" : "font-medium"}
               style={{ color: theme.accentHex }}
             >
-              {metadataText}
+              {isCustomTask ? "নিজস্ব টাস্ক" : metadataText}
             </span>
             <span className={task.isCompleted ? "text-gray-400/80" : "text-gray-400"}>
               {formatDurationLabel(task.durationMinutes)}

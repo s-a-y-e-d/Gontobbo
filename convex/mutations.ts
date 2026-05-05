@@ -251,6 +251,15 @@ function validateTodoSchedule(args: {
   }
 }
 
+function normalizeCustomTodoTitle(title: string) {
+  const normalizedTitle = title.replace(/\s+/g, " ").trim();
+  if (normalizedTitle.length === 0) {
+    throw new Error("Custom todo title is required");
+  }
+
+  return normalizedTitle;
+}
+
 async function syncStudyItemPresentation(
   ctx: MutationCtx,
   studyItemId: Id<"studyItems">,
@@ -1163,6 +1172,37 @@ export const createTodoTask = mutation({
   },
 });
 
+export const createCustomTodoTask = mutation({
+  args: {
+    date: v.number(),
+    title: v.string(),
+    startTimeMinutes: v.optional(v.number()),
+    durationMinutes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
+      throw new Error("Date must be a valid Dhaka day bucket");
+    }
+
+    validateTodoSchedule(args);
+    const customTitle = normalizeCustomTodoTitle(args.title);
+
+    return await ctx.db.insert("todoTasks", {
+      userId: currentUser._id,
+      date: args.date,
+      kind: "custom",
+      customTitle,
+      isCompleted: false,
+      startTimeMinutes: args.startTimeMinutes,
+      durationMinutes: args.durationMinutes,
+      source: "manual",
+      sortOrder:
+        args.startTimeMinutes ?? await getNextTodoSortOrder(ctx, currentUser, args.date),
+    });
+  },
+});
+
 export const updateTodoTaskSchedule = mutation({
   args: {
     todoTaskId: v.id("todoTasks"),
@@ -1186,6 +1226,66 @@ export const updateTodoTaskSchedule = mutation({
         args.startTimeMinutes ??
         todoTask.sortOrder ??
         await getNextTodoSortOrder(ctx, currentUser, todoTask.date),
+    });
+
+    return null;
+  },
+});
+
+export const updateCustomTodoTask = mutation({
+  args: {
+    todoTaskId: v.id("todoTasks"),
+    title: v.string(),
+    startTimeMinutes: v.optional(v.number()),
+    durationMinutes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const todoTask = await getOwnedTodoTaskOrThrow(
+      ctx,
+      currentUser,
+      args.todoTaskId,
+    );
+
+    if (todoTask.kind !== "custom") {
+      throw new Error("Only custom todo tasks can update their title");
+    }
+
+    validateTodoSchedule(args);
+    const customTitle = normalizeCustomTodoTitle(args.title);
+
+    await ctx.db.patch(todoTask._id, {
+      customTitle,
+      startTimeMinutes: args.startTimeMinutes,
+      durationMinutes: args.durationMinutes,
+      sortOrder:
+        args.startTimeMinutes ??
+        todoTask.sortOrder ??
+        await getNextTodoSortOrder(ctx, currentUser, todoTask.date),
+    });
+
+    return null;
+  },
+});
+
+export const toggleCustomTodoTaskCompletion = mutation({
+  args: {
+    todoTaskId: v.id("todoTasks"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const todoTask = await getOwnedTodoTaskOrThrow(
+      ctx,
+      currentUser,
+      args.todoTaskId,
+    );
+
+    if (todoTask.kind !== "custom") {
+      throw new Error("Only custom todo tasks can be toggled here");
+    }
+
+    await ctx.db.patch(todoTask._id, {
+      isCompleted: !(todoTask.isCompleted ?? false),
     });
 
     return null;
@@ -1596,9 +1696,14 @@ export const generatePlannerSuggestions = mutation({
     }
 
     for (const todoTask of todoTasks) {
+      const todoTaskKind = todoTask.kind ?? PLANNER_SUGGESTION_KIND.studyItem;
+      if (todoTaskKind === "custom") {
+        continue;
+      }
+
       blockedIdentities.add(
         buildPlannerCandidateIdentity({
-          kind: todoTask.kind ?? PLANNER_SUGGESTION_KIND.studyItem,
+          kind: todoTaskKind,
           studyItemId: todoTask.studyItemId,
           conceptId: todoTask.conceptId,
         }),
