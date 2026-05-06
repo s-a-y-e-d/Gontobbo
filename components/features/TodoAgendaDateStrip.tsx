@@ -129,7 +129,7 @@ export default function TodoAgendaDateStrip({
                   ? "bg-brand-green text-near-black"
                   : day.isSelected
                     ? "bg-on-surface text-pure-white"
-                    : "text-on-surface group-hover:bg-surface-container"
+                    : "text-on-surface"
               }`}
             >
               {day.dayNumber}
