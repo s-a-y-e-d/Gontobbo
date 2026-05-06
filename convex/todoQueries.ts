@@ -355,3 +355,131 @@ export const searchStudyItemsForTodo = query({
       }));
   },
 });
+
+export const searchConceptReviewsForTodo = query({
+  args: {
+    date: v.number(),
+    searchText: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const normalizedSearchText = normalizeStudyItemSearchQuery(args.searchText);
+    if (normalizedSearchText.length === 0) {
+      return [];
+    }
+
+    const defaultRevisionMinutesSetting = filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
+        .collect(),
+    )[0];
+    const defaultRevisionMinutes =
+      typeof defaultRevisionMinutesSetting?.value === "number"
+        ? defaultRevisionMinutesSetting.value
+        : 15;
+
+    const todoTasks = filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("todoTasks")
+        .withIndex("by_date", (q) => q.eq("date", args.date))
+        .collect(),
+    );
+
+    const scheduledConceptIds = new Set(
+      todoTasks
+        .map((todoTask) => todoTask.conceptId)
+        .filter((conceptId): conceptId is Doc<"concepts">["_id"] =>
+          conceptId !== undefined,
+        ),
+    );
+
+    const concepts = currentUser.legacyWorkspaceOwner
+      ? filterOwnedDocuments(
+          currentUser,
+          await ctx.db.query("concepts").take(500),
+        )
+      : await ctx.db
+          .query("concepts")
+          .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+          .take(500);
+
+    const rankedResults = await Promise.all(
+      concepts
+        .filter(
+          (concept) =>
+            concept.nextReviewAt !== undefined &&
+            !scheduledConceptIds.has(concept._id),
+        )
+        .map(async (concept) => {
+          const nextReviewAt = concept.nextReviewAt;
+          if (nextReviewAt === undefined) {
+            return null;
+          }
+
+          const chapter = await ctx.db.get(concept.chapterId);
+          const subject = chapter ? await ctx.db.get(chapter.subjectId) : null;
+
+          if (!chapter || !subject) {
+            return null;
+          }
+
+          const searchArtifacts = buildStudyItemSearchArtifacts({
+            baseName: concept.name,
+            trackerLabel: "Revision",
+            subjectName: subject.name,
+            chapterName: chapter.name,
+            conceptName: concept.name,
+            title: `${concept.name} - Revision`,
+          });
+          const score = scoreStudyItemSearchMatch({
+            query: normalizedSearchText,
+            titleAliases: searchArtifacts.titleAliases,
+            contextAliases: searchArtifacts.contextAliases,
+          });
+
+          if (score === 0) {
+            return null;
+          }
+
+          return {
+            _id: concept._id,
+            title: `${concept.name} - Revision`,
+            conceptName: concept.name,
+            subjectName: subject.name,
+            chapterName: chapter.name,
+            subjectColor: subject.color ?? "gray",
+            nextReviewAt,
+            score,
+          };
+        }),
+    );
+
+    return rankedResults
+      .filter(
+        (
+          result,
+        ): result is NonNullable<(typeof rankedResults)[number]> => result !== null,
+      )
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return left.title.localeCompare(right.title);
+      })
+      .slice(0, 12)
+      .map((result) => ({
+        _id: result._id,
+        title: result.title,
+        conceptName: result.conceptName,
+        subjectName: result.subjectName,
+        chapterName: result.chapterName,
+        subjectColor: result.subjectColor,
+        nextReviewAt: result.nextReviewAt,
+        estimatedMinutes: defaultRevisionMinutes,
+      }));
+  },
+});

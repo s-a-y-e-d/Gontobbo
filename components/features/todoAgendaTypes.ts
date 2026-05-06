@@ -35,3 +35,14 @@ export type TodoStudyItemSearchResult = {
   subjectColor?: string;
   estimatedMinutes: number;
 };
+
+export type TodoConceptReviewSearchResult = {
+  _id: string;
+  title: string;
+  conceptName: string;
+  subjectName: string;
+  chapterName: string;
+  subjectColor?: string;
+  nextReviewAt: number;
+  estimatedMinutes: number;
+};

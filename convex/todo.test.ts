@@ -54,6 +54,39 @@ async function createStudyItemFixture(subject: string) {
   return { t, date, chapterId, studyItemId };
 }
 
+async function createRevisionFixture(subject: string) {
+  const t = await createAuthenticatedTestContext(subject);
+  const date = getDhakaDayBucket(Date.now());
+
+  const subjectId = await t.mutation(api.mutations.createSubject, {
+    name: "Physics",
+    slug: `physics-revision-${subject}`,
+    order: 1,
+    chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+    conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+  });
+
+  const chapterId = await t.mutation(api.mutations.createChapter, {
+    subjectId,
+    name: "Motion",
+    order: 1,
+    inNextTerm: true,
+  });
+
+  const conceptId = await t.mutation(api.mutations.createConcept, {
+    chapterId,
+    name: "Velocity",
+    order: 1,
+  });
+
+  await t.mutation(api.mutations.rescheduleConceptReview, {
+    conceptId,
+    newNextReviewAt: date,
+  });
+
+  return { t, date, conceptId };
+}
+
 describe("todo", () => {
   test("creates a manual todo with a start time", async () => {
     const { t, date, studyItemId } = await createStudyItemFixture("todo-timed");
@@ -528,5 +561,92 @@ describe("todo", () => {
 
     expect(agenda.days[0]?.tasks).toEqual([]);
     expect(studyItem?.isCompleted).toBe(false);
+  });
+
+  test("searches scheduled revision concepts by concept, chapter, and subject", async () => {
+    const { t, date, conceptId } = await createRevisionFixture("todo-revision-search");
+
+    for (const searchText of ["Velocity", "Motion", "Physics"]) {
+      const results = await t.query(api.todoQueries.searchConceptReviewsForTodo, {
+        date,
+        searchText,
+      });
+
+      expect(results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            _id: conceptId,
+            conceptName: "Velocity",
+            chapterName: "Motion",
+            subjectName: "Physics",
+          }),
+        ]),
+      );
+    }
+  });
+
+  test("hides already scheduled revision concepts from todo search", async () => {
+    const { t, date, conceptId } = await createRevisionFixture("todo-revision-duplicate-search");
+
+    await t.mutation(api.mutations.createConceptReviewTodoTask, {
+      date,
+      conceptId,
+      durationMinutes: 15,
+      source: "manual",
+    });
+
+    const results = await t.query(api.todoQueries.searchConceptReviewsForTodo, {
+      date,
+      searchText: "Velocity",
+    });
+
+    expect(results.some((result) => result._id === conceptId)).toBe(false);
+  });
+
+  test("creates a manual revision todo", async () => {
+    const { t, date, conceptId } = await createRevisionFixture("todo-revision-create");
+
+    await t.mutation(api.mutations.createConceptReviewTodoTask, {
+      date,
+      conceptId,
+      startTimeMinutes: 8 * 60,
+      durationMinutes: 30,
+      source: "manual",
+    });
+
+    const agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+
+    expect(agenda.days[0]?.tasks).toEqual([
+      expect.objectContaining({
+        kind: "concept_review",
+        conceptId,
+        startTimeMinutes: 8 * 60,
+        durationMinutes: 30,
+        source: "manual",
+      }),
+    ]);
+  });
+
+  test("rejects duplicate revision todos on the same day", async () => {
+    const { t, date, conceptId } = await createRevisionFixture("todo-revision-duplicate");
+
+    await t.mutation(api.mutations.createConceptReviewTodoTask, {
+      date,
+      conceptId,
+      durationMinutes: 15,
+      source: "manual",
+    });
+
+    await expect(
+      t.mutation(api.mutations.createConceptReviewTodoTask, {
+        date,
+        conceptId,
+        durationMinutes: 15,
+        source: "manual",
+      }),
+    ).rejects.toThrow("This revision is already scheduled for that day");
   });
 });

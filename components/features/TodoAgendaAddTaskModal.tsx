@@ -8,7 +8,10 @@ import DurationPresetSelect from "./DurationPresetSelect";
 import TodoColorPicker from "./TodoColorPicker";
 import { getSubjectTheme } from "./subjectTheme";
 import type { SubjectColor } from "./subjectTheme";
-import { TodoStudyItemSearchResult } from "./todoAgendaTypes";
+import {
+  TodoConceptReviewSearchResult,
+  TodoStudyItemSearchResult,
+} from "./todoAgendaTypes";
 import {
   formatDurationLabel,
   formatTimeInputValue,
@@ -35,13 +38,19 @@ export default function TodoAgendaAddTaskModal({
   initialDurationMinutes,
 }: TodoAgendaAddTaskModalProps) {
   const createTodoTask = useMutation(api.mutations.createTodoTask);
+  const createConceptReviewTodoTask = useMutation(
+    api.mutations.createConceptReviewTodoTask,
+  );
   const createCustomTodoTask = useMutation(api.mutations.createCustomTodoTask);
-  const [taskMode, setTaskMode] = useState<"study_item" | "custom">("study_item");
+  const [taskMode, setTaskMode] =
+    useState<"study_item" | "concept_review" | "custom">("study_item");
   const [searchText, setSearchText] = useState("");
   const [customTitle, setCustomTitle] = useState("");
   const deferredSearchText = useDeferredValue(searchText.trim());
   const [selectedStudyItem, setSelectedStudyItem] =
     useState<TodoStudyItemSearchResult | null>(null);
+  const [selectedConceptReview, setSelectedConceptReview] =
+    useState<TodoConceptReviewSearchResult | null>(null);
   const [startTimeValue, setStartTimeValue] = useState(() =>
     initialStartTimeMinutes === undefined
       ? ""
@@ -57,6 +66,12 @@ export default function TodoAgendaAddTaskModal({
   const searchResults = useQuery(
     api.todoQueries.searchStudyItemsForTodo,
     isOpen && taskMode === "study_item" && deferredSearchText.length > 0
+      ? { date, searchText: deferredSearchText }
+      : "skip",
+  );
+  const revisionSearchResults = useQuery(
+    api.todoQueries.searchConceptReviewsForTodo,
+    isOpen && taskMode === "concept_review" && deferredSearchText.length > 0
       ? { date, searchText: deferredSearchText }
       : "skip",
   );
@@ -82,6 +97,10 @@ export default function TodoAgendaAddTaskModal({
     taskMode === "study_item" &&
     selectedStudyItem === null &&
     deferredSearchText.length > 0;
+  const canShowRevisionResults =
+    taskMode === "concept_review" &&
+    selectedConceptReview === null &&
+    deferredSearchText.length > 0;
   const normalizedCustomTitle = customTitle.trim();
   const isDurationPastSelectedDay =
     durationMinutes !== null &&
@@ -93,21 +112,33 @@ export default function TodoAgendaAddTaskModal({
     !isDurationPastSelectedDay &&
     (taskMode === "study_item"
       ? selectedStudyItem !== null
-      : normalizedCustomTitle.length > 0);
+      : taskMode === "concept_review"
+        ? selectedConceptReview !== null
+        : normalizedCustomTitle.length > 0);
 
-  const handleTaskModeChange = (mode: "study_item" | "custom") => {
+  const handleTaskModeChange = (mode: "study_item" | "concept_review" | "custom") => {
     setTaskMode(mode);
     setErrorMessage(null);
 
     if (mode === "custom") {
       setSearchText("");
       setSelectedStudyItem(null);
+      setSelectedConceptReview(null);
       setDurationMinutes((current) => current ?? initialDurationMinutes ?? 15);
       return;
     }
 
     setCustomTitle("");
-    if (!selectedStudyItem) {
+    if (mode === "study_item") {
+      setSelectedConceptReview(null);
+    } else {
+      setSelectedStudyItem(null);
+    }
+
+    if (
+      (mode === "study_item" && !selectedStudyItem) ||
+      (mode === "concept_review" && !selectedConceptReview)
+    ) {
       setDurationMinutes(null);
     }
   };
@@ -125,9 +156,23 @@ export default function TodoAgendaAddTaskModal({
     setErrorMessage(null);
   };
 
+  const handleSelectConceptReview = (conceptReview: TodoConceptReviewSearchResult) => {
+    const roundedDuration = roundToNearestDuration(conceptReview.estimatedMinutes);
+
+    setSelectedConceptReview(conceptReview);
+    setSearchText(conceptReview.title);
+    setDurationMinutes(
+      maxDurationMinutes === null || roundedDuration <= maxDurationMinutes
+        ? roundedDuration
+        : null,
+    );
+    setErrorMessage(null);
+  };
+
   const handleSearchTextChange = (value: string) => {
     setSearchText(value);
     setSelectedStudyItem(null);
+    setSelectedConceptReview(null);
     setErrorMessage(null);
   };
 
@@ -169,6 +214,11 @@ export default function TodoAgendaAddTaskModal({
 
     if (taskMode === "study_item" && !selectedStudyItem) {
       setErrorMessage("একটি স্টাডি আইটেম সিলেক্ট করুন।");
+      return;
+    }
+
+    if (taskMode === "concept_review" && !selectedConceptReview) {
+      setErrorMessage("Select a revision task.");
       return;
     }
 
@@ -225,6 +275,14 @@ export default function TodoAgendaAddTaskModal({
           durationMinutes,
           source: "manual",
         });
+      } else if (selectedConceptReview) {
+        await createConceptReviewTodoTask({
+          date,
+          conceptId: selectedConceptReview._id as Id<"concepts">,
+          startTimeMinutes: normalizedStartTime,
+          durationMinutes,
+          source: "manual",
+        });
       }
       onClose();
     } catch (error) {
@@ -265,7 +323,7 @@ export default function TodoAgendaAddTaskModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6 px-6 py-6 sm:px-8">
-          <div className="grid grid-cols-2 rounded-full border border-border-subtle bg-surface-container p-1">
+          <div className="grid grid-cols-3 rounded-full border border-border-subtle bg-surface-container p-1">
             <button
               type="button"
               onClick={() => handleTaskModeChange("study_item")}
@@ -276,6 +334,17 @@ export default function TodoAgendaAddTaskModal({
               }`}
             >
               স্টাডি আইটেম
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTaskModeChange("concept_review")}
+              className={`rounded-full px-4 py-2.5 text-sm font-medium transition-all ${
+                taskMode === "concept_review"
+                  ? "bg-pure-white text-on-surface shadow-sm"
+                  : "text-gray-500 hover:text-on-surface"
+              }`}
+            >
+              Revision
             </button>
             <button
               type="button"
@@ -308,6 +377,21 @@ export default function TodoAgendaAddTaskModal({
             {selectedStudyItem ? (
               <SelectedStudyItemCard studyItem={selectedStudyItem} />
             ) : null}
+              </>
+            ) : taskMode === "concept_review" ? (
+              <>
+                <input
+                  type="text"
+                  value={searchText}
+                  onChange={(event) => handleSearchTextChange(event.target.value)}
+                  className="w-full rounded-full border border-border-medium bg-gray-50/60 px-4 py-3 font-body text-body text-on-surface outline-none transition-all focus:border-brand-green"
+                  placeholder="Search revision..."
+                  autoComplete="off"
+                />
+
+                {selectedConceptReview ? (
+                  <SelectedConceptReviewCard conceptReview={selectedConceptReview} />
+                ) : null}
               </>
             ) : (
               <input
@@ -364,6 +448,50 @@ export default function TodoAgendaAddTaskModal({
                 )}
               </div>
             ) : null}
+
+            {canShowRevisionResults ? (
+              <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[24px] border border-border-subtle bg-pure-white shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
+                {revisionSearchResults === undefined ? (
+                  <div className="px-4 py-4 text-sm text-gray-500">
+                    Searching...
+                  </div>
+                ) : revisionSearchResults.length === 0 ? (
+                  <div className="px-4 py-4 text-sm text-gray-500">
+                    No scheduled revision found.
+                  </div>
+                ) : (
+                  <div className="max-h-72 overflow-y-auto py-2">
+                    {revisionSearchResults.map((conceptReview) => (
+                      <button
+                        key={conceptReview._id}
+                        type="button"
+                        onClick={() => handleSelectConceptReview(conceptReview)}
+                        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50"
+                      >
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-green-light text-brand-green-deep">
+                          <span className="material-symbols-outlined text-[18px]">
+                            history_edu
+                          </span>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-body text-[15px] text-on-surface">
+                            {conceptReview.title}
+                          </span>
+                          <span className="mt-1 block text-xs text-gray-500">
+                            {`${conceptReview.subjectName} â€¢ ${conceptReview.chapterName}`}
+                          </span>
+                          <span className="mt-1 block text-[11px] text-gray-400">
+                            {formatReviewDateLabel(conceptReview.nextReviewAt)}
+                            <span className="mx-2 text-gray-300">â€¢</span>
+                            {formatDurationLabel(conceptReview.estimatedMinutes)}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {taskMode === "custom" ? (
@@ -403,12 +531,18 @@ export default function TodoAgendaAddTaskModal({
             </div>
           </div>
 
-          {taskMode === "study_item" && selectedStudyItem && durationMinutes !== null ? (
+          {taskMode !== "custom" &&
+          (selectedStudyItem || selectedConceptReview) &&
+          durationMinutes !== null ? (
             <div className="rounded-[24px] border border-border-subtle bg-surface-container px-4 py-3 text-sm text-gray-600">
               <span className="font-medium text-on-surface">
                 ডিফল্ট সময়:
               </span>{" "}
-              {formatDurationLabel(selectedStudyItem.estimatedMinutes)}
+              {formatDurationLabel(
+                selectedStudyItem?.estimatedMinutes ??
+                  selectedConceptReview?.estimatedMinutes ??
+                  durationMinutes,
+              )}
               <span className="mx-2 text-gray-300">•</span>
               <span className="font-medium text-on-surface">
                 সিলেক্টেড:
@@ -454,6 +588,15 @@ function getMaxDurationMinutes(startTimeValue: string) {
   return 1440 - roundToNearestQuarterHour(parsedStartTime);
 }
 
+function formatReviewDateLabel(nextReviewAt: number) {
+  const dayBucket = new Date(nextReviewAt).toLocaleDateString("bn-BD", {
+    month: "short",
+    day: "numeric",
+  });
+
+  return `Review: ${dayBucket}`;
+}
+
 function SelectedStudyItemCard({
   studyItem,
 }: {
@@ -480,6 +623,41 @@ function SelectedStudyItemCard({
           </p>
           <p className="mt-1 text-[11px] text-gray-400">
             ডিফল্ট সময়: {formatDurationLabel(studyItem.estimatedMinutes)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectedConceptReviewCard({
+  conceptReview,
+}: {
+  conceptReview: TodoConceptReviewSearchResult;
+}) {
+  const theme = getSubjectTheme(conceptReview.subjectColor);
+
+  return (
+    <div className="mt-3 rounded-[24px] border border-border-subtle bg-surface-container px-4 py-4">
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+          style={{ backgroundColor: `${theme.accentHex}18`, color: theme.accentHex }}
+        >
+          <span className="material-symbols-outlined text-[18px]">history_edu</span>
+        </span>
+
+        <div className="min-w-0">
+          <p className="truncate font-body text-[15px] text-on-surface">
+            {conceptReview.title}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            {`${conceptReview.subjectName} â€¢ ${conceptReview.chapterName}`}
+          </p>
+          <p className="mt-1 text-[11px] text-gray-400">
+            {formatReviewDateLabel(conceptReview.nextReviewAt)}
+            <span className="mx-2 text-gray-300">â€¢</span>
+            {formatDurationLabel(conceptReview.estimatedMinutes)}
           </p>
         </div>
       </div>

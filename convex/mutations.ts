@@ -317,6 +317,35 @@ async function ensureNoDuplicateStudyItemTodoOnDate(
   }
 }
 
+async function ensureNoDuplicateConceptReviewTodoOnDate(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  args: {
+    date: number;
+    conceptId?: Id<"concepts">;
+    exceptTodoTaskId?: Id<"todoTasks">;
+  },
+) {
+  if (!args.conceptId) {
+    return;
+  }
+
+  const existingTodoTask =
+    filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("todoTasks")
+        .withIndex("by_date_and_conceptId", (q) =>
+          q.eq("date", args.date).eq("conceptId", args.conceptId!),
+        )
+        .collect(),
+    ).find((todoTask) => todoTask._id !== args.exceptTodoTaskId) ?? null;
+
+  if (existingTodoTask) {
+    throw new Error("This revision is already scheduled for that day");
+  }
+}
+
 async function syncStudyItemPresentation(
   ctx: MutationCtx,
   studyItemId: Id<"studyItems">,
@@ -1211,6 +1240,43 @@ export const createTodoTask = mutation({
       userId: currentUser._id,
       ...args,
       kind: PLANNER_SUGGESTION_KIND.studyItem,
+      sortOrder:
+        args.startTimeMinutes ?? await getNextTodoSortOrder(ctx, currentUser, args.date),
+    });
+  },
+});
+
+export const createConceptReviewTodoTask = mutation({
+  args: {
+    date: v.number(),
+    conceptId: v.id("concepts"),
+    startTimeMinutes: v.optional(v.number()),
+    durationMinutes: v.number(),
+    source: v.union(v.literal("manual"), v.literal("ai_accepted")),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    validateTodoDate(args.date);
+    validateTodoSchedule(args);
+
+    const concept = await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
+    if (concept.nextReviewAt === undefined) {
+      throw new Error("Only scheduled revisions can be added to Todo");
+    }
+
+    await ensureNoDuplicateConceptReviewTodoOnDate(ctx, currentUser, {
+      date: args.date,
+      conceptId: args.conceptId,
+    });
+
+    return await ctx.db.insert("todoTasks", {
+      userId: currentUser._id,
+      date: args.date,
+      kind: PLANNER_SUGGESTION_KIND.conceptReview,
+      conceptId: args.conceptId,
+      startTimeMinutes: args.startTimeMinutes,
+      durationMinutes: args.durationMinutes,
+      source: args.source,
       sortOrder:
         args.startTimeMinutes ?? await getNextTodoSortOrder(ctx, currentUser, args.date),
     });
