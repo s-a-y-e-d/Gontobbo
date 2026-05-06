@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import DateRangeStrip from "./DateRangeStrip";
 import {
   DAY_COUNT,
   DAY_MS,
@@ -132,92 +133,27 @@ export default function PlannerWorkspace() {
 
   return (
     <div className="space-y-8">
-      <section className="rounded-[36px] border border-border-subtle bg-white p-6 shadow-[0_18px_60px_rgba(0,0,0,0.04)] dark:bg-pure-white dark:shadow-none md:p-8">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="font-mono-code text-[11px] uppercase tracking-[0.18em] text-brand-green">
-              AI Planner
-            </p>
-            <h1 className="mt-3 font-section-heading text-[2rem] leading-tight tracking-[-0.04em] text-on-surface md:text-section-heading">
-              আজকের পড়া সাজিয়ে নিন
-            </h1>
-            <p className="mt-3 max-w-2xl font-body text-sm text-gray-500 md:text-base">
-              সময়, পছন্দ আর চলতি অগ্রগতির উপর ভিত্তি করে কাজ সাজিয়ে নিন।
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-full border border-border-subtle bg-pure-white p-1 dark:bg-surface-container">
-              <button
-                type="button"
-                onClick={() => {
-                  setRangeStartDate((current) => current - DAY_COUNT * DAY_MS);
-                  setSelectedDate((current) => current - DAY_COUNT * DAY_MS);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-on-surface"
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  chevron_left
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setRangeStartDate(today);
-                  setSelectedDate(today);
-                }}
-                className="rounded-full px-4 py-2 font-body text-sm text-on-surface transition-colors hover:bg-gray-100"
-              >
-                আজ
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setRangeStartDate((current) => current + DAY_COUNT * DAY_MS);
-                  setSelectedDate((current) => current + DAY_COUNT * DAY_MS);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-on-surface"
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  chevron_right
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <p className="mt-5 font-body text-sm text-gray-500 md:text-base">
-          {formatMonthLabel(selectedDate)}
-        </p>
-
-        <div className="mt-5 grid grid-cols-7 gap-2">
-          {days.map((day) => (
-            <button
-              type="button"
-              key={day.date}
-              onClick={() => setSelectedDate(day.date)}
-              className={`rounded-2xl px-2 py-3 text-center transition-colors ${
-                day.isSelected
-                  ? "bg-on-surface text-pure-white shadow-[0_6px_20px_rgba(0,0,0,0.08)]"
-                  : day.isToday
-                    ? "bg-emerald-50 text-brand-green dark:bg-emerald-900/20"
-                    : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-100"
-              }`}
-            >
-              <div
-                className={`font-mono-code text-[10px] uppercase tracking-[0.18em] md:text-[11px] ${
-                  day.isSelected ? "text-pure-white/80" : "text-gray-400"
-                }`}
-              >
-                {day.shortWeekday}
-              </div>
-              <div className="mt-1 font-card-title text-lg leading-none md:text-xl">
-                {day.dayNumber}
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
+      <DateRangeStrip
+        days={days}
+        monthLabel={formatMonthLabel(selectedDate)}
+        title="আজকের পড়া সাজিয়ে নিন"
+        eyebrow="AI Planner"
+        description="সময়, পছন্দ আর চলতি অগ্রগতির উপর ভিত্তি করে কাজ সাজিয়ে নিন।"
+        variant="card"
+        onSelectDate={setSelectedDate}
+        onGoToPreviousRange={() => {
+          setRangeStartDate((current) => current - DAY_COUNT * DAY_MS);
+          setSelectedDate((current) => current - DAY_COUNT * DAY_MS);
+        }}
+        onGoToToday={() => {
+          setRangeStartDate(today);
+          setSelectedDate(today);
+        }}
+        onGoToNextRange={() => {
+          setRangeStartDate((current) => current + DAY_COUNT * DAY_MS);
+          setSelectedDate((current) => current + DAY_COUNT * DAY_MS);
+        }}
+      />
 
       <section className="grid items-start gap-6 xl:grid-cols-[1.05fr_1.35fr]">
         <PlannerComposerCard
