@@ -107,6 +107,89 @@ describe("planner", () => {
     ).toBe(true);
   });
 
+  test("keeps concept study items together and follows concept order", async () => {
+    const t = await createAuthenticatedTestContext("planner-concept-order");
+    const date = getDhakaDayBucket(Date.now());
+
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [
+        { key: "class", label: "Class", avgMinutes: 20 },
+        { key: "book", label: "Book", avgMinutes: 20 },
+      ],
+    });
+
+    const chapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      slug: "motion",
+      order: 1,
+      inNextTerm: true,
+    });
+
+    await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Velocity",
+      order: 1,
+    });
+    await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Acceleration",
+      order: 2,
+    });
+
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId });
+    await t.mutation(api.mutations.ensureConceptStudyItems, { chapterId });
+
+    await t.mutation(api.mutations.generatePlannerSuggestions, {
+      date,
+      availableMinutes: 80,
+    });
+
+    const firstPlanner = await t.query(api.plannerQueries.getPlannerPageData, {
+      date,
+    });
+    const firstTitles = firstPlanner.suggestions.map((suggestion) => suggestion.title);
+
+    expect(firstTitles).toEqual(
+      expect.arrayContaining(["Velocity — Class", "Velocity — Book"]),
+    );
+    expect(firstTitles.some((title) => title.includes("Acceleration"))).toBe(false);
+
+    const chapterData = await t.query(api.queries.getChapterPageData, {
+      subjectSlug: "physics",
+      chapterSlug: "motion",
+    });
+    const velocity = chapterData?.concepts.find(
+      (concept) => concept.name === "Velocity",
+    );
+
+    for (const tracker of velocity?.trackerData ?? []) {
+      await t.mutation(api.mutations.toggleStudyItemCompletion, {
+        studyItemId: tracker.studyItemId!,
+      });
+    }
+
+    await t.mutation(api.mutations.generatePlannerSuggestions, {
+      date: date + 86400000,
+      availableMinutes: 80,
+    });
+
+    const secondPlanner = await t.query(api.plannerQueries.getPlannerPageData, {
+      date: date + 86400000,
+    });
+    const secondTitles = secondPlanner.suggestions.map(
+      (suggestion) => suggestion.title,
+    );
+
+    expect(secondTitles).toEqual(
+      expect.arrayContaining(["Acceleration — Class", "Acceleration — Book"]),
+    );
+  });
+
   test("accepting a revision suggestion creates a revision todo task", async () => {
     const t = await createAuthenticatedTestContext("planner-revision");
     const date = getDhakaDayBucket(Date.now());

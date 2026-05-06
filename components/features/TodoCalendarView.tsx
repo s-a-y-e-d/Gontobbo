@@ -30,7 +30,11 @@ type TodoCalendarViewProps = {
   onGoToPreviousRange: () => void;
   onGoToToday: () => void;
   onGoToNextRange: () => void;
-  onCreateTask: (date: number, startTimeMinutes: number) => void;
+  onCreateTask: (
+    date: number,
+    startTimeMinutes: number,
+    durationMinutes: number,
+  ) => void;
 };
 
 type DragMode = "move" | "resize";
@@ -45,6 +49,17 @@ type DragState = {
   originalStart: number;
   originalDuration: number;
   previewDate: number;
+  previewStart: number;
+  previewDuration: number;
+  hasMoved: boolean;
+};
+
+type CreateSelectionState = {
+  pointerId: number;
+  originX: number;
+  originY: number;
+  date: number;
+  anchorMinutes: number;
   previewStart: number;
   previewDuration: number;
   hasMoved: boolean;
@@ -92,6 +107,8 @@ export default function TodoCalendarView({
   const [now, setNow] = useState(() => Date.now());
   const [editingTask, setEditingTask] = useState<TodoAgendaTask | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [createSelectionState, setCreateSelectionState] =
+    useState<CreateSelectionState | null>(null);
   const [suppressClickUntil, setSuppressClickUntil] = useState(0);
   const updateTodoTaskSchedule = useMutation(api.mutations.updateTodoTaskSchedule);
   const updateCustomTodoTask = useMutation(api.mutations.updateCustomTodoTask);
@@ -144,7 +161,7 @@ export default function TodoCalendarView({
       const rawMinutes = ((clientY - rect.top) / HOUR_HEIGHT) * 60;
       return {
         date: day.date,
-        startTimeMinutes: Math.min(1439, Math.max(0, snapMinutes(rawMinutes))),
+        startTimeMinutes: Math.min(1440, Math.max(0, snapMinutes(rawMinutes))),
       };
     },
     [calendarDays],
@@ -248,8 +265,81 @@ export default function TodoCalendarView({
     };
   }, [dragState, getPointerTarget, saveDraggedTask]);
 
-  const handleGridClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (Date.now() < suppressClickUntil) {
+  useEffect(() => {
+    if (!createSelectionState) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== createSelectionState.pointerId) {
+        return;
+      }
+
+      const target = getPointerTarget(event.clientX, event.clientY);
+      const targetMinutes =
+        target?.date === createSelectionState.date
+          ? target.startTimeMinutes
+          : getPointerMinutesInOriginDay(
+              event.clientY,
+              createSelectionState.originY,
+              createSelectionState.anchorMinutes,
+            );
+      const range = buildCreateSelectionRange({
+        anchorMinutes: createSelectionState.anchorMinutes,
+        targetMinutes,
+      });
+      const hasMoved =
+        createSelectionState.hasMoved ||
+        Math.abs(event.clientX - createSelectionState.originX) > 3 ||
+        Math.abs(event.clientY - createSelectionState.originY) > 3;
+
+      setCreateSelectionState({
+        ...createSelectionState,
+        ...range,
+        hasMoved,
+      });
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== createSelectionState.pointerId) {
+        return;
+      }
+
+      const finalState = createSelectionState;
+      setCreateSelectionState(null);
+      setSuppressClickUntil(Date.now() + 250);
+
+      onSelectDate(finalState.date);
+
+      if (!finalState.hasMoved) {
+        onCreateTask(
+          finalState.date,
+          Math.min(1440 - DEFAULT_DROP_DURATION, finalState.anchorMinutes),
+          DEFAULT_DROP_DURATION,
+        );
+        return;
+      }
+
+      onCreateTask(
+        finalState.date,
+        finalState.previewStart,
+        finalState.previewDuration,
+      );
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [createSelectionState, getPointerTarget, onCreateTask, onSelectDate]);
+
+  const startCreateSelection = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || Date.now() < suppressClickUntil) {
       return;
     }
 
@@ -258,8 +348,20 @@ export default function TodoCalendarView({
       return;
     }
 
-    onSelectDate(target.date);
-    onCreateTask(target.date, Math.min(1380, target.startTimeMinutes));
+    event.preventDefault();
+
+    setCreateSelectionState({
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      originY: event.clientY,
+      date: target.date,
+      anchorMinutes: target.startTimeMinutes,
+      ...buildCreateSelectionRange({
+        anchorMinutes: target.startTimeMinutes,
+        targetMinutes: target.startTimeMinutes + SNAP_MINUTES,
+      }),
+      hasMoved: false,
+    });
   };
 
   const startDrag = (
@@ -350,7 +452,7 @@ export default function TodoCalendarView({
                   <div
                     ref={timedGridRef}
                     role="presentation"
-                    onClick={handleGridClick}
+                    onPointerDown={startCreateSelection}
                     className="relative grid cursor-crosshair"
                     style={{
                       gridColumn: "2 / -1",
@@ -365,6 +467,7 @@ export default function TodoCalendarView({
                         today={today}
                         currentTimeMinutes={currentTimeMinutes}
                         dragState={dragState}
+                        createSelectionState={createSelectionState}
                         onEventClick={(task) => {
                           if (Date.now() >= suppressClickUntil) {
                             setEditingTask(task);
@@ -659,6 +762,7 @@ function CalendarDayColumn({
   today,
   currentTimeMinutes,
   dragState,
+  createSelectionState,
   onEventClick,
   onPointerDown,
 }: {
@@ -666,6 +770,7 @@ function CalendarDayColumn({
   today: number;
   currentTimeMinutes: number;
   dragState: DragState | null;
+  createSelectionState: CreateSelectionState | null;
   onEventClick: (task: TodoAgendaTask) => void;
   onPointerDown: (
     event: React.PointerEvent,
@@ -697,6 +802,13 @@ function CalendarDayColumn({
           laneCount: 1,
         }
       : null;
+  const createPreview =
+    createSelectionState && createSelectionState.date === day.date
+      ? {
+          startTimeMinutes: createSelectionState.previewStart,
+          durationMinutes: createSelectionState.previewDuration,
+        }
+      : null;
 
   return (
     <div className="relative border-r border-border-subtle bg-pure-white">
@@ -710,6 +822,7 @@ function CalendarDayColumn({
       {day.date === today ? (
         <CurrentTimeIndicator currentTimeMinutes={currentTimeMinutes} />
       ) : null}
+      {createPreview ? <CreateSelectionPreview selection={createPreview} /> : null}
       {[...timedTasks, ...(previewTask ? [previewTask] : [])].map((item) => (
         <CalendarEvent
           key={`${day.date}-${item.task.id}-${previewTask?.task.id === item.task.id ? "preview" : "real"}`}
@@ -736,6 +849,37 @@ function CurrentTimeIndicator({
     >
       <span className="absolute left-0 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-green shadow-[0_0_0_4px_rgba(24,226,153,0.14)]" />
       <span className="block h-0.5 bg-brand-green shadow-[0_0_14px_rgba(24,226,153,0.55)]" />
+    </div>
+  );
+}
+
+function CreateSelectionPreview({
+  selection,
+}: {
+  selection: {
+    startTimeMinutes: number;
+    durationMinutes: number;
+  };
+}) {
+  return (
+    <div
+      className="pointer-events-none absolute z-20 rounded-lg border border-brand-green bg-brand-green/15 px-2 py-1.5 shadow-sm ring-2 ring-brand-green/30"
+      style={{
+        top: (selection.startTimeMinutes / 60) * HOUR_HEIGHT,
+        height: Math.max(
+          MIN_EVENT_HEIGHT,
+          (selection.durationMinutes / 60) * HOUR_HEIGHT,
+        ),
+        left: 5,
+        right: 5,
+      }}
+    >
+      <span className="block truncate font-mono-code text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-green-deep">
+        {formatTimeRangeLabel(
+          selection.startTimeMinutes,
+          selection.durationMinutes,
+        )}
+      </span>
     </div>
   );
 }
@@ -866,8 +1010,39 @@ function snapMinutes(minutes: number) {
   return Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES;
 }
 
+function buildCreateSelectionRange({
+  anchorMinutes,
+  targetMinutes,
+}: {
+  anchorMinutes: number;
+  targetMinutes: number;
+}) {
+  const normalizedAnchor = Math.min(1440, Math.max(0, snapMinutes(anchorMinutes)));
+  const normalizedTarget = Math.min(1440, Math.max(0, snapMinutes(targetMinutes)));
+  const rangeStart = Math.min(normalizedAnchor, normalizedTarget);
+  const rangeEnd = Math.max(normalizedAnchor, normalizedTarget);
+  const previewStart = Math.min(1440 - SNAP_MINUTES, rangeStart);
+
+  return {
+    previewStart,
+    previewDuration: Math.min(
+      1440 - previewStart,
+      Math.max(SNAP_MINUTES, rangeEnd - rangeStart),
+    ),
+  };
+}
+
 function clampDuration(duration: number, startTimeMinutes: number) {
   return Math.min(1440 - startTimeMinutes, Math.max(SNAP_MINUTES, duration));
+}
+
+function getPointerMinutesInOriginDay(
+  clientY: number,
+  originY: number,
+  anchorMinutes: number,
+) {
+  const deltaMinutes = ((clientY - originY) / HOUR_HEIGHT) * 60;
+  return Math.min(1440, Math.max(0, snapMinutes(anchorMinutes + deltaMinutes)));
 }
 
 function getDhakaMinutes(timestamp: number) {

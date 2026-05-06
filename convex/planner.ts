@@ -92,6 +92,7 @@ export type PlannerCandidate = {
   kind: PlannerSuggestionKind;
   studyItemId?: Id<"studyItems">;
   conceptId?: Id<"concepts">;
+  conceptGroupKey?: string;
   title: string;
   subjectId: Id<"subjects">;
   subjectName: string;
@@ -100,6 +101,9 @@ export type PlannerCandidate = {
   chapterName: string;
   conceptName?: string;
   durationMinutes: number;
+  chapterOrder: number;
+  conceptOrder?: number;
+  trackerOrder: number;
   score: number;
   isRevision: boolean;
   isPreferredSubject: boolean;
@@ -146,6 +150,20 @@ function compareCandidates(
     return a.isPreferredSubject ? -1 : 1;
   }
 
+  if (a.chapterOrder !== b.chapterOrder) {
+    return a.chapterOrder - b.chapterOrder;
+  }
+
+  const aConceptOrder = a.conceptOrder ?? Number.MAX_SAFE_INTEGER;
+  const bConceptOrder = b.conceptOrder ?? Number.MAX_SAFE_INTEGER;
+  if (aConceptOrder !== bConceptOrder) {
+    return aConceptOrder - bConceptOrder;
+  }
+
+  if (a.trackerOrder !== b.trackerOrder) {
+    return a.trackerOrder - b.trackerOrder;
+  }
+
   if (a.durationMinutes !== b.durationMinutes) {
     return preferFewerTasks
       ? b.durationMinutes - a.durationMinutes
@@ -166,6 +184,7 @@ function pickCandidates(options: {
     compareCandidates(a, b, options.preferFewerTasks),
   );
   const chosen: PlannerCandidate[] = [];
+  const consideredGroups = new Set<string>();
   let spentMinutes = 0;
 
   for (const candidate of ordered) {
@@ -177,13 +196,42 @@ function pickCandidates(options: {
       continue;
     }
 
-    if (spentMinutes + candidate.durationMinutes > options.budgetMinutes) {
+    if (!candidate.conceptGroupKey) {
+      if (spentMinutes + candidate.durationMinutes > options.budgetMinutes) {
+        continue;
+      }
+
+      chosen.push(candidate);
+      options.selectedIdentities.add(candidate.identity);
+      spentMinutes += candidate.durationMinutes;
       continue;
     }
 
-    chosen.push(candidate);
-    options.selectedIdentities.add(candidate.identity);
-    spentMinutes += candidate.durationMinutes;
+    if (consideredGroups.has(candidate.conceptGroupKey)) {
+      continue;
+    }
+    consideredGroups.add(candidate.conceptGroupKey);
+
+    const groupCandidates = ordered.filter(
+      (groupCandidate) =>
+        groupCandidate.conceptGroupKey === candidate.conceptGroupKey &&
+        !options.selectedIdentities.has(groupCandidate.identity) &&
+        (!options.predicate || options.predicate(groupCandidate)),
+    );
+    const groupMinutes = groupCandidates.reduce(
+      (sum, groupCandidate) => sum + groupCandidate.durationMinutes,
+      0,
+    );
+
+    if (spentMinutes + groupMinutes > options.budgetMinutes) {
+      continue;
+    }
+
+    chosen.push(...groupCandidates);
+    for (const groupCandidate of groupCandidates) {
+      options.selectedIdentities.add(groupCandidate.identity);
+    }
+    spentMinutes += groupMinutes;
   }
 
   return {

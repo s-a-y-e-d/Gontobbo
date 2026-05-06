@@ -478,11 +478,11 @@ export default function TodoAgendaAddTaskModal({
                             {conceptReview.title}
                           </span>
                           <span className="mt-1 block text-xs text-gray-500">
-                            {`${conceptReview.subjectName} â€¢ ${conceptReview.chapterName}`}
+                            {`${conceptReview.subjectName} • ${conceptReview.chapterName}`}
                           </span>
                           <span className="mt-1 block text-[11px] text-gray-400">
                             {formatReviewDateLabel(conceptReview.nextReviewAt)}
-                            <span className="mx-2 text-gray-300">â€¢</span>
+                            <span className="mx-2 text-gray-300">•</span>
                             {formatDurationLabel(conceptReview.estimatedMinutes)}
                           </span>
                         </span>
@@ -652,11 +652,11 @@ function SelectedConceptReviewCard({
             {conceptReview.title}
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            {`${conceptReview.subjectName} â€¢ ${conceptReview.chapterName}`}
+            {`${conceptReview.subjectName} • ${conceptReview.chapterName}`}
           </p>
           <p className="mt-1 text-[11px] text-gray-400">
             {formatReviewDateLabel(conceptReview.nextReviewAt)}
-            <span className="mx-2 text-gray-300">â€¢</span>
+            <span className="mx-2 text-gray-300">•</span>
             {formatDurationLabel(conceptReview.estimatedMinutes)}
           </p>
         </div>

@@ -160,11 +160,11 @@ export default function TodoAgenda() {
             onGoToPreviousRange={handleGoToPreviousRange}
             onGoToToday={handleGoToToday}
             onGoToNextRange={handleGoToNextRange}
-            onCreateTask={(date, startTimeMinutes) =>
+            onCreateTask={(date, startTimeMinutes, durationMinutes) =>
               openAddTaskModal({
                 date,
                 startTimeMinutes,
-                durationMinutes: 60,
+                durationMinutes,
               })
             }
           />
@@ -173,7 +173,7 @@ export default function TodoAgenda() {
 
       {addTaskDay ? (
         <TodoAgendaAddTaskModal
-          key={`${addTaskDate}-${addTaskDefaults?.startTimeMinutes ?? "none"}-${isAddTaskModalOpen ? "open" : "closed"}`}
+          key={`${addTaskDate}-${addTaskDefaults?.startTimeMinutes ?? "none"}-${addTaskDefaults?.durationMinutes ?? "none"}-${isAddTaskModalOpen ? "open" : "closed"}`}
           isOpen={isAddTaskModalOpen}
           onClose={() => {
             setIsAddTaskModalOpen(false);

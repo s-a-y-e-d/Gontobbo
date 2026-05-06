@@ -1714,6 +1714,32 @@ export const generatePlannerSuggestions = mutation({
     const chapterById = new Map(chapters.map((chapter) => [chapter._id, chapter]));
     const subjectById = new Map(subjects.map((subject) => [subject._id, subject]));
     const conceptsById = new Map(concepts.map((concept) => [concept._id, concept]));
+    const conceptsByChapter = new Map<Id<"chapters">, Doc<"concepts">[]>();
+    const trackerOrderBySubject = new Map<Id<"subjects">, Map<string, number>>();
+
+    for (const subject of subjects) {
+      trackerOrderBySubject.set(
+        subject._id,
+        new Map([
+          ...subject.conceptTrackers.map(
+            (tracker, index) => [tracker.key, index] as const,
+          ),
+          ...subject.chapterTrackers.map(
+            (tracker, index) => [tracker.key, index] as const,
+          ),
+        ]),
+      );
+    }
+
+    for (const concept of concepts) {
+      const chapterConcepts = conceptsByChapter.get(concept.chapterId) ?? [];
+      chapterConcepts.push(concept);
+      conceptsByChapter.set(concept.chapterId, chapterConcepts);
+    }
+
+    for (const chapterConcepts of conceptsByChapter.values()) {
+      chapterConcepts.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+    }
 
     const studyItemsByChapter = new Map<Id<"chapters">, Doc<"studyItems">[]>();
     const studyItemsByConcept = new Map<Id<"concepts">, Doc<"studyItems">[]>();
@@ -1727,6 +1753,21 @@ export const generatePlannerSuggestions = mutation({
         const conceptItems = studyItemsByConcept.get(studyItem.conceptId) ?? [];
         conceptItems.push(studyItem);
         studyItemsByConcept.set(studyItem.conceptId, conceptItems);
+      }
+    }
+
+    const firstUnfinishedConceptByChapter = new Map<
+      Id<"chapters">,
+      Id<"concepts">
+    >();
+    for (const [chapterId, chapterConcepts] of conceptsByChapter) {
+      const firstUnfinishedConcept = chapterConcepts.find((concept) => {
+        const conceptItems = studyItemsByConcept.get(concept._id) ?? [];
+        return conceptItems.some((studyItem) => !studyItem.isCompleted);
+      });
+
+      if (firstUnfinishedConcept) {
+        firstUnfinishedConceptByChapter.set(chapterId, firstUnfinishedConcept._id);
       }
     }
 
@@ -1880,6 +1921,9 @@ export const generatePlannerSuggestions = mutation({
         chapterName: chapter.name,
         conceptName: concept.name,
         durationMinutes: defaultRevisionMinutes,
+        chapterOrder: chapter.order,
+        conceptOrder: concept.order,
+        trackerOrder: Number.MAX_SAFE_INTEGER,
         score:
           10000 +
           (isOverdue ? 250 : 0) +
@@ -1899,6 +1943,11 @@ export const generatePlannerSuggestions = mutation({
       if (!subject) {
         continue;
       }
+      const firstUnfinishedConceptId = firstUnfinishedConceptByChapter.get(
+        chapter._id,
+      );
+      const trackerOrderByType =
+        trackerOrderBySubject.get(subject._id) ?? new Map<string, number>();
 
       const chapterStudyItems = studyItemsByChapter.get(chapter._id) ?? [];
       const chapterConceptItems = chapterStudyItems.filter(
@@ -1920,6 +1969,13 @@ export const generatePlannerSuggestions = mutation({
         }
 
         if (studyItem.conceptId === undefined && hasUnfinishedConceptItem) {
+          continue;
+        }
+
+        if (
+          studyItem.conceptId !== undefined &&
+          studyItem.conceptId !== firstUnfinishedConceptId
+        ) {
           continue;
         }
 
@@ -1977,6 +2033,13 @@ export const generatePlannerSuggestions = mutation({
           chapterName: chapter.name,
           conceptName: concept?.name,
           durationMinutes: studyItem.estimatedMinutes,
+          conceptGroupKey: studyItem.conceptId
+            ? `concept:${studyItem.conceptId}`
+            : undefined,
+          chapterOrder: chapter.order,
+          conceptOrder: concept?.order,
+          trackerOrder:
+            trackerOrderByType.get(studyItem.type) ?? Number.MAX_SAFE_INTEGER,
           score,
           isRevision: false,
           isPreferredSubject: preferredSubjectIds.has(subject._id),
