@@ -9,6 +9,7 @@ export type TodoAgendaTask = {
   chapterName?: string;
   conceptName?: string;
   subjectColor?: string;
+  customColor?: string;
   startTimeMinutes?: number;
   durationMinutes: number;
   source: "manual" | "ai_accepted";

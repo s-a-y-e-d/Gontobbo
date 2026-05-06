@@ -3,6 +3,8 @@ import { TodoAgendaDay } from "./todoAgendaTypes";
 type TodoAgendaDateStripProps = {
   days: TodoAgendaDay[];
   monthLabel: string;
+  viewMode: "agenda" | "calendar";
+  onViewModeChange: (mode: "agenda" | "calendar") => void;
   onSelectDate: (date: number) => void;
   onGoToPreviousRange: () => void;
   onGoToToday: () => void;
@@ -12,6 +14,8 @@ type TodoAgendaDateStripProps = {
 export default function TodoAgendaDateStrip({
   days,
   monthLabel,
+  viewMode,
+  onViewModeChange,
   onSelectDate,
   onGoToPreviousRange,
   onGoToToday,
@@ -29,7 +33,42 @@ export default function TodoAgendaDateStrip({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center rounded-full border border-border-subtle bg-pure-white p-0.5">
+            <button
+              type="button"
+              onClick={() => onViewModeChange("agenda")}
+              className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-all ${
+                viewMode === "agenda"
+                  ? "bg-on-surface text-pure-white shadow-sm"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-on-surface"
+              }`}
+              aria-label="Agenda view"
+              title="Agenda"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                view_agenda
+              </span>
+              <span className="hidden sm:inline">Agenda</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewModeChange("calendar")}
+              className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-all ${
+                viewMode === "calendar"
+                  ? "bg-on-surface text-pure-white shadow-sm"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-on-surface"
+              }`}
+              aria-label="Calendar view"
+              title="Calendar"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                calendar_view_week
+              </span>
+              <span className="hidden sm:inline">Calendar</span>
+            </button>
+          </div>
+
           <div className="flex items-center rounded-full border border-border-subtle bg-pure-white p-1">
             <button
               type="button"

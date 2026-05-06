@@ -20,6 +20,17 @@ import {
 } from "./auth";
 
 const TODO_DURATION_MINUTES = Array.from({ length: 48 }, (_, index) => (index + 1) * 15);
+const TODO_CUSTOM_COLORS = [
+  "green",
+  "red",
+  "blue",
+  "gray",
+  "amber",
+  "purple",
+  "teal",
+  "indigo",
+  "pink",
+] as const;
 const STUDY_ITEM_SEARCH_VERSION_SETTING_KEY = "study_item_search_text_version";
 const STUDY_ITEM_SEARCH_BACKFILL_BATCH_SIZE = 64;
 
@@ -257,6 +268,53 @@ function normalizeCustomTodoTitle(title: string) {
   }
 
   return normalizedTitle;
+}
+
+function normalizeCustomTodoColor(color?: string) {
+  if (color === undefined) {
+    return undefined;
+  }
+
+  if (!TODO_CUSTOM_COLORS.includes(color as (typeof TODO_CUSTOM_COLORS)[number])) {
+    throw new Error("Custom todo color is invalid");
+  }
+
+  return color;
+}
+
+function validateTodoDate(date: number) {
+  if (!Number.isInteger(date) || getDhakaDayBucket(date) !== date) {
+    throw new Error("Date must be a valid Dhaka day bucket");
+  }
+}
+
+async function ensureNoDuplicateStudyItemTodoOnDate(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  args: {
+    date: number;
+    studyItemId?: Id<"studyItems">;
+    exceptTodoTaskId?: Id<"todoTasks">;
+  },
+) {
+  if (!args.studyItemId) {
+    return;
+  }
+
+  const existingTodoTask =
+    filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("todoTasks")
+        .withIndex("by_date_and_studyItemId", (q) =>
+          q.eq("date", args.date).eq("studyItemId", args.studyItemId!),
+        )
+        .collect(),
+    ).find((todoTask) => todoTask._id !== args.exceptTodoTaskId) ?? null;
+
+  if (existingTodoTask) {
+    throw new Error("This study item is already scheduled for that day");
+  }
 }
 
 async function syncStudyItemPresentation(
@@ -1137,9 +1195,7 @@ export const createTodoTask = mutation({
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
-      throw new Error("Date must be a valid Dhaka day bucket");
-    }
+    validateTodoDate(args.date);
 
     validateTodoSchedule(args);
 
@@ -1149,16 +1205,7 @@ export const createTodoTask = mutation({
       throw new Error("Completed study items cannot be scheduled");
     }
 
-    const existingTodoTask = filterOwnedDocuments(currentUser, await ctx.db
-      .query("todoTasks")
-      .withIndex("by_date_and_studyItemId", (q) =>
-        q.eq("date", args.date).eq("studyItemId", args.studyItemId),
-      )
-      .collect())[0] ?? null;
-
-    if (existingTodoTask) {
-      throw new Error("This study item is already scheduled for that day");
-    }
+    await ensureNoDuplicateStudyItemTodoOnDate(ctx, currentUser, args);
 
     return await ctx.db.insert("todoTasks", {
       userId: currentUser._id,
@@ -1176,21 +1223,22 @@ export const createCustomTodoTask = mutation({
     title: v.string(),
     startTimeMinutes: v.optional(v.number()),
     durationMinutes: v.number(),
+    customColor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    if (!Number.isInteger(args.date) || getDhakaDayBucket(args.date) !== args.date) {
-      throw new Error("Date must be a valid Dhaka day bucket");
-    }
+    validateTodoDate(args.date);
 
     validateTodoSchedule(args);
     const customTitle = normalizeCustomTodoTitle(args.title);
+    const customColor = normalizeCustomTodoColor(args.customColor);
 
     return await ctx.db.insert("todoTasks", {
       userId: currentUser._id,
       date: args.date,
       kind: "custom",
       customTitle,
+      customColor,
       isCompleted: false,
       startTimeMinutes: args.startTimeMinutes,
       durationMinutes: args.durationMinutes,
@@ -1204,6 +1252,7 @@ export const createCustomTodoTask = mutation({
 export const updateTodoTaskSchedule = mutation({
   args: {
     todoTaskId: v.id("todoTasks"),
+    date: v.optional(v.number()),
     startTimeMinutes: v.optional(v.number()),
     durationMinutes: v.number(),
   },
@@ -1216,14 +1265,22 @@ export const updateTodoTaskSchedule = mutation({
     );
 
     validateTodoSchedule(args);
+    const date = args.date ?? todoTask.date;
+    validateTodoDate(date);
+    await ensureNoDuplicateStudyItemTodoOnDate(ctx, currentUser, {
+      date,
+      studyItemId: todoTask.studyItemId,
+      exceptTodoTaskId: todoTask._id,
+    });
 
     await ctx.db.patch(todoTask._id, {
+      date,
       startTimeMinutes: args.startTimeMinutes,
       durationMinutes: args.durationMinutes,
       sortOrder:
         args.startTimeMinutes ??
-        todoTask.sortOrder ??
-        await getNextTodoSortOrder(ctx, currentUser, todoTask.date),
+        (date === todoTask.date ? todoTask.sortOrder : undefined) ??
+        await getNextTodoSortOrder(ctx, currentUser, date),
     });
 
     return null;
@@ -1234,8 +1291,10 @@ export const updateCustomTodoTask = mutation({
   args: {
     todoTaskId: v.id("todoTasks"),
     title: v.string(),
+    date: v.optional(v.number()),
     startTimeMinutes: v.optional(v.number()),
     durationMinutes: v.number(),
+    customColor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
@@ -1250,16 +1309,21 @@ export const updateCustomTodoTask = mutation({
     }
 
     validateTodoSchedule(args);
+    const date = args.date ?? todoTask.date;
+    validateTodoDate(date);
     const customTitle = normalizeCustomTodoTitle(args.title);
+    const customColor = normalizeCustomTodoColor(args.customColor);
 
     await ctx.db.patch(todoTask._id, {
+      date,
       customTitle,
+      customColor,
       startTimeMinutes: args.startTimeMinutes,
       durationMinutes: args.durationMinutes,
       sortOrder:
         args.startTimeMinutes ??
-        todoTask.sortOrder ??
-        await getNextTodoSortOrder(ctx, currentUser, todoTask.date),
+        (date === todoTask.date ? todoTask.sortOrder : undefined) ??
+        await getNextTodoSortOrder(ctx, currentUser, date),
     });
 
     return null;

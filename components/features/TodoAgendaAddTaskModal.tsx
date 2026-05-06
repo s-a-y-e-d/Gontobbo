@@ -5,7 +5,9 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import DurationPresetSelect from "./DurationPresetSelect";
+import TodoColorPicker from "./TodoColorPicker";
 import { getSubjectTheme } from "./subjectTheme";
+import type { SubjectColor } from "./subjectTheme";
 import { TodoStudyItemSearchResult } from "./todoAgendaTypes";
 import {
   formatDurationLabel,
@@ -20,6 +22,8 @@ type TodoAgendaAddTaskModalProps = {
   onClose: () => void;
   date: number;
   dayHeading: string;
+  initialStartTimeMinutes?: number;
+  initialDurationMinutes?: number;
 };
 
 export default function TodoAgendaAddTaskModal({
@@ -27,6 +31,8 @@ export default function TodoAgendaAddTaskModal({
   onClose,
   date,
   dayHeading,
+  initialStartTimeMinutes,
+  initialDurationMinutes,
 }: TodoAgendaAddTaskModalProps) {
   const createTodoTask = useMutation(api.mutations.createTodoTask);
   const createCustomTodoTask = useMutation(api.mutations.createCustomTodoTask);
@@ -36,8 +42,15 @@ export default function TodoAgendaAddTaskModal({
   const deferredSearchText = useDeferredValue(searchText.trim());
   const [selectedStudyItem, setSelectedStudyItem] =
     useState<TodoStudyItemSearchResult | null>(null);
-  const [startTimeValue, setStartTimeValue] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
+  const [startTimeValue, setStartTimeValue] = useState(() =>
+    initialStartTimeMinutes === undefined
+      ? ""
+      : formatTimeInputValue(initialStartTimeMinutes),
+  );
+  const [durationMinutes, setDurationMinutes] = useState<number | null>(
+    initialDurationMinutes ?? null,
+  );
+  const [customColor, setCustomColor] = useState<SubjectColor>("gray");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -89,7 +102,7 @@ export default function TodoAgendaAddTaskModal({
     if (mode === "custom") {
       setSearchText("");
       setSelectedStudyItem(null);
-      setDurationMinutes((current) => current ?? 15);
+      setDurationMinutes((current) => current ?? initialDurationMinutes ?? 15);
       return;
     }
 
@@ -202,6 +215,7 @@ export default function TodoAgendaAddTaskModal({
           title: normalizedCustomTitle,
           startTimeMinutes: normalizedStartTime,
           durationMinutes,
+          customColor,
         });
       } else if (selectedStudyItem) {
         await createTodoTask({
@@ -351,6 +365,10 @@ export default function TodoAgendaAddTaskModal({
               </div>
             ) : null}
           </div>
+
+          {taskMode === "custom" ? (
+            <TodoColorPicker value={customColor} onChange={setCustomColor} />
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>

@@ -109,6 +109,7 @@ function Breadcrumbs() {
 export default function NavigationLayout({ children }: { children: React.ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
@@ -145,10 +146,14 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
   };
 
   const renderSidebarLink = (item: NavItem) => {
+    const expandSidebar = () => setIsSidebarCollapsed(false);
+
     const content = (
       <>
-        <span className="material-symbols-outlined text-lg">{item.icon}</span>
-        {item.label}
+        <span className="material-symbols-outlined text-lg shrink-0">{item.icon}</span>
+        <span className={isSidebarCollapsed ? "sr-only" : "truncate"}>
+          {item.label}
+        </span>
       </>
     );
 
@@ -157,7 +162,12 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
         <button
           key={item.label}
           type="button"
-          className="flex items-center gap-3 px-4 py-2.5 text-left text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98]"
+          title={isSidebarCollapsed ? item.label : undefined}
+          aria-label={item.label}
+          onClick={isSidebarCollapsed ? expandSidebar : undefined}
+          className={`flex items-center gap-3 px-4 py-2.5 text-left text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98] ${
+            isSidebarCollapsed ? "h-11 w-11 justify-center px-0" : "w-full"
+          }`}
         >
           {content}
         </button>
@@ -167,7 +177,16 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
     return (
       <Link
         key={item.href}
+        title={isSidebarCollapsed ? item.label : undefined}
+        aria-label={item.label}
+        onClick={(event) => {
+          if (!isSidebarCollapsed) return;
+          event.preventDefault();
+          expandSidebar();
+        }}
         className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all active:scale-[0.98] ${
+          isSidebarCollapsed ? "h-11 w-11 justify-center px-0" : "w-full"
+        } ${
           getIsActive(item.href)
             ? "text-brand-green bg-emerald-50/50 dark:bg-emerald-900/10"
             : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
@@ -253,18 +272,51 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
   };
 
   return (
-    <div className="antialiased min-h-screen pb-24 md:pb-0 md:pl-64 flex flex-col">
+    <div
+      className={`antialiased min-h-screen pb-24 md:pb-0 flex flex-col transition-[padding] duration-300 ease-out ${
+        isSidebarCollapsed ? "md:pl-20" : "md:pl-64"
+      }`}
+    >
       {/* SideNavBar (Web) */}
-      <nav className="bg-white dark:bg-slate-900 font-body text-sm font-medium w-64 border-r border-black/5 dark:border-white/5 shadow-none flex-col gap-1 p-4 fixed left-0 top-0 h-full hidden md:flex z-50">
-        <div className="flex items-center gap-3 px-4 py-6 mb-4">
+      <nav
+        onClick={() => {
+          if (isSidebarCollapsed) setIsSidebarCollapsed(false);
+        }}
+        onKeyDown={(event) => {
+          if (!isSidebarCollapsed) return;
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          setIsSidebarCollapsed(false);
+        }}
+        role={isSidebarCollapsed ? "button" : undefined}
+        tabIndex={isSidebarCollapsed ? 0 : undefined}
+        aria-label={isSidebarCollapsed ? "Expand sidebar" : undefined}
+        className={`bg-white dark:bg-slate-900 font-body text-sm font-medium border-r border-black/5 dark:border-white/5 shadow-none flex-col gap-1 p-4 fixed left-0 top-0 h-full hidden md:flex z-50 overflow-hidden transition-[width] duration-300 ease-out ${
+          isSidebarCollapsed ? "w-20 cursor-pointer" : "w-64"
+        }`}
+      >
+        {!isSidebarCollapsed && (
+          <button
+            type="button"
+            onClick={() => setIsSidebarCollapsed(true)}
+            className="absolute right-4 top-7 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-50 hover:text-brand-green dark:text-slate-400 dark:hover:bg-slate-800/50"
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <span className="material-symbols-outlined text-[20px]">chevron_left</span>
+          </button>
+        )}
+        <div className={`flex items-center py-6 mb-4 ${isSidebarCollapsed ? "justify-center px-0" : "gap-3 px-4 pr-12"}`}>
           <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
-          <div>
+          <div className={isSidebarCollapsed ? "sr-only" : "min-w-0"}>
             <div className="text-lg font-black text-slate-900 dark:text-white leading-tight">StudyOS</div>
             <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-0.5">পড়ার সিস্টেম</div>
           </div>
         </div>
         
-        <div className="flex-1 space-y-1">{primaryNavItems.map(renderSidebarLink)}</div>
+        <div className={`flex-1 space-y-1 ${isSidebarCollapsed ? "flex flex-col items-center" : ""}`}>
+          {primaryNavItems.map(renderSidebarLink)}
+        </div>
         
       </nav>
 
@@ -354,7 +406,11 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
       )}
 
       {/* Main Content Canvas */}
-      <main className="flex-1 w-full max-w-[1200px] mx-auto px-4 py-6 md:px-6 md:py-section-y-sm">
+      <main
+        className={`flex-1 w-full mx-auto px-4 py-6 md:px-6 md:py-section-y-sm ${
+          isTodoActive ? "max-w-none" : "max-w-[1200px]"
+        }`}
+      >
         {children}
       </main>
 

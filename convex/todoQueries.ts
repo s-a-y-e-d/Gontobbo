@@ -40,15 +40,25 @@ export const getTodoAgenda = query({
     const clampedDays = Math.max(1, Math.min(args.days, 31));
     const endDate = args.startDate + (clampedDays - 1) * DAY_MS;
 
-    const todoTasks = filterOwnedDocuments(
-      currentUser,
-      await ctx.db
-        .query("todoTasks")
-        .withIndex("by_date", (q) =>
-          q.gte("date", args.startDate).lte("date", endDate),
+    const todoTasks = currentUser.legacyWorkspaceOwner
+      ? filterOwnedDocuments(
+          currentUser,
+          await ctx.db
+            .query("todoTasks")
+            .withIndex("by_date", (q) =>
+              q.gte("date", args.startDate).lte("date", endDate),
+            )
+            .collect(),
         )
-        .collect(),
-    );
+      : await ctx.db
+          .query("todoTasks")
+          .withIndex("by_userId_and_date", (q) =>
+            q
+              .eq("userId", currentUser._id)
+              .gte("date", args.startDate)
+              .lte("date", endDate),
+          )
+          .collect();
 
     const tasksByDate = new Map<number, typeof todoTasks>();
     for (const todoTask of todoTasks) {
@@ -79,7 +89,8 @@ export const getTodoAgenda = query({
                 subjectName: undefined,
                 chapterName: undefined,
                 conceptName: undefined,
-                subjectColor: undefined,
+                subjectColor: todoTask.customColor ?? "gray",
+                customColor: todoTask.customColor ?? "gray",
                 startTimeMinutes: todoTask.startTimeMinutes,
                 durationMinutes: todoTask.durationMinutes,
                 source: todoTask.source,

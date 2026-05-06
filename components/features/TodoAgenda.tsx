@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import TodoAgendaAddTaskModal from "./TodoAgendaAddTaskModal";
+import TodoCalendarView from "./TodoCalendarView";
 import TodoAgendaDateStrip from "./TodoAgendaDateStrip";
 import TodoAgendaDaySection from "./TodoAgendaDaySection";
 import { TodoSkeleton } from "./LoadingSkeletons";
@@ -23,7 +24,14 @@ export default function TodoAgenda() {
   const today = getDhakaDayBucket(now);
   const [rangeStartDate, setRangeStartDate] = useState(today);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [viewMode, setViewMode] = useState<"agenda" | "calendar">("agenda");
+  const [calendarMode, setCalendarMode] = useState<"day" | "week">("week");
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
+  const [addTaskDefaults, setAddTaskDefaults] = useState<{
+    date: number;
+    startTimeMinutes?: number;
+    durationMinutes?: number;
+  } | null>(null);
   const backfillStudyItemSearchText = useMutation(
     api.mutations.backfillStudyItemSearchText,
   );
@@ -83,11 +91,35 @@ export default function TodoAgenda() {
     setSelectedDate((current) => current + DAY_COUNT * DAY_MS);
   };
 
+  const openAddTaskModal = (defaults?: {
+    date?: number;
+    startTimeMinutes?: number;
+    durationMinutes?: number;
+  }) => {
+    const date = defaults?.date ?? selectedDay?.date ?? selectedDate;
+    setSelectedDate(date);
+    setAddTaskDefaults({
+      date,
+      startTimeMinutes: defaults?.startTimeMinutes,
+      durationMinutes: defaults?.durationMinutes,
+    });
+    setIsAddTaskModalOpen(true);
+  };
+
+  const addTaskDate = addTaskDefaults?.date ?? selectedDay?.date ?? selectedDate;
+  const addTaskDay = days.find((day) => day.date === addTaskDate) ?? selectedDay;
+
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <div
+      className={`mx-auto w-full ${
+        viewMode === "agenda" ? "max-w-4xl" : "max-w-none"
+      }`}
+    >
       <TodoAgendaDateStrip
         days={days}
         monthLabel={formatMonthLabel(selectedDate)}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         onSelectDate={setSelectedDate}
         onGoToPreviousRange={handleGoToPreviousRange}
         onGoToToday={handleGoToToday}
@@ -95,21 +127,42 @@ export default function TodoAgenda() {
       />
 
       <div className="pb-8">
-        {selectedDay ? (
+        {viewMode === "agenda" && selectedDay ? (
           <TodoAgendaDaySection
             day={selectedDay}
-            onAddTask={() => setIsAddTaskModalOpen(true)}
+            onAddTask={() => openAddTaskModal()}
+          />
+        ) : null}
+        {viewMode === "calendar" ? (
+          <TodoCalendarView
+            days={days}
+            selectedDate={selectedDate}
+            mode={calendarMode}
+            onModeChange={setCalendarMode}
+            onSelectDate={setSelectedDate}
+            onCreateTask={(date, startTimeMinutes) =>
+              openAddTaskModal({
+                date,
+                startTimeMinutes,
+                durationMinutes: 60,
+              })
+            }
           />
         ) : null}
       </div>
 
-      {selectedDay ? (
+      {addTaskDay ? (
         <TodoAgendaAddTaskModal
-          key={`${selectedDay.date}-${isAddTaskModalOpen ? "open" : "closed"}`}
+          key={`${addTaskDate}-${addTaskDefaults?.startTimeMinutes ?? "none"}-${isAddTaskModalOpen ? "open" : "closed"}`}
           isOpen={isAddTaskModalOpen}
-          onClose={() => setIsAddTaskModalOpen(false)}
-          date={selectedDay.date}
-          dayHeading={selectedDay.heading}
+          onClose={() => {
+            setIsAddTaskModalOpen(false);
+            setAddTaskDefaults(null);
+          }}
+          date={addTaskDate}
+          dayHeading={addTaskDay.heading}
+          initialStartTimeMinutes={addTaskDefaults?.startTimeMinutes}
+          initialDurationMinutes={addTaskDefaults?.durationMinutes}
         />
       ) : null}
     </div>

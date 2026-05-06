@@ -7,6 +7,20 @@ export type SubjectTheme = {
   progressBarBg: string;
 };
 
+export const SUBJECT_COLOR_OPTIONS = [
+  "green",
+  "red",
+  "blue",
+  "gray",
+  "amber",
+  "purple",
+  "teal",
+  "indigo",
+  "pink",
+] as const;
+
+export type SubjectColor = (typeof SUBJECT_COLOR_OPTIONS)[number];
+
 const subjectThemeMap: Record<string, SubjectTheme> = {
   green: {
     accentHex: "#18E299",
