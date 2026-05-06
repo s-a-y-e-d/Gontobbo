@@ -5,6 +5,8 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import DurationPresetSelect from "./DurationPresetSelect";
+import TodoColorPicker from "./TodoColorPicker";
+import type { SubjectColor } from "./subjectTheme";
 import { TodoAgendaTask } from "./todoAgendaTypes";
 import {
   formatTimeInputValue,
@@ -33,6 +35,9 @@ export default function TodoAgendaEditTaskModal({
       : formatTimeInputValue(task.startTimeMinutes),
   );
   const [durationMinutes, setDurationMinutes] = useState(task.durationMinutes);
+  const [customColor, setCustomColor] = useState<SubjectColor>(
+    (task.customColor ?? "gray") as SubjectColor,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -127,6 +132,7 @@ export default function TodoAgendaEditTaskModal({
           title: title.trim(),
           startTimeMinutes: normalizedStartTime,
           durationMinutes,
+          customColor,
         });
       } else {
         await updateTodoTaskSchedule({
@@ -193,6 +199,10 @@ export default function TodoAgendaEditTaskModal({
                 autoComplete="off"
               />
             </div>
+          ) : null}
+
+          {isCustomTask ? (
+            <TodoColorPicker value={customColor} onChange={setCustomColor} />
           ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">

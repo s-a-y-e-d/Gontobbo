@@ -9,6 +9,7 @@ export type TodoAgendaTask = {
   chapterName?: string;
   conceptName?: string;
   subjectColor?: string;
+  customColor?: string;
   startTimeMinutes?: number;
   durationMinutes: number;
   source: "manual" | "ai_accepted";
@@ -32,5 +33,16 @@ export type TodoStudyItemSearchResult = {
   chapterName: string;
   conceptName?: string;
   subjectColor?: string;
+  estimatedMinutes: number;
+};
+
+export type TodoConceptReviewSearchResult = {
+  _id: string;
+  title: string;
+  conceptName: string;
+  subjectName: string;
+  chapterName: string;
+  subjectColor?: string;
+  nextReviewAt: number;
   estimatedMinutes: number;
 };

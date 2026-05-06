@@ -284,6 +284,7 @@ export default defineSchema({
     studyItemId: v.optional(v.id("studyItems")),
     conceptId: v.optional(v.id("concepts")),
     customTitle: v.optional(v.string()),
+    customColor: v.optional(v.string()),
     isCompleted: v.optional(v.boolean()),
     startTimeMinutes: v.optional(v.number()),  // minutes from local day start
     sortOrder: v.optional(v.number()),
