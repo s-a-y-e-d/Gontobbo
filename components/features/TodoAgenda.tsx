@@ -60,6 +60,18 @@ export default function TodoAgenda() {
     };
   }, [backfillStudyItemSearchText]);
 
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("gontobbo:todo-view-mode", { detail: viewMode }),
+    );
+
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("gontobbo:todo-view-mode", { detail: "agenda" }),
+      );
+    };
+  }, [viewMode]);
+
   if (!agenda) {
     return <TodoSkeleton />;
   }
@@ -115,18 +127,20 @@ export default function TodoAgenda() {
         viewMode === "agenda" ? "max-w-4xl" : "max-w-none"
       }`}
     >
-      <TodoAgendaDateStrip
-        days={days}
-        monthLabel={formatMonthLabel(selectedDate)}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        onSelectDate={setSelectedDate}
-        onGoToPreviousRange={handleGoToPreviousRange}
-        onGoToToday={handleGoToToday}
-        onGoToNextRange={handleGoToNextRange}
-      />
+      {viewMode === "agenda" ? (
+        <TodoAgendaDateStrip
+          days={days}
+          monthLabel={formatMonthLabel(selectedDate)}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          onSelectDate={setSelectedDate}
+          onGoToPreviousRange={handleGoToPreviousRange}
+          onGoToToday={handleGoToToday}
+          onGoToNextRange={handleGoToNextRange}
+        />
+      ) : null}
 
-      <div className="pb-8">
+      <div className={viewMode === "calendar" ? "" : "pb-8"}>
         {viewMode === "agenda" && selectedDay ? (
           <TodoAgendaDaySection
             day={selectedDay}
@@ -136,10 +150,16 @@ export default function TodoAgenda() {
         {viewMode === "calendar" ? (
           <TodoCalendarView
             days={days}
+            monthLabel={formatMonthLabel(selectedDate)}
             selectedDate={selectedDate}
             mode={calendarMode}
+            viewMode={viewMode}
             onModeChange={setCalendarMode}
+            onViewModeChange={setViewMode}
             onSelectDate={setSelectedDate}
+            onGoToPreviousRange={handleGoToPreviousRange}
+            onGoToToday={handleGoToToday}
+            onGoToNextRange={handleGoToNextRange}
             onCreateTask={(date, startTimeMinutes) =>
               openAddTaskModal({
                 date,

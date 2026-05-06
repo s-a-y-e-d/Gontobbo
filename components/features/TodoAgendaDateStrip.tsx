@@ -23,7 +23,7 @@ export default function TodoAgendaDateStrip({
 }: TodoAgendaDateStripProps) {
   return (
     <section className="mb-8 border-b border-border-subtle pb-4">
-      <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-section-heading text-[2rem] leading-tight tracking-[-0.04em] text-on-surface md:text-section-heading">
             করণীয়
@@ -33,7 +33,7 @@ export default function TodoAgendaDateStrip({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex w-full flex-col items-start gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-2">
           <div className="flex items-center rounded-full border border-border-subtle bg-pure-white p-0.5">
             <button
               type="button"
@@ -101,30 +101,42 @@ export default function TodoAgendaDateStrip({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-2">
+      <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0">
+        <div className="flex min-w-max gap-2 sm:grid sm:min-w-0 sm:grid-cols-7">
         {days.map((day) => (
           <button
             type="button"
             key={day.date}
             onClick={() => onSelectDate(day.date)}
-            className={`rounded-2xl px-2 py-3 text-center transition-colors ${
+            className={`group min-w-14 rounded-[22px] border px-2 py-3 text-center transition-all sm:min-w-0 ${
               day.isSelected
-                ? "bg-on-surface text-pure-white shadow-[0_6px_20px_rgba(0,0,0,0.08)]"
-                : "text-gray-500 hover:bg-gray-100"
+                ? "border-brand-green/40 bg-brand-green/10 text-on-surface shadow-[0_8px_24px_rgba(24,226,153,0.12)]"
+                : day.isToday
+                  ? "border-brand-green/30 bg-pure-white text-on-surface hover:bg-brand-green/5"
+                  : "border-border-subtle bg-pure-white text-gray-500 hover:border-border-medium hover:bg-gray-100"
             }`}
           >
             <div
               className={`font-mono-code text-[10px] uppercase tracking-[0.18em] md:text-[11px] ${
-                day.isSelected ? "text-pure-white/80" : "text-gray-400"
+                day.isSelected || day.isToday ? "text-brand-green" : "text-gray-400"
               }`}
             >
               {day.shortWeekday}
             </div>
-            <div className="mt-1 font-card-title text-lg leading-none md:text-xl">
+            <div
+              className={`mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-full font-card-title text-lg leading-none md:text-xl ${
+                day.isToday
+                  ? "bg-brand-green text-near-black"
+                  : day.isSelected
+                    ? "bg-on-surface text-pure-white"
+                    : "text-on-surface group-hover:bg-surface-container"
+              }`}
+            >
               {day.dayNumber}
             </div>
           </button>
         ))}
+        </div>
       </div>
     </section>
   );

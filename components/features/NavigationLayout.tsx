@@ -111,6 +111,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
   const [mounted, setMounted] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [todoViewMode, setTodoViewMode] = useState<"agenda" | "calendar">("agenda");
   const pathname = usePathname();
 
   useEffect(() => {
@@ -129,6 +130,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
     pathname === "/subjects" || pathname.startsWith("/subjects/");
   const isLogsActive = pathname === "/logs" || pathname.startsWith("/logs");
   const isTodoActive = pathname === "/todo" || pathname.startsWith("/todo");
+  const isTodoCalendarActive = isTodoActive && todoViewMode === "calendar";
   const isRevisionActive = pathname === "/revision";
   const isPlannerActive = pathname === "/planner" || pathname.startsWith("/planner");
   const isSettingsActive = pathname === "/settings" || pathname.startsWith("/settings");
@@ -144,6 +146,31 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
     if (href === "/settings") return isSettingsActive;
     return pathname === href;
   };
+
+  useEffect(() => {
+    if (!isTodoActive) {
+      return;
+    }
+
+    const handleTodoViewModeChange = (event: Event) => {
+      const viewMode = (event as CustomEvent<"agenda" | "calendar">).detail;
+      if (viewMode === "agenda" || viewMode === "calendar") {
+        setTodoViewMode(viewMode);
+      }
+    };
+
+    window.addEventListener(
+      "gontobbo:todo-view-mode",
+      handleTodoViewModeChange,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "gontobbo:todo-view-mode",
+        handleTodoViewModeChange,
+      );
+    };
+  }, [isTodoActive]);
 
   const renderSidebarLink = (item: NavItem) => {
     const expandSidebar = () => setIsSidebarCollapsed(false);
@@ -321,55 +348,59 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
       </nav>
 
       {/* TopNavBar */}
-      <header className="bg-white/80 dark:bg-slate-950/80 backdrop-blur-md font-body text-[15px] font-medium tracking-tight sticky top-0 z-40 border-b border-black/5 dark:border-white/5 shadow-none flex justify-between items-center w-full px-6 h-16 hidden md:flex">
-        <Breadcrumbs />
-        <div className="flex items-center gap-6">
-          <span className="text-sm text-slate-500">{currentDate}</span>
-          <div className="flex items-center gap-3 text-slate-500">
-            <button className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"><span className="material-symbols-outlined">local_fire_department</span></button>
+      {!isTodoCalendarActive ? (
+        <header className="bg-white/80 dark:bg-slate-950/80 backdrop-blur-md font-body text-[15px] font-medium tracking-tight sticky top-0 z-40 border-b border-black/5 dark:border-white/5 shadow-none flex justify-between items-center w-full px-6 h-16 hidden md:flex">
+          <Breadcrumbs />
+          <div className="flex items-center gap-6">
+            <span className="text-sm text-slate-500">{currentDate}</span>
+            <div className="flex items-center gap-3 text-slate-500">
+              <button className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"><span className="material-symbols-outlined">local_fire_department</span></button>
+              <button 
+                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"
+              >
+                <span className="material-symbols-outlined">
+                  {mounted && resolvedTheme === "dark" ? "light_mode" : "dark_mode"}
+                </span>
+              </button>
+              <button className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"><span className="material-symbols-outlined">notifications</span></button>
+            </div>
+            <UserButton />
+          </div>
+        </header>
+      ) : null}
+
+      {/* Mobile Sticky Header */}
+      {!isTodoCalendarActive ? (
+        <header className="md:hidden sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-black/5 dark:border-white/5 h-16 px-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-brand-green transition-colors"
+            >
+              <span className="material-symbols-outlined text-2xl">menu</span>
+            </button>
+            <div className="flex flex-col">
+              <span className="text-sm font-black text-slate-900 dark:text-white leading-none">StudyOS</span>
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{currentDate}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button 
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-              className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"
+              className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-brand-green transition-colors"
             >
-              <span className="material-symbols-outlined">
+              <span className="material-symbols-outlined text-[20px]">
                 {mounted && resolvedTheme === "dark" ? "light_mode" : "dark_mode"}
               </span>
             </button>
-            <button className="hover:text-brand-green transition-colors duration-200 opacity-90 hover:opacity-100"><span className="material-symbols-outlined">notifications</span></button>
+            <div className="ml-1">
+              <UserButton />
+            </div>
           </div>
-          <UserButton />
-        </div>
-      </header>
-
-      {/* Mobile Sticky Header */}
-      <header className="md:hidden sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-black/5 dark:border-white/5 h-16 px-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-brand-green transition-colors"
-          >
-            <span className="material-symbols-outlined text-2xl">menu</span>
-          </button>
-          <div className="flex flex-col">
-            <span className="text-sm font-black text-slate-900 dark:text-white leading-none">StudyOS</span>
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{currentDate}</span>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-            className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-brand-green transition-colors"
-          >
-            <span className="material-symbols-outlined text-[20px]">
-              {mounted && resolvedTheme === "dark" ? "light_mode" : "dark_mode"}
-            </span>
-          </button>
-          <div className="ml-1">
-            <UserButton />
-          </div>
-        </div>
-      </header>
+        </header>
+      ) : null}
 
       {/* Slide-out Mobile Menu (Overlay) */}
       {isMobileMenuOpen && (
@@ -407,8 +438,12 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
 
       {/* Main Content Canvas */}
       <main
-        className={`flex-1 w-full mx-auto px-4 py-6 md:px-6 md:py-section-y-sm ${
-          isTodoActive ? "max-w-none" : "max-w-[1200px]"
+        className={`flex-1 w-full mx-auto ${
+          isTodoCalendarActive
+            ? "max-w-none px-0 py-0"
+            : `px-4 py-6 md:px-6 md:py-section-y-sm ${
+                isTodoActive ? "max-w-none" : "max-w-[1200px]"
+              }`
         }`}
       >
         {children}
