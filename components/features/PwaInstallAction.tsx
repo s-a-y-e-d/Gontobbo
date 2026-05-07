@@ -15,6 +15,10 @@ declare global {
 
 type PwaInstallActionProps = {
   variant?: "button" | "menu";
+  canInstall: boolean;
+  isInstalled: boolean;
+  isPrompting: boolean;
+  onInstall: () => void;
 };
 
 function isStandaloneDisplayMode() {
@@ -28,9 +32,7 @@ function isStandaloneDisplayMode() {
   );
 }
 
-export default function PwaInstallAction({
-  variant = "button",
-}: PwaInstallActionProps) {
+export function usePwaInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -89,7 +91,24 @@ export default function PwaInstallAction({
     }
   };
 
-  if (isInstalled || !deferredPrompt) {
+  return {
+    canInstall: deferredPrompt !== null,
+    isInstalled,
+    isPrompting,
+    onInstall: () => {
+      void handleInstall();
+    },
+  };
+}
+
+export default function PwaInstallAction({
+  variant = "button",
+  canInstall,
+  isInstalled,
+  isPrompting,
+  onInstall,
+}: PwaInstallActionProps) {
+  if (isInstalled || !canInstall) {
     return null;
   }
 
@@ -97,9 +116,7 @@ export default function PwaInstallAction({
     return (
       <button
         type="button"
-        onClick={() => {
-          void handleInstall();
-        }}
+        onClick={onInstall}
         disabled={isPrompting}
         className="w-full rounded-[24px] border border-emerald-500/20 bg-emerald-50 px-4 py-4 text-left text-slate-900 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-70 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-slate-50 dark:hover:bg-emerald-400/15"
       >
@@ -125,9 +142,7 @@ export default function PwaInstallAction({
   return (
     <button
       type="button"
-      onClick={() => {
-        void handleInstall();
-      }}
+      onClick={onInstall}
       disabled={isPrompting}
       className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-on-surface px-4 text-sm font-semibold text-pure-white transition-opacity hover:bg-brand-green hover:text-on-surface disabled:cursor-wait disabled:opacity-50"
     >

@@ -5,7 +5,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/components/ThemeProvider";
-import PwaInstallAction from "@/components/features/PwaInstallAction";
+import PwaInstallAction, {
+  usePwaInstallPrompt,
+} from "@/components/features/PwaInstallAction";
 
 type NavItem = {
   icon: string;
@@ -109,6 +111,7 @@ function Breadcrumbs() {
 
 export default function NavigationLayout({ children }: { children: React.ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme();
+  const pwaInstallPrompt = usePwaInstallPrompt();
   const [mounted, setMounted] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -432,7 +435,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
               <div className="h-px bg-black/5 dark:border-white/5 my-2 mx-4" />
               {renderMobileMenuLink(primaryNavItems[primaryNavItems.length - 1])}
               <div className="px-1 pt-3">
-                <PwaInstallAction variant="menu" />
+                <PwaInstallAction variant="menu" {...pwaInstallPrompt} />
               </div>
             </div>
             
