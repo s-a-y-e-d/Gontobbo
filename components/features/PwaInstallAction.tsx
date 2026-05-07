@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 declare global {
   interface BeforeInstallPromptEvent extends Event {
@@ -20,6 +26,15 @@ type PwaInstallActionProps = {
   isPrompting: boolean;
   onInstall: () => void;
 };
+
+type PwaInstallPromptState = {
+  canInstall: boolean;
+  isInstalled: boolean;
+  isPrompting: boolean;
+  onInstall: () => void;
+};
+
+const PwaInstallPromptContext = createContext<PwaInstallPromptState | null>(null);
 
 function isStandaloneDisplayMode() {
   if (typeof window === "undefined") {
@@ -99,6 +114,33 @@ export function usePwaInstallPrompt() {
       void handleInstall();
     },
   };
+}
+
+export function PwaInstallPromptProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const promptState = usePwaInstallPrompt();
+  const value = useMemo(() => promptState, [promptState]);
+
+  return (
+    <PwaInstallPromptContext.Provider value={value}>
+      {children}
+    </PwaInstallPromptContext.Provider>
+  );
+}
+
+export function usePwaInstallPromptContext() {
+  const context = useContext(PwaInstallPromptContext);
+
+  if (!context) {
+    throw new Error(
+      "usePwaInstallPromptContext must be used within PwaInstallPromptProvider.",
+    );
+  }
+
+  return context;
 }
 
 export default function PwaInstallAction({

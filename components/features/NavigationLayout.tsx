@@ -5,9 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/components/ThemeProvider";
-import PwaInstallAction, {
-  usePwaInstallPrompt,
-} from "@/components/features/PwaInstallAction";
+import { PwaInstallPromptProvider } from "@/components/features/PwaInstallAction";
 
 type NavItem = {
   icon: string;
@@ -111,7 +109,6 @@ function Breadcrumbs() {
 
 export default function NavigationLayout({ children }: { children: React.ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme();
-  const pwaInstallPrompt = usePwaInstallPrompt();
   const [mounted, setMounted] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -303,11 +300,12 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
   };
 
   return (
-    <div
-      className={`antialiased min-h-screen min-h-dvh pb-24 md:pb-0 flex flex-col transition-[padding] duration-300 ease-out ${
-        isSidebarCollapsed ? "md:pl-20" : "md:pl-64"
-      }`}
-    >
+    <PwaInstallPromptProvider>
+      <div
+        className={`antialiased min-h-screen min-h-dvh pb-24 md:pb-0 flex flex-col transition-[padding] duration-300 ease-out ${
+          isSidebarCollapsed ? "md:pl-20" : "md:pl-64"
+        }`}
+      >
       {/* SideNavBar (Web) */}
       <nav
         onClick={() => {
@@ -434,9 +432,6 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
               {primaryNavItems.slice(0, -1).map(renderMobileMenuLink)}
               <div className="h-px bg-black/5 dark:border-white/5 my-2 mx-4" />
               {renderMobileMenuLink(primaryNavItems[primaryNavItems.length - 1])}
-              <div className="px-1 pt-3">
-                <PwaInstallAction variant="menu" {...pwaInstallPrompt} />
-              </div>
             </div>
             
           </div>
@@ -460,6 +455,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
       <nav className="bg-white dark:bg-slate-950 font-body text-[10px] font-medium md:hidden border-t border-black/5 dark:border-white/5 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe">
         {bottomNavItems.map(renderBottomNavLink)}
       </nav>
-    </div>
+      </div>
+    </PwaInstallPromptProvider>
   );
 }

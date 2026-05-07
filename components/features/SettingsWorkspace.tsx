@@ -5,6 +5,9 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useTheme } from "@/components/ThemeProvider";
+import PwaInstallAction, {
+  usePwaInstallPromptContext,
+} from "@/components/features/PwaInstallAction";
 import { SettingsPageSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
 
@@ -1200,6 +1203,8 @@ function AppearanceSection({
   onThemeChange: (theme: ThemeMode) => void;
   sectionOptions?: SettingsSectionOptions;
 }) {
+  const pwaInstallPrompt = usePwaInstallPromptContext();
+
   return (
     <SettingsSection
       title="দেখানোর ধরন"
@@ -1217,6 +1222,12 @@ function AppearanceSection({
           label="Theme mode"
           onChange={onThemeChange}
         />
+      </SettingsRow>
+      <SettingsRow
+        title="অ্যাপ ইনস্টল"
+        description="হোম স্ক্রিন থেকে গন্তব্য দ্রুত খুলতে Android-এ এই ওয়েব অ্যাপ ইনস্টল করুন।"
+      >
+        <PwaInstallAction {...pwaInstallPrompt} />
       </SettingsRow>
     </SettingsSection>
   );
