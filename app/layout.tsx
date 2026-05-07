@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono, Inter, Baloo_Da_2 } from "next/font/google";
 import "./globals.css";
@@ -29,8 +29,23 @@ const balooDa2 = Baloo_Da_2({
 });
 
 export const metadata: Metadata = {
-  title: "Gontobbo",
+  title: "গন্তব্য",
+  applicationName: "গন্তব্য",
   description: "Personal academic operating system for study planning and progress.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "গন্তব্য",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#18E299" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+  ],
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({
@@ -40,7 +55,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="bn"
       className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${balooDa2.variable} h-full antialiased`}
       suppressHydrationWarning
     >

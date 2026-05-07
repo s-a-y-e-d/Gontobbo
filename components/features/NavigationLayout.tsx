@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/components/ThemeProvider";
+import PwaInstallAction from "@/components/features/PwaInstallAction";
 
 type NavItem = {
   icon: string;
@@ -300,7 +301,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
 
   return (
     <div
-      className={`antialiased min-h-screen pb-24 md:pb-0 flex flex-col transition-[padding] duration-300 ease-out ${
+      className={`antialiased min-h-screen min-h-dvh pb-24 md:pb-0 flex flex-col transition-[padding] duration-300 ease-out ${
         isSidebarCollapsed ? "md:pl-20" : "md:pl-64"
       }`}
     >
@@ -372,7 +373,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
 
       {/* Mobile Sticky Header */}
       {!isTodoCalendarActive ? (
-        <header className="md:hidden sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-black/5 dark:border-white/5 h-16 px-4 flex items-center justify-between">
+        <header className="pt-safe md:hidden sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-black/5 dark:border-white/5 min-h-16 px-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button 
               onClick={() => setIsMobileMenuOpen(true)}
@@ -412,7 +413,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
           />
           
           {/* Menu Panel */}
-          <div className="absolute left-0 top-0 bottom-0 w-[280px] bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-in slide-in-from-left duration-300 ease-out">
+          <div className="pt-safe absolute left-0 top-0 bottom-0 w-[280px] bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-in slide-in-from-left duration-300 ease-out">
             <div className="flex items-center justify-between px-6 py-6 border-b border-black/5 dark:border-white/5">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
@@ -430,6 +431,9 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
               {primaryNavItems.slice(0, -1).map(renderMobileMenuLink)}
               <div className="h-px bg-black/5 dark:border-white/5 my-2 mx-4" />
               {renderMobileMenuLink(primaryNavItems[primaryNavItems.length - 1])}
+              <div className="px-1 pt-3">
+                <PwaInstallAction variant="menu" />
+              </div>
             </div>
             
           </div>
