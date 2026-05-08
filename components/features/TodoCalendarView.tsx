@@ -37,7 +37,7 @@ type TodoCalendarViewProps = {
   ) => void;
 };
 
-type DragMode = "move" | "resize";
+type DragMode = "move" | "resize-start" | "resize-end";
 
 type DragState = {
   task: TodoAgendaTask;
@@ -196,9 +196,9 @@ export default function TodoCalendarView({
       return;
     }
 
-    const handlePointerMove = (event: PointerEvent) => {
+    const getNextDragState = (event: PointerEvent): DragState => {
       if (event.pointerId !== dragState.pointerId) {
-        return;
+        return dragState;
       }
 
       const target = getPointerTarget(event.clientX, event.clientY);
@@ -210,30 +210,51 @@ export default function TodoCalendarView({
         Math.abs(event.clientX - dragState.originX) > 3 ||
         Math.abs(event.clientY - dragState.originY) > 3;
 
-      if (dragState.mode === "resize") {
-        setDragState({
+      if (dragState.mode === "resize-end") {
+        return {
           ...dragState,
           hasMoved,
           previewDuration: clampDuration(
             snapMinutes(dragState.originalDuration + deltaMinutes),
             dragState.previewStart,
           ),
-        });
-        return;
+        };
+      }
+
+      if (dragState.mode === "resize-start") {
+        const originalEnd = dragState.originalStart + dragState.originalDuration;
+        const nextStart = Math.min(
+          originalEnd - SNAP_MINUTES,
+          Math.max(0, snapMinutes(dragState.originalStart + deltaMinutes)),
+        );
+
+        return {
+          ...dragState,
+          hasMoved,
+          previewStart: nextStart,
+          previewDuration: clampDuration(originalEnd - nextStart, nextStart),
+        };
       }
 
       if (!target) {
-        setDragState({ ...dragState, hasMoved });
-        return;
+        return { ...dragState, hasMoved };
       }
 
       const maxStart = 1440 - dragState.originalDuration;
-      setDragState({
+      return {
         ...dragState,
         hasMoved,
         previewDate: target.date,
         previewStart: Math.min(maxStart, Math.max(0, target.startTimeMinutes)),
-      });
+      };
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) {
+        return;
+      }
+
+      setDragState(getNextDragState(event));
     };
 
     const handlePointerUp = (event: PointerEvent) => {
@@ -241,7 +262,7 @@ export default function TodoCalendarView({
         return;
       }
 
-      const finalState = dragState;
+      const finalState = getNextDragState(event);
       setDragState(null);
 
       if (!finalState.hasMoved) {
@@ -257,11 +278,18 @@ export default function TodoCalendarView({
     document.addEventListener("pointermove", handlePointerMove);
     document.addEventListener("pointerup", handlePointerUp);
     document.addEventListener("pointercancel", handlePointerUp);
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor =
+      dragState.mode === "move" ? "grabbing" : "ns-resize";
+    document.body.style.userSelect = "none";
 
     return () => {
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
       document.removeEventListener("pointercancel", handlePointerUp);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
     };
   }, [dragState, getPointerTarget, saveDraggedTask]);
 
@@ -305,7 +333,27 @@ export default function TodoCalendarView({
         return;
       }
 
-      const finalState = createSelectionState;
+      const target = getPointerTarget(event.clientX, event.clientY);
+      const targetMinutes =
+        target?.date === createSelectionState.date
+          ? target.startTimeMinutes
+          : getPointerMinutesInOriginDay(
+              event.clientY,
+              createSelectionState.originY,
+              createSelectionState.anchorMinutes,
+            );
+      const finalRange = buildCreateSelectionRange({
+        anchorMinutes: createSelectionState.anchorMinutes,
+        targetMinutes,
+      });
+      const finalState = {
+        ...createSelectionState,
+        ...finalRange,
+        hasMoved:
+          createSelectionState.hasMoved ||
+          Math.abs(event.clientX - createSelectionState.originX) > 3 ||
+          Math.abs(event.clientY - createSelectionState.originY) > 3,
+      };
       setCreateSelectionState(null);
       setSuppressClickUntil(Date.now() + 250);
 
@@ -370,6 +418,11 @@ export default function TodoCalendarView({
     date: number,
     dragMode: DragMode,
   ) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
     const startTime = task.startTimeMinutes ?? 0;
     setDragState({
       task,
@@ -392,6 +445,11 @@ export default function TodoCalendarView({
     task: TodoAgendaTask,
     date: number,
   ) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
     setDragState({
       task,
       mode: "move",
@@ -945,10 +1003,24 @@ function CalendarEvent({
         role="presentation"
         onPointerDown={(event) => {
           event.stopPropagation();
-          onPointerDown(event, task, date, "resize");
+          onPointerDown(event, task, date, "resize-start");
         }}
-        className="absolute bottom-1 left-1/2 h-1 w-8 -translate-x-1/2 cursor-ns-resize rounded-full bg-on-surface/20 opacity-75"
-      />
+        className="group/handle absolute inset-x-0 top-0 h-4 cursor-ns-resize"
+        aria-hidden="true"
+      >
+        <span className="absolute left-1/2 top-1 h-1 w-10 -translate-x-1/2 rounded-full bg-on-surface/20 opacity-0 transition-opacity group-hover/handle:opacity-80" />
+      </span>
+      <span
+        role="presentation"
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          onPointerDown(event, task, date, "resize-end");
+        }}
+        className="group/handle absolute inset-x-0 bottom-0 h-5 cursor-ns-resize"
+        aria-hidden="true"
+      >
+        <span className="absolute bottom-1.5 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-on-surface/25 opacity-85 transition-opacity group-hover/handle:bg-on-surface/40" />
+      </span>
     </button>
   );
 }

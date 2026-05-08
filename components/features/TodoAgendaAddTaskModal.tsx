@@ -139,18 +139,19 @@ export default function TodoAgendaAddTaskModal({
       (mode === "study_item" && !selectedStudyItem) ||
       (mode === "concept_review" && !selectedConceptReview)
     ) {
-      setDurationMinutes(null);
+      setDurationMinutes((current) => current ?? initialDurationMinutes ?? null);
     }
   };
 
   const handleSelectStudyItem = (studyItem: TodoStudyItemSearchResult) => {
     const roundedDuration = roundToNearestDuration(studyItem.estimatedMinutes);
+    const selectedDuration = durationMinutes ?? initialDurationMinutes ?? roundedDuration;
 
     setSelectedStudyItem(studyItem);
     setSearchText(studyItem.title);
     setDurationMinutes(
-      maxDurationMinutes === null || roundedDuration <= maxDurationMinutes
-        ? roundedDuration
+      maxDurationMinutes === null || selectedDuration <= maxDurationMinutes
+        ? selectedDuration
         : null,
     );
     setErrorMessage(null);
@@ -158,12 +159,13 @@ export default function TodoAgendaAddTaskModal({
 
   const handleSelectConceptReview = (conceptReview: TodoConceptReviewSearchResult) => {
     const roundedDuration = roundToNearestDuration(conceptReview.estimatedMinutes);
+    const selectedDuration = durationMinutes ?? initialDurationMinutes ?? roundedDuration;
 
     setSelectedConceptReview(conceptReview);
     setSearchText(conceptReview.title);
     setDurationMinutes(
-      maxDurationMinutes === null || roundedDuration <= maxDurationMinutes
-        ? roundedDuration
+      maxDurationMinutes === null || selectedDuration <= maxDurationMinutes
+        ? selectedDuration
         : null,
     );
     setErrorMessage(null);
