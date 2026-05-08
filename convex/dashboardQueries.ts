@@ -1,6 +1,10 @@
-import { query } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { filterOwnedDocuments, requireCurrentUser } from "./auth";
+import {
+  isLegacyWorkspaceOwner,
+  requireCurrentUser,
+  type CurrentUser,
+} from "./auth";
 
 const DAY_MS = 86400000;
 const DASHBOARD_TODO_LIMIT = 5;
@@ -59,6 +63,137 @@ function getCompletionDay(item: Doc<"studyItems">, termStartDate: number) {
   return Math.max(termStartDate, getDhakaDayBucket(item.lastStudiedAt));
 }
 
+async function getDashboardSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedSubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSubjects;
+  }
+
+  const legacySubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedSubjects, ...legacySubjects];
+}
+
+async function getDashboardChapters(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedChapters = await ctx.db
+    .query("chapters")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedChapters;
+  }
+
+  const legacyChapters = await ctx.db
+    .query("chapters")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedChapters, ...legacyChapters];
+}
+
+async function getDashboardStudyItems(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedStudyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedStudyItems;
+  }
+
+  const legacyStudyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedStudyItems, ...legacyStudyItems];
+}
+
+async function getDashboardSettings(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedSettings = await ctx.db
+    .query("settings")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSettings;
+  }
+
+  const legacySettings = await ctx.db
+    .query("settings")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedSettings, ...legacySettings];
+}
+
+async function getDashboardTodoTasks(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  date: number,
+) {
+  const ownedTodoTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date", (q) =>
+      q.eq("userId", currentUser._id).eq("date", date),
+    )
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTodoTasks;
+  }
+
+  const legacyTodoTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date", (q) =>
+      q.eq("userId", undefined).eq("date", date),
+    )
+    .collect();
+
+  return [...ownedTodoTasks, ...legacyTodoTasks];
+}
+
+async function getDashboardStudyLogs(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  startDate: number,
+  endDate: number,
+) {
+  const ownedStudyLogs = await ctx.db
+    .query("studyLogs")
+    .withIndex("by_userId_and_dayBucket", (q) =>
+      q
+        .eq("userId", currentUser._id)
+        .gte("dayBucket", startDate)
+        .lte("dayBucket", endDate),
+    )
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedStudyLogs;
+  }
+
+  const legacyStudyLogs = await ctx.db
+    .query("studyLogs")
+    .withIndex("by_userId_and_dayBucket", (q) =>
+      q
+        .eq("userId", undefined)
+        .gte("dayBucket", startDate)
+        .lte("dayBucket", endDate),
+    )
+    .collect();
+
+  return [...ownedStudyLogs, ...legacyStudyLogs];
+}
+
 export const getDashboardPageData = query({
   args: {},
   handler: async (ctx) => {
@@ -74,26 +209,12 @@ export const getDashboardPageData = query({
       recentStudyLogs,
       settings,
     ] = await Promise.all([
-      filterOwnedDocuments(currentUser, await ctx.db.query("subjects").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("chapters").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("studyItems").collect()),
-      filterOwnedDocuments(
-        currentUser,
-        await ctx.db
-          .query("todoTasks")
-          .withIndex("by_date", (q) => q.eq("date", today))
-          .collect(),
-      ),
-      filterOwnedDocuments(
-        currentUser,
-        await ctx.db
-          .query("studyLogs")
-          .withIndex("by_dayBucket", (q) =>
-            q.gte("dayBucket", recentStartDate).lte("dayBucket", today),
-          )
-          .collect(),
-      ),
-      filterOwnedDocuments(currentUser, await ctx.db.query("settings").collect()),
+      getDashboardSubjects(ctx, currentUser),
+      getDashboardChapters(ctx, currentUser),
+      getDashboardStudyItems(ctx, currentUser),
+      getDashboardTodoTasks(ctx, currentUser, today),
+      getDashboardStudyLogs(ctx, currentUser, recentStartDate, today),
+      getDashboardSettings(ctx, currentUser),
     ]);
 
     const settingByKey = new Map(settings.map((setting) => [setting.key, setting]));

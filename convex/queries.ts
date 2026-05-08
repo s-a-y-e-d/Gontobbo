@@ -1,6 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import {
   assertCanAccessOwnedDocument,
   filterOwnedDocuments,
@@ -70,6 +71,157 @@ function getDhakaDayBucket(timestamp: number) {
   return dhakaTime.getTime() - dhakaOffset;
 }
 
+async function getOwnedSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedSubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSubjects;
+  }
+
+  const legacySubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedSubjects, ...legacySubjects];
+}
+
+async function getOwnedChaptersForSubject(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  subjectId: Id<"subjects">,
+) {
+  if (isLegacyWorkspaceOwner(currentUser)) {
+    return filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("chapters")
+        .withIndex("by_subject", (q) => q.eq("subjectId", subjectId))
+        .collect(),
+    );
+  }
+
+  return await ctx.db
+    .query("chapters")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subjectId),
+    )
+    .collect();
+}
+
+async function getOwnedStudyItemsForChapter(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  chapterId: Id<"chapters">,
+) {
+  if (isLegacyWorkspaceOwner(currentUser)) {
+    return filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("studyItems")
+        .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
+        .collect(),
+    );
+  }
+
+  return await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", currentUser._id).eq("chapterId", chapterId),
+    )
+    .collect();
+}
+
+async function getOwnedStudyItemsForSubject(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  subjectId: Id<"subjects">,
+) {
+  if (isLegacyWorkspaceOwner(currentUser)) {
+    return filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("studyItems")
+        .withIndex("by_subject", (q) => q.eq("subjectId", subjectId))
+        .collect(),
+    );
+  }
+
+  return await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subjectId),
+    )
+    .collect();
+}
+
+async function getOwnedStudyItemsForConcept(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  conceptId: Id<"concepts">,
+) {
+  if (isLegacyWorkspaceOwner(currentUser)) {
+    return filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("studyItems")
+        .withIndex("by_concept", (q) => q.eq("conceptId", conceptId))
+        .collect(),
+    );
+  }
+
+  return await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_conceptId", (q) =>
+      q.eq("userId", currentUser._id).eq("conceptId", conceptId),
+    )
+    .collect();
+}
+
+async function getOwnedConceptsForChapter(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  chapterId: Id<"chapters">,
+) {
+  if (isLegacyWorkspaceOwner(currentUser)) {
+    return filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("concepts")
+        .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
+        .collect(),
+    );
+  }
+
+  return await ctx.db
+    .query("concepts")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", currentUser._id).eq("chapterId", chapterId),
+    )
+    .collect();
+}
+
+async function getOwnedConcepts(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedConcepts = await ctx.db
+    .query("concepts")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedConcepts;
+  }
+
+  const legacyConcepts = await ctx.db
+    .query("concepts")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedConcepts, ...legacyConcepts];
+}
+
 export const getStudyLogsFeed = query({
   args: {
     paginationOpts: paginationOptsValidator,
@@ -113,10 +265,7 @@ export const getStudyLogSubjectsFilterData = query({
   args: {},
   handler: async (ctx) => {
     const currentUser = await requireCurrentUser(ctx);
-    const subjects = filterOwnedDocuments(
-      currentUser,
-      await ctx.db.query("subjects").collect(),
-    );
+    const subjects = await getOwnedSubjects(ctx, currentUser);
 
     return subjects.map((subject) => ({
       _id: subject._id,
@@ -135,12 +284,10 @@ export const getChapterStudyItems = query({
     }
     assertCanAccessOwnedDocument(currentUser, chapter);
 
-    const studyItems = filterOwnedDocuments(
+    const studyItems = await getOwnedStudyItemsForChapter(
+      ctx,
       currentUser,
-      await ctx.db
-        .query("studyItems")
-        .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-        .collect(),
+      args.chapterId,
     );
 
     return studyItems.filter((studyItem) => studyItem.conceptId === undefined);
@@ -157,22 +304,16 @@ export const getSubjectPageData = query({
       return null;
     }
 
-    const chapters = filterOwnedDocuments(
-      currentUser,
-      await ctx.db
-        .query("chapters")
-        .withIndex("by_subject", (q) => q.eq("subjectId", subject._id))
-        .collect(),
+    const chapters = (
+      await getOwnedChaptersForSubject(ctx, currentUser, subject._id)
     ).sort((left, right) => left.order - right.order);
 
     const chaptersWithData = await Promise.all(
       chapters.map(async (chapter) => {
-        const chapterStudyItems = filterOwnedDocuments(
+        const chapterStudyItems = await getOwnedStudyItemsForChapter(
+          ctx,
           currentUser,
-          await ctx.db
-            .query("studyItems")
-            .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
-            .collect(),
+          chapter._id,
         );
         const chapterLevelItems = chapterStudyItems.filter(
           (studyItem) => studyItem.conceptId === undefined,
@@ -180,12 +321,10 @@ export const getSubjectPageData = query({
         const conceptLevelItems = chapterStudyItems.filter(
           (studyItem) => studyItem.conceptId !== undefined,
         );
-        const concepts = filterOwnedDocuments(
+        const concepts = await getOwnedConceptsForChapter(
+          ctx,
           currentUser,
-          await ctx.db
-            .query("concepts")
-            .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
-            .collect(),
+          chapter._id,
         );
 
         let completedConceptCount = 0;
@@ -263,19 +402,14 @@ export const getSubjectsWithStats = query({
   args: {},
   handler: async (ctx) => {
     const currentUser = await requireCurrentUser(ctx);
-    const subjects = filterOwnedDocuments(
-      currentUser,
-      await ctx.db.query("subjects").collect(),
-    );
+    const subjects = await getOwnedSubjects(ctx, currentUser);
 
     return await Promise.all(
       subjects.map(async (subject) => {
-        const chapters = filterOwnedDocuments(
+        const chapters = await getOwnedChaptersForSubject(
+          ctx,
           currentUser,
-          await ctx.db
-            .query("chapters")
-            .withIndex("by_subject", (q) => q.eq("subjectId", subject._id))
-            .collect(),
+          subject._id,
         );
 
         let totalItems = 0;
@@ -283,12 +417,10 @@ export const getSubjectsWithStats = query({
         let completedChapters = 0;
 
         for (const chapter of chapters) {
-          const studyItems = filterOwnedDocuments(
+          const studyItems = await getOwnedStudyItemsForChapter(
+            ctx,
             currentUser,
-            await ctx.db
-              .query("studyItems")
-              .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
-              .collect(),
+            chapter._id,
           );
 
           totalItems += studyItems.length;
@@ -324,10 +456,7 @@ export const getReviewsDashboardData = query({
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    let concepts = filterOwnedDocuments(
-      currentUser,
-      await ctx.db.query("concepts").collect(),
-    );
+    let concepts = await getOwnedConcepts(ctx, currentUser);
 
     if (args.subjectId) {
       const subjectId = args.subjectId;
@@ -346,12 +475,10 @@ export const getReviewsDashboardData = query({
         };
       }
       assertCanAccessOwnedDocument(currentUser, subject);
-      const chapters = filterOwnedDocuments(
+      const chapters = await getOwnedChaptersForSubject(
+        ctx,
         currentUser,
-        await ctx.db
-          .query("chapters")
-          .withIndex("by_subject", (q) => q.eq("subjectId", subjectId))
-          .collect(),
+        subjectId,
       );
       const chapterIds = new Set(chapters.map((chapter) => chapter._id));
       concepts = concepts.filter((concept) => chapterIds.has(concept.chapterId));
@@ -420,10 +547,7 @@ export const getSubjectsForFilter = query({
   args: {},
   handler: async (ctx) => {
     const currentUser = await requireCurrentUser(ctx);
-    const subjects = filterOwnedDocuments(
-      currentUser,
-      await ctx.db.query("subjects").collect(),
-    );
+    const subjects = await getOwnedSubjects(ctx, currentUser);
 
     return subjects.map((subject) => ({
       _id: subject._id,
@@ -444,12 +568,10 @@ export const countStudyItemsByType = query({
     }
     assertCanAccessOwnedDocument(currentUser, subject);
 
-    const studyItems = filterOwnedDocuments(
+    const studyItems = await getOwnedStudyItemsForSubject(
+      ctx,
       currentUser,
-      await ctx.db
-        .query("studyItems")
-        .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
-        .collect(),
+      args.subjectId,
     );
 
     return studyItems.filter((studyItem) => studyItem.type === args.type).length;
@@ -466,12 +588,10 @@ export const getChapterPageData = query({
       return null;
     }
 
-    const chapters = filterOwnedDocuments(
+    const chapters = await getOwnedChaptersForSubject(
+      ctx,
       currentUser,
-      await ctx.db
-        .query("chapters")
-        .withIndex("by_subject", (q) => q.eq("subjectId", subject._id))
-        .collect(),
+      subject._id,
     );
     const chapter =
       chapters.find((entry) => entry.slug === args.chapterSlug) ?? null;
@@ -480,22 +600,16 @@ export const getChapterPageData = query({
       return null;
     }
 
-    const concepts = filterOwnedDocuments(
-      currentUser,
-      await ctx.db
-        .query("concepts")
-        .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
-        .collect(),
+    const concepts = (
+      await getOwnedConceptsForChapter(ctx, currentUser, chapter._id)
     ).sort((left, right) => left.order - right.order);
 
     const conceptsWithData = await Promise.all(
       concepts.map(async (concept) => {
-        const studyItems = filterOwnedDocuments(
+        const studyItems = await getOwnedStudyItemsForConcept(
+          ctx,
           currentUser,
-          await ctx.db
-            .query("studyItems")
-            .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
-            .collect(),
+          concept._id,
         );
 
         const trackerData = subject.conceptTrackers.map((tracker) => {

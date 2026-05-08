@@ -3,6 +3,7 @@ import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import {
   filterOwnedDocuments,
+  isLegacyWorkspaceOwner,
   requireCurrentUser,
 } from "./auth";
 import {
@@ -231,13 +232,20 @@ export const searchStudyItemsForTodo = query({
       return [];
     }
 
-    const todoTasks = filterOwnedDocuments(
-      currentUser,
-      await ctx.db
-        .query("todoTasks")
-        .withIndex("by_date", (q) => q.eq("date", args.date))
-        .collect(),
-    );
+    const todoTasks = isLegacyWorkspaceOwner(currentUser)
+      ? filterOwnedDocuments(
+          currentUser,
+          await ctx.db
+            .query("todoTasks")
+            .withIndex("by_date", (q) => q.eq("date", args.date))
+            .collect(),
+        )
+      : await ctx.db
+          .query("todoTasks")
+          .withIndex("by_userId_and_date", (q) =>
+            q.eq("userId", currentUser._id).eq("date", args.date),
+          )
+          .collect();
 
     const scheduledStudyItemIds = new Set(
       todoTasks
@@ -257,13 +265,20 @@ export const searchStudyItemsForTodo = query({
       )
       .take(36);
 
-    const fallbackStudyItems = filterOwnedDocuments(
-      currentUser,
-      await ctx.db
-        .query("studyItems")
-        .withIndex("by_isCompleted", (q) => q.eq("isCompleted", false))
-        .take(200),
-    );
+    const fallbackStudyItems = isLegacyWorkspaceOwner(currentUser)
+      ? filterOwnedDocuments(
+          currentUser,
+          await ctx.db
+            .query("studyItems")
+            .withIndex("by_isCompleted", (q) => q.eq("isCompleted", false))
+            .take(200),
+        )
+      : await ctx.db
+          .query("studyItems")
+          .withIndex("by_userId_and_isCompleted", (q) =>
+            q.eq("userId", currentUser._id).eq("isCompleted", false),
+          )
+          .take(200);
 
     const candidateStudyItems = new Map<string, Doc<"studyItems">>();
 
@@ -368,25 +383,39 @@ export const searchConceptReviewsForTodo = query({
       return [];
     }
 
-    const defaultRevisionMinutesSetting = filterOwnedDocuments(
-      currentUser,
-      await ctx.db
-        .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
-        .collect(),
-    )[0];
+    const defaultRevisionMinutesSetting = isLegacyWorkspaceOwner(currentUser)
+      ? filterOwnedDocuments(
+          currentUser,
+          await ctx.db
+            .query("settings")
+            .withIndex("by_key", (q) => q.eq("key", "defaultRevisionMinutes"))
+            .collect(),
+        )[0]
+      : await ctx.db
+          .query("settings")
+          .withIndex("by_userId_and_key", (q) =>
+            q.eq("userId", currentUser._id).eq("key", "defaultRevisionMinutes"),
+          )
+          .unique();
     const defaultRevisionMinutes =
       typeof defaultRevisionMinutesSetting?.value === "number"
         ? defaultRevisionMinutesSetting.value
         : 15;
 
-    const todoTasks = filterOwnedDocuments(
-      currentUser,
-      await ctx.db
-        .query("todoTasks")
-        .withIndex("by_date", (q) => q.eq("date", args.date))
-        .collect(),
-    );
+    const todoTasks = isLegacyWorkspaceOwner(currentUser)
+      ? filterOwnedDocuments(
+          currentUser,
+          await ctx.db
+            .query("todoTasks")
+            .withIndex("by_date", (q) => q.eq("date", args.date))
+            .collect(),
+        )
+      : await ctx.db
+          .query("todoTasks")
+          .withIndex("by_userId_and_date", (q) =>
+            q.eq("userId", currentUser._id).eq("date", args.date),
+          )
+          .collect();
 
     const scheduledConceptIds = new Set(
       todoTasks

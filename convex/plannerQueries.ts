@@ -67,16 +67,145 @@ async function getNumberSettingValue(
   return undefined;
 }
 
+async function getPlannerSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedSubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSubjects;
+  }
+
+  const legacySubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedSubjects, ...legacySubjects];
+}
+
+async function getPlannerChapters(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedChapters = await ctx.db
+    .query("chapters")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedChapters;
+  }
+
+  const legacyChapters = await ctx.db
+    .query("chapters")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedChapters, ...legacyChapters];
+}
+
+async function getPlannerConcepts(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedConcepts = await ctx.db
+    .query("concepts")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedConcepts;
+  }
+
+  const legacyConcepts = await ctx.db
+    .query("concepts")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedConcepts, ...legacyConcepts];
+}
+
+async function getPlannerStudyItems(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedStudyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedStudyItems;
+  }
+
+  const legacyStudyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedStudyItems, ...legacyStudyItems];
+}
+
+async function getPlannerPreferences(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedPreferences = await ctx.db
+    .query("plannerSubjectPreferences")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedPreferences;
+  }
+
+  const legacyPreferences = await ctx.db
+    .query("plannerSubjectPreferences")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedPreferences, ...legacyPreferences];
+}
+
+async function getPlannerWeeklyTargets(ctx: QueryCtx, currentUser: CurrentUser) {
+  const ownedTargets = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTargets;
+  }
+
+  const legacyTargets = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedTargets, ...legacyTargets];
+}
+
+async function getPlannerCoachingStatuses(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+) {
+  const ownedStatuses = await ctx.db
+    .query("coachingProgress")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedStatuses;
+  }
+
+  const legacyStatuses = await ctx.db
+    .query("coachingProgress")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedStatuses, ...legacyStatuses];
+}
+
 async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
   const [subjects, chapters, concepts, studyItems, plannerPreferences, weeklyTargets, coachingStatuses] =
     await Promise.all([
-      filterOwnedDocuments(currentUser, await ctx.db.query("subjects").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("chapters").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("concepts").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("studyItems").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("plannerSubjectPreferences").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("weeklyTargets").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("coachingProgress").collect()),
+      getPlannerSubjects(ctx, currentUser),
+      getPlannerChapters(ctx, currentUser),
+      getPlannerConcepts(ctx, currentUser),
+      getPlannerStudyItems(ctx, currentUser),
+      getPlannerPreferences(ctx, currentUser),
+      getPlannerWeeklyTargets(ctx, currentUser),
+      getPlannerCoachingStatuses(ctx, currentUser),
     ]);
 
   subjects.sort((a, b) => a.order - b.order);
