@@ -111,7 +111,7 @@ export default function DurationPresetSelect({
 
       {isOpen ? (
         <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-3xl border border-border-subtle bg-pure-white p-2 shadow-[0_20px_50px_rgba(15,23,42,0.16)]">
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-[min(16rem,38dvh)] overflow-y-auto">
             {DURATION_PRESETS.map((minutes) => {
               const isSelected = minutes === normalizedValue;
               const isDisabled = disabledOptions?.(minutes) ?? false;

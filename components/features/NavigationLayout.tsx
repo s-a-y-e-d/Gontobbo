@@ -13,6 +13,18 @@ type NavItem = {
   href?: string;
 };
 
+function BrandWordmark({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      className={`font-[var(--font-baloo)] font-bold leading-none text-slate-950 dark:text-white ${
+        compact ? "text-[18px]" : "text-[25px]"
+      }`}
+    >
+      গন্তব্য
+    </span>
+  );
+}
+
 const primaryNavItems: NavItem[] = [
   { icon: "dashboard", label: "ড্যাশবোর্ড", href: "/" },
   { icon: "auto_stories", label: "বিষয়", href: "/subjects" },
@@ -338,8 +350,10 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
         <div className={`flex items-center py-6 mb-4 ${isSidebarCollapsed ? "justify-center px-0" : "gap-3 px-4 pr-12"}`}>
           <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
           <div className={isSidebarCollapsed ? "sr-only" : "min-w-0"}>
-            <div className="text-lg font-black text-slate-900 dark:text-white leading-tight">StudyOS</div>
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-0.5">পড়ার সিস্টেম</div>
+            <div className="flex items-baseline gap-1.5">
+              <BrandWordmark />
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-green shadow-[0_0_14px_rgba(24,226,153,0.65)]" aria-hidden="true" />
+            </div>
           </div>
         </div>
         
@@ -383,7 +397,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
               <span className="material-symbols-outlined text-2xl">menu</span>
             </button>
             <div className="flex flex-col">
-              <span className="text-sm font-black text-slate-900 dark:text-white leading-none">StudyOS</span>
+              <BrandWordmark compact />
               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{currentDate}</span>
             </div>
           </div>
@@ -418,7 +432,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
             <div className="flex items-center justify-between px-6 py-6 border-b border-black/5 dark:border-white/5">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
-                <span className="text-lg font-black text-slate-900 dark:text-white">StudyOS</span>
+                <BrandWordmark compact />
               </div>
               <button 
                 onClick={() => setIsMobileMenuOpen(false)}

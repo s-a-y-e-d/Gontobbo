@@ -297,21 +297,23 @@ export default function TodoAgendaAddTaskModal({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[110] flex items-end justify-center p-0 sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div className="absolute inset-0 bg-near-black/25 backdrop-blur-sm animate-in fade-in duration-300" />
 
       <div
-        className="relative w-full max-w-xl rounded-[32px] bg-pure-white shadow-[0_24px_60px_rgba(0,0,0,0.12)] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300"
+        className="relative flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-pure-white shadow-[0_24px_60px_rgba(0,0,0,0.12)] animate-in slide-in-from-bottom-4 duration-300 sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:rounded-[32px] sm:zoom-in-95"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-6 py-5 sm:px-8">
+        <div className="shrink-0 border-b border-border-subtle px-4 py-4 sm:px-8 sm:py-5">
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-200 sm:hidden" />
+          <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-mono-code text-[11px] uppercase tracking-[0.18em] text-gray-400">
               {dayHeading}
             </p>
-            <h2 className="mt-2 font-section-heading text-[1.7rem] leading-tight tracking-[-0.04em] text-on-surface">
+            <h2 className="mt-1 font-section-heading text-[1.45rem] leading-tight tracking-[-0.02em] text-on-surface sm:mt-2 sm:text-[1.7rem]">
               টাস্ক যোগ করুন
             </h2>
           </div>
@@ -322,14 +324,16 @@ export default function TodoAgendaAddTaskModal({
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6 px-6 py-6 sm:px-8">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:space-y-6 sm:px-8 sm:py-6">
           <div className="grid grid-cols-3 rounded-full border border-border-subtle bg-surface-container p-1">
             <button
               type="button"
               onClick={() => handleTaskModeChange("study_item")}
-              className={`rounded-full px-4 py-2.5 text-sm font-medium transition-all ${
+              className={`min-w-0 rounded-full px-2 py-2.5 text-xs font-medium leading-tight transition-all sm:px-4 sm:text-sm ${
                 taskMode === "study_item"
                   ? "bg-pure-white text-on-surface shadow-sm"
                   : "text-gray-500 hover:text-on-surface"
@@ -340,7 +344,7 @@ export default function TodoAgendaAddTaskModal({
             <button
               type="button"
               onClick={() => handleTaskModeChange("concept_review")}
-              className={`rounded-full px-4 py-2.5 text-sm font-medium transition-all ${
+              className={`min-w-0 rounded-full px-2 py-2.5 text-xs font-medium leading-tight transition-all sm:px-4 sm:text-sm ${
                 taskMode === "concept_review"
                   ? "bg-pure-white text-on-surface shadow-sm"
                   : "text-gray-500 hover:text-on-surface"
@@ -351,7 +355,7 @@ export default function TodoAgendaAddTaskModal({
             <button
               type="button"
               onClick={() => handleTaskModeChange("custom")}
-              className={`rounded-full px-4 py-2.5 text-sm font-medium transition-all ${
+              className={`min-w-0 rounded-full px-2 py-2.5 text-xs font-medium leading-tight transition-all sm:px-4 sm:text-sm ${
                 taskMode === "custom"
                   ? "bg-pure-white text-on-surface shadow-sm"
                   : "text-gray-500 hover:text-on-surface"
@@ -420,13 +424,13 @@ export default function TodoAgendaAddTaskModal({
                     কোনো অসম্পূর্ণ স্টাডি আইটেম পাওয়া যায়নি।
                   </div>
                 ) : (
-                  <div className="max-h-72 overflow-y-auto py-2">
+                  <div className="max-h-[min(18rem,42dvh)] overflow-y-auto py-2">
                     {searchResults.map((studyItem) => (
                       <button
                         key={studyItem._id}
                         type="button"
                         onClick={() => handleSelectStudyItem(studyItem)}
-                        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50"
+                        className="flex w-full min-w-0 items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50"
                       >
                         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-green-light text-brand-green-deep">
                           <span className="material-symbols-outlined text-[18px]">
@@ -437,7 +441,7 @@ export default function TodoAgendaAddTaskModal({
                           <span className="block truncate font-body text-[15px] text-on-surface">
                             {studyItem.title}
                           </span>
-                          <span className="mt-1 block text-xs text-gray-500">
+                          <span className="mt-1 block truncate text-xs text-gray-500">
                             {`${studyItem.subjectName} • ${studyItem.chapterName}`}
                           </span>
                           <span className="mt-1 block text-[11px] text-gray-400">
@@ -462,13 +466,13 @@ export default function TodoAgendaAddTaskModal({
                     No scheduled revision found.
                   </div>
                 ) : (
-                  <div className="max-h-72 overflow-y-auto py-2">
+                  <div className="max-h-[min(18rem,42dvh)] overflow-y-auto py-2">
                     {revisionSearchResults.map((conceptReview) => (
                       <button
                         key={conceptReview._id}
                         type="button"
                         onClick={() => handleSelectConceptReview(conceptReview)}
-                        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50"
+                        className="flex w-full min-w-0 items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50"
                       >
                         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-green-light text-brand-green-deep">
                           <span className="material-symbols-outlined text-[18px]">
@@ -479,7 +483,7 @@ export default function TodoAgendaAddTaskModal({
                           <span className="block truncate font-body text-[15px] text-on-surface">
                             {conceptReview.title}
                           </span>
-                          <span className="mt-1 block text-xs text-gray-500">
+                          <span className="mt-1 block truncate text-xs text-gray-500">
                             {`${conceptReview.subjectName} • ${conceptReview.chapterName}`}
                           </span>
                           <span className="mt-1 block text-[11px] text-gray-400">
@@ -558,19 +562,20 @@ export default function TodoAgendaAddTaskModal({
               {errorMessage}
             </div>
           ) : null}
+          </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="shrink-0 border-t border-border-subtle bg-pure-white px-4 py-4 sm:flex sm:justify-end sm:gap-3 sm:px-8">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full px-6 py-3 font-label-uppercase text-label-uppercase text-gray-700 transition-colors hover:bg-gray-100"
+              className="hidden rounded-full px-6 py-3 font-label-uppercase text-label-uppercase text-gray-700 transition-colors hover:bg-gray-100 sm:block"
             >
               বাতিল
             </button>
             <button
               type="submit"
               disabled={!canSubmit}
-              className="rounded-full bg-on-surface px-7 py-3 font-label-uppercase text-label-uppercase text-pure-white shadow-sm transition-all hover:bg-brand-green hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-full bg-on-surface px-7 py-3 font-label-uppercase text-label-uppercase text-pure-white shadow-sm transition-all hover:bg-brand-green hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               {isSubmitting ? "যোগ হচ্ছে..." : "টাস্ক যোগ করুন"}
             </button>
