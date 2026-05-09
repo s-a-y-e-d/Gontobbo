@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useToast } from "@/components/ui/Toast";
 import DateRangeStrip from "./DateRangeStrip";
 import {
   DAY_COUNT,
@@ -38,8 +39,7 @@ export default function PlannerWorkspace() {
   const [rangeStartDate, setRangeStartDate] = useState(today);
   const [selectedDate, setSelectedDate] = useState(today);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+  const toast = useToast();
 
   const plannerData = useQuery(api.plannerQueries.getPlannerPageData, {
     date: selectedDate,
@@ -73,14 +73,11 @@ export default function PlannerWorkspace() {
   }) => {
     const parsedMinutes = Number(draft.availableMinutes);
     if (!Number.isFinite(parsedMinutes) || parsedMinutes <= 0) {
-      setErrorMessage("পড়ার সময় মিনিটে লিখুন।");
+      toast.error("পড়ার সময় মিনিটে লিখুন।");
       return;
     }
 
     setIsGenerating(true);
-    setErrorMessage(null);
-    setNoticeMessage(null);
-
     try {
       const result = await generatePlannerSuggestions({
         date: selectedDate,
@@ -88,46 +85,40 @@ export default function PlannerWorkspace() {
         comment: draft.comment.trim() || undefined,
       });
 
-      setNoticeMessage(
+      toast.success(
         result.appendedCount > 0
           ? `${result.appendedCount}টি নতুন সাজেশন যোগ হয়েছে।`
           : "নতুন কোনো সাজেশন যোগ হয়নি।",
       );
     } catch (error) {
       console.error("Failed to generate planner suggestions:", error);
-      setErrorMessage("প্ল্যান তৈরি করা যায়নি। আবার চেষ্টা করুন।");
+      toast.error("প্ল্যান তৈরি করা যায়নি। আবার চেষ্টা করুন।");
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleAcceptSuggestion = async (suggestionId: string) => {
-    setErrorMessage(null);
-    setNoticeMessage(null);
-
     try {
       await acceptPlannerSuggestion({
         suggestionId: suggestionId as Id<"plannerSuggestions">,
       });
-      setNoticeMessage("টাস্কটি Todo-তে যোগ হয়েছে।");
+      toast.success("টাস্কটি Todo-তে যোগ হয়েছে।");
     } catch (error) {
       console.error("Failed to accept planner suggestion:", error);
-      setErrorMessage("সাজেশনটি Todo-তে যোগ করা যায়নি।");
+      toast.error("সাজেশনটি Todo-তে যোগ করা যায়নি।");
     }
   };
 
   const handleDismissSuggestion = async (suggestionId: string) => {
-    setErrorMessage(null);
-    setNoticeMessage(null);
-
     try {
       await dismissPlannerSuggestion({
         suggestionId: suggestionId as Id<"plannerSuggestions">,
       });
-      setNoticeMessage("সাজেশনটি তালিকা থেকে সরিয়ে দেওয়া হয়েছে।");
+      toast.info("সাজেশনটি তালিকা থেকে সরিয়ে দেওয়া হয়েছে।");
     } catch (error) {
       console.error("Failed to dismiss planner suggestion:", error);
-      setErrorMessage("সাজেশন সরানো যায়নি।");
+      toast.error("সাজেশন সরানো যায়নি।");
     }
   };
 
@@ -161,8 +152,6 @@ export default function PlannerWorkspace() {
           selectedHeading={selectedHeading}
           session={plannerData?.session ?? null}
           isGenerating={isGenerating}
-          errorMessage={errorMessage}
-          noticeMessage={noticeMessage}
           onGenerate={handleGenerate}
         />
 
@@ -214,15 +203,11 @@ function PlannerComposerCard({
   selectedHeading,
   session,
   isGenerating,
-  errorMessage,
-  noticeMessage,
   onGenerate,
 }: {
   selectedHeading: string;
   session: PlannerSessionInfo;
   isGenerating: boolean;
-  errorMessage: string | null;
-  noticeMessage: string | null;
   onGenerate: (draft: { availableMinutes: string; comment: string }) => void;
 }) {
   const [availableMinutes, setAvailableMinutes] = useState(() =>
@@ -279,18 +264,6 @@ function PlannerComposerCard({
                 {new Date(session.latestGeneratedAt).toLocaleString("bn-BD")}
               </p>
             ) : null}
-          </div>
-        ) : null}
-
-        {errorMessage ? (
-          <div className="rounded-[20px] border border-[#f1c2bc] bg-[#fff4f2] px-4 py-3 text-sm text-[#c54f41] dark:border-red-400/20 dark:bg-red-950/20 dark:text-red-200">
-            {errorMessage}
-          </div>
-        ) : null}
-
-        {noticeMessage ? (
-          <div className="rounded-[20px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-brand-green-deep dark:border-emerald-300/15 dark:bg-emerald-950/20 dark:text-emerald-200">
-            {noticeMessage}
           </div>
         ) : null}
 

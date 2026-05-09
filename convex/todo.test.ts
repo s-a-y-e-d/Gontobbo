@@ -87,6 +87,53 @@ async function createRevisionFixture(subject: string) {
   return { t, date, conceptId };
 }
 
+async function createConceptTodoFixture(subject: string) {
+  const t = await createAuthenticatedTestContext(subject);
+  const date = getDhakaDayBucket(Date.now());
+
+  const subjectId = await t.mutation(api.mutations.createSubject, {
+    name: "Physics",
+    slug: `physics-concept-todo-${subject}`,
+    order: 1,
+    chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+    conceptTrackers: [
+      { key: "class", label: "Class", avgMinutes: 20 },
+      { key: "book", label: "Book", avgMinutes: 25 },
+      { key: "practice", label: "Practice", avgMinutes: 35 },
+    ],
+  });
+
+  const chapterId = await t.mutation(api.mutations.createChapter, {
+    subjectId,
+    name: "Motion",
+    slug: "motion",
+    order: 1,
+    inNextTerm: true,
+  });
+
+  const conceptId = await t.mutation(api.mutations.createConcept, {
+    chapterId,
+    name: "Velocity",
+    order: 1,
+  });
+
+  await t.mutation(api.mutations.ensureConceptStudyItems, { chapterId });
+
+  const pageData = await t.query(api.queries.getChapterPageData, {
+    subjectSlug: `physics-concept-todo-${subject}`,
+    chapterSlug: "motion",
+  });
+  const concept = pageData?.concepts.find((entry) => entry._id === conceptId);
+  const studyItemIds = concept?.trackerData.map((tracker) => tracker.studyItemId) ?? [];
+
+  return {
+    t,
+    date,
+    conceptId,
+    studyItemIds: studyItemIds as Id<"studyItems">[],
+  };
+}
+
 describe("todo", () => {
   test("creates a manual todo with a start time", async () => {
     const { t, date, studyItemId } = await createStudyItemFixture("todo-timed");
@@ -185,6 +232,108 @@ describe("todo", () => {
       studyItemId,
       durationMinutes: 720,
     });
+  });
+
+  test("adds incomplete concept study items to today's todo", async () => {
+    const { t, date, conceptId, studyItemIds } =
+      await createConceptTodoFixture("bulk-add");
+
+    expect(studyItemIds).toHaveLength(3);
+
+    const result = await t.mutation(
+      api.mutations.addConceptStudyItemsToTodayTodo,
+      { conceptId },
+    );
+
+    expect(result).toMatchObject({
+      date,
+      addedCount: 3,
+      skippedScheduledCount: 0,
+      skippedCompletedCount: 0,
+    });
+
+    const agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+
+    expect(agenda.days[0]?.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          studyItemId: studyItemIds[0],
+          durationMinutes: 20,
+          source: "manual",
+        }),
+        expect.objectContaining({
+          studyItemId: studyItemIds[1],
+          durationMinutes: 25,
+          source: "manual",
+        }),
+        expect.objectContaining({
+          studyItemId: studyItemIds[2],
+          durationMinutes: 35,
+          source: "manual",
+        }),
+      ]),
+    );
+    expect(agenda.days[0]?.tasks.every((task) => task.startTimeMinutes === undefined))
+      .toBe(true);
+  });
+
+  test("skips completed and already scheduled concept study items", async () => {
+    const { t, date, conceptId, studyItemIds } =
+      await createConceptTodoFixture("bulk-skip");
+
+    expect(studyItemIds).toHaveLength(3);
+
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: studyItemIds[0]!,
+    });
+    await t.mutation(api.mutations.createTodoTask, {
+      date,
+      studyItemId: studyItemIds[1]!,
+      durationMinutes: 45,
+      source: "manual",
+    });
+
+    const firstResult = await t.mutation(
+      api.mutations.addConceptStudyItemsToTodayTodo,
+      { conceptId },
+    );
+
+    expect(firstResult).toMatchObject({
+      date,
+      addedCount: 1,
+      skippedScheduledCount: 1,
+      skippedCompletedCount: 1,
+    });
+
+    const secondResult = await t.mutation(
+      api.mutations.addConceptStudyItemsToTodayTodo,
+      { conceptId },
+    );
+
+    expect(secondResult).toMatchObject({
+      date,
+      addedCount: 0,
+      skippedScheduledCount: 2,
+      skippedCompletedCount: 1,
+    });
+
+    const agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+
+    expect(agenda.days[0]?.tasks).toHaveLength(2);
+    expect(agenda.days[0]?.tasks.some((task) => task.studyItemId === studyItemIds[0]))
+      .toBe(false);
+    expect(agenda.days[0]?.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ studyItemId: studyItemIds[1] }),
+        expect.objectContaining({ studyItemId: studyItemIds[2] }),
+      ]),
+    );
   });
 
   test("creates a custom todo with a start time", async () => {

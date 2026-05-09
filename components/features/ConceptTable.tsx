@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useToast } from "@/components/ui/Toast";
 import ConceptModal from "./ConceptModal";
 import ConceptReviewModal from "./ConceptReviewModal";
 
@@ -69,12 +70,16 @@ function getFloatingMenuPosition(
 
 function ActionMenu({
   onEdit,
+  onAddToTodo,
   onDelete,
   onReset,
+  isAddingToTodo,
 }: {
   onEdit: () => void;
+  onAddToTodo: () => Promise<void>;
   onDelete: () => void;
   onReset: () => void;
+  isAddingToTodo: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
@@ -184,6 +189,19 @@ function ActionMenu({
           >
             <span className="material-symbols-outlined text-lg text-gray-500">edit</span>
             এডিট করুন
+          </button>
+
+          <button
+            disabled={isAddingToTodo}
+            onClick={async (e) => {
+              e.stopPropagation();
+              await onAddToTodo();
+              setOpen(false);
+            }}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-on-surface hover:bg-gray-100 transition-colors disabled:cursor-wait disabled:opacity-60"
+          >
+            <span className="material-symbols-outlined text-lg text-gray-500">event_available</span>
+            {isAddingToTodo ? "যোগ হচ্ছে..." : "আজকের Todo-তে যোগ"}
           </button>
 
           <div className="border-t border-border-subtle my-1" />
@@ -342,18 +360,22 @@ function MobileConceptCard({
   isUnlocked,
   isDue,
   onEdit,
+  onAddToTodo,
   onDelete,
   onReset,
   onReview,
+  isAddingToTodo,
 }: {
   concept: ConceptRowData;
   trackerConfigs: TrackerConfig[];
   isUnlocked: boolean;
   isDue: boolean;
   onEdit: () => void;
+  onAddToTodo: () => Promise<void>;
   onDelete: () => void;
   onReset: () => void;
   onReview: () => void;
+  isAddingToTodo: boolean;
 }) {
   return (
     <article className="rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
@@ -371,8 +393,10 @@ function MobileConceptCard({
         </div>
         <ActionMenu
           onEdit={onEdit}
+          onAddToTodo={onAddToTodo}
           onDelete={onDelete}
           onReset={onReset}
+          isAddingToTodo={isAddingToTodo}
         />
       </div>
 
@@ -419,12 +443,18 @@ export default function ConceptTable({
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingConcept, setEditingConcept] = React.useState<ConceptRowData | null>(null);
   const [reviewingConcept, setReviewingConcept] = React.useState<ConceptRowData | null>(null);
+  const [addingTodoConceptId, setAddingTodoConceptId] = React.useState<Id<"concepts"> | null>(null);
   const [now] = React.useState(() => Date.now());
+  const toast = useToast();
   
   const deleteConcept = useMutation(api.mutations.deleteConcept);
   const resetConcept = useMutation(api.mutations.resetConceptProgress);
+  const addConceptStudyItemsToTodayTodo = useMutation(
+    api.mutations.addConceptStudyItemsToTodayTodo,
+  );
 
   const nextOrder = concepts.length > 0 ? Math.max(...concepts.map((c) => c.order)) + 1 : 1;
+  const numberFormatter = React.useMemo(() => new Intl.NumberFormat("bn-BD"), []);
 
   const handleEdit = (concept: ConceptRowData) => {
     setEditingConcept(concept);
@@ -438,6 +468,33 @@ export default function ConceptTable({
 
   const handleReview = (concept: ConceptRowData) => {
     setReviewingConcept(concept);
+  };
+
+  const handleAddConceptToTodayTodo = async (concept: ConceptRowData) => {
+    if (addingTodoConceptId) {
+      return;
+    }
+
+    setAddingTodoConceptId(concept._id);
+
+    try {
+      const result = await addConceptStudyItemsToTodayTodo({
+        conceptId: concept._id,
+      });
+
+      if (result.addedCount > 0) {
+        toast.success(
+          `${numberFormatter.format(result.addedCount)}টি টাস্ক আজকের Todo-তে যোগ হয়েছে।`,
+        );
+      } else {
+        toast.info("নতুন কোনো টাস্ক যোগ করার নেই।");
+      }
+    } catch (error) {
+      console.error("Failed to add concept study items to todo:", error);
+      toast.error("আজকের Todo-তে টাস্ক যোগ করা যায়নি। আবার চেষ্টা করুন।");
+    } finally {
+      setAddingTodoConceptId(null);
+    }
   };
 
   if (concepts.length === 0) {
@@ -497,9 +554,11 @@ export default function ConceptTable({
               isUnlocked={isUnlocked}
               isDue={isDue}
               onEdit={() => handleEdit(concept)}
+              onAddToTodo={() => handleAddConceptToTodayTodo(concept)}
               onDelete={() => deleteConcept({ conceptId: concept._id })}
               onReset={() => resetConcept({ conceptId: concept._id })}
               onReview={() => handleReview(concept)}
+              isAddingToTodo={addingTodoConceptId === concept._id}
             />
           );
         })}
@@ -587,8 +646,10 @@ export default function ConceptTable({
                   <td className={`py-4 px-5 text-right ${idx === concepts.length - 1 ? "rounded-br-2xl" : ""}`}>
                     <ActionMenu 
                       onEdit={() => handleEdit(concept)}
+                      onAddToTodo={() => handleAddConceptToTodayTodo(concept)}
                       onDelete={() => deleteConcept({ conceptId: concept._id })}
                       onReset={() => resetConcept({ conceptId: concept._id })}
+                      isAddingToTodo={addingTodoConceptId === concept._id}
                     />
                   </td>
                 </tr>

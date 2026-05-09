@@ -5,6 +5,7 @@ import "./globals.css";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import AuthGate from "@/components/features/AuthGate";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { ToastProvider } from "@/components/ui/Toast";
 import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
@@ -69,7 +70,9 @@ export default function RootLayout({
         <ClerkProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             <ConvexClientProvider>
-              <AuthGate>{children}</AuthGate>
+              <ToastProvider>
+                <AuthGate>{children}</AuthGate>
+              </ToastProvider>
             </ConvexClientProvider>
           </ThemeProvider>
         </ClerkProvider>

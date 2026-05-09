@@ -19,6 +19,9 @@ import {
   getDhakaDayBucket,
 } from "./todoAgendaTime";
 
+const WEEK_OFFSET = DAY_COUNT * DAY_MS;
+const LAST_DAY_OFFSET = (DAY_COUNT - 1) * DAY_MS;
+
 export default function TodoAgenda() {
   const [now] = useState(() => Date.now());
   const today = getDhakaDayBucket(now);
@@ -88,9 +91,18 @@ export default function TodoAgenda() {
   const selectedDay =
     days.find((day) => day.date === selectedDate) ?? days[0] ?? null;
 
+  const goToRange = (nextRangeStartDate: number, nextSelectedDate: number) => {
+    setRangeStartDate(nextRangeStartDate);
+    setSelectedDate(nextSelectedDate);
+  };
+
   const handleGoToPreviousRange = () => {
-    setRangeStartDate((current) => current - DAY_COUNT * DAY_MS);
-    setSelectedDate((current) => current - DAY_COUNT * DAY_MS);
+    const previousRangeStartDate = rangeStartDate - WEEK_OFFSET;
+
+    goToRange(
+      previousRangeStartDate,
+      previousRangeStartDate + LAST_DAY_OFFSET,
+    );
   };
 
   const handleGoToToday = () => {
@@ -99,8 +111,9 @@ export default function TodoAgenda() {
   };
 
   const handleGoToNextRange = () => {
-    setRangeStartDate((current) => current + DAY_COUNT * DAY_MS);
-    setSelectedDate((current) => current + DAY_COUNT * DAY_MS);
+    const nextRangeStartDate = rangeStartDate + WEEK_OFFSET;
+
+    goToRange(nextRangeStartDate, nextRangeStartDate);
   };
 
   const openAddTaskModal = (defaults?: {

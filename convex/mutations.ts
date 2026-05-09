@@ -1246,6 +1246,75 @@ export const createTodoTask = mutation({
   },
 });
 
+export const addConceptStudyItemsToTodayTodo = mutation({
+  args: {
+    conceptId: v.id("concepts"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
+
+    const date = getDhakaDayBucket(Date.now());
+    const studyItems = filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("studyItems")
+        .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
+        .collect(),
+    );
+    const existingTodoTasks = filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("todoTasks")
+        .withIndex("by_date", (q) => q.eq("date", date))
+        .collect(),
+    );
+    const scheduledStudyItemIds = new Set(
+      existingTodoTasks
+        .map((todoTask) => todoTask.studyItemId)
+        .filter((studyItemId): studyItemId is Id<"studyItems"> =>
+          studyItemId !== undefined,
+        ),
+    );
+
+    let addedCount = 0;
+    let skippedScheduledCount = 0;
+    let skippedCompletedCount = 0;
+    const firstSortOrder = await getNextTodoSortOrder(ctx, currentUser, date);
+
+    for (const studyItem of studyItems) {
+      if (studyItem.isCompleted) {
+        skippedCompletedCount += 1;
+        continue;
+      }
+
+      if (scheduledStudyItemIds.has(studyItem._id)) {
+        skippedScheduledCount += 1;
+        continue;
+      }
+
+      await ctx.db.insert("todoTasks", {
+        userId: currentUser._id,
+        date,
+        kind: PLANNER_SUGGESTION_KIND.studyItem,
+        studyItemId: studyItem._id,
+        durationMinutes: studyItem.estimatedMinutes,
+        source: "manual",
+        sortOrder: firstSortOrder + addedCount,
+      });
+      scheduledStudyItemIds.add(studyItem._id);
+      addedCount += 1;
+    }
+
+    return {
+      date,
+      addedCount,
+      skippedScheduledCount,
+      skippedCompletedCount,
+    };
+  },
+});
+
 export const createConceptReviewTodoTask = mutation({
   args: {
     date: v.number(),

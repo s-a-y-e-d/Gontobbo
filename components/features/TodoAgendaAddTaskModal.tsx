@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useToast } from "@/components/ui/Toast";
 import DurationPresetSelect from "./DurationPresetSelect";
 import TodoColorPicker from "./TodoColorPicker";
 import { getSubjectTheme } from "./subjectTheme";
@@ -42,6 +43,7 @@ export default function TodoAgendaAddTaskModal({
     api.mutations.createConceptReviewTodoTask,
   );
   const createCustomTodoTask = useMutation(api.mutations.createCustomTodoTask);
+  const toast = useToast();
   const [taskMode, setTaskMode] =
     useState<"study_item" | "concept_review" | "custom">("study_item");
   const [searchText, setSearchText] = useState("");
@@ -286,9 +288,11 @@ export default function TodoAgendaAddTaskModal({
           source: "manual",
         });
       }
+      toast.success("টাস্ক Todo-তে যোগ হয়েছে।");
       onClose();
     } catch (error) {
       console.error("Failed to create todo task:", error);
+      toast.error("টাস্ক যোগ করা যায়নি। আবার চেষ্টা করুন।");
       setErrorMessage("টাস্ক যোগ করা যায়নি। আবার চেষ্টা করুন।");
     } finally {
       setIsSubmitting(false);

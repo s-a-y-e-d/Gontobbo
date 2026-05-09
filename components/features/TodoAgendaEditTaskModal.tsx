@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useToast } from "@/components/ui/Toast";
 import DurationPresetSelect from "./DurationPresetSelect";
 import TodoColorPicker from "./TodoColorPicker";
 import type { SubjectColor } from "./subjectTheme";
@@ -27,6 +28,7 @@ export default function TodoAgendaEditTaskModal({
 }: TodoAgendaEditTaskModalProps) {
   const updateTodoTaskSchedule = useMutation(api.mutations.updateTodoTaskSchedule);
   const updateCustomTodoTask = useMutation(api.mutations.updateCustomTodoTask);
+  const toast = useToast();
   const isCustomTask = task.kind === "custom";
   const [title, setTitle] = useState(task.title);
   const [startTimeValue, setStartTimeValue] = useState(() =>
@@ -141,9 +143,11 @@ export default function TodoAgendaEditTaskModal({
           durationMinutes,
         });
       }
+      toast.success("টাস্ক আপডেট হয়েছে।");
       onClose();
     } catch (error) {
       console.error("Failed to update todo task:", error);
+      toast.error("টাস্ক আপডেট করা যায়নি। আবার চেষ্টা করুন।");
       setErrorMessage("টাস্ক আপডেট করা যায়নি। আবার চেষ্টা করুন।");
     } finally {
       setIsSubmitting(false);

@@ -153,9 +153,12 @@ export const getTodoAgenda = query({
               return null;
             }
 
-            const [subject, chapter] = await Promise.all([
+            const [subject, chapter, concept] = await Promise.all([
               ctx.db.get(studyItem.subjectId),
               ctx.db.get(studyItem.chapterId),
+              studyItem.conceptId
+                ? ctx.db.get(studyItem.conceptId)
+                : Promise.resolve(null),
             ]);
 
             if (!subject || !chapter) {
@@ -170,7 +173,7 @@ export const getTodoAgenda = query({
               isCompleted: studyItem.isCompleted,
               subjectName: subject.name,
               chapterName: chapter.name,
-              conceptName: undefined,
+              conceptName: concept?.name,
               subjectColor: subject.color ?? "gray",
               startTimeMinutes: todoTask.startTimeMinutes,
               durationMinutes: todoTask.durationMinutes,
