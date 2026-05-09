@@ -10,6 +10,7 @@ import DurationPresetSelect, {
 type AddSubjectModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  onCreated?: () => Promise<unknown> | void;
 };
 
 type TrackerEntry = {
@@ -63,7 +64,11 @@ const ICON_OPTIONS = [
   { label: "Social", value: "groups" },
 ];
 
-export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProps) {
+export default function AddSubjectModal({
+  isOpen,
+  onClose,
+  onCreated,
+}: AddSubjectModalProps) {
   const createSubject = useMutation(api.mutations.createSubject);
   
   const [name, setName] = useState("");
@@ -103,6 +108,7 @@ export default function AddSubjectModal({ isOpen, onClose }: AddSubjectModalProp
       setExamWeight("");
       setChapterTrackers([]);
       setConceptTrackers([]);
+      await onCreated?.();
       onClose();
     } catch (error) {
       console.error("Failed to create subject:", error);

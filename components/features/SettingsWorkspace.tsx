@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useTheme } from "@/components/ThemeProvider";
@@ -10,6 +10,7 @@ import PwaInstallAction, {
 } from "@/components/features/PwaInstallAction";
 import { SettingsPageSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 
 type ThemeMode = "light" | "system" | "dark";
 type CoachingStatus = "not_started" | "running" | "finished";
@@ -453,9 +454,13 @@ function parseDateInputValue(value: string) {
 }
 
 export default function SettingsWorkspace() {
-  const data = useQuery(api.plannerQueries.getSettingsPageData) as
-    | SettingsPageData
-    | undefined;
+  const { data, refresh } = useSnapshotQuery(
+    api.plannerQueries.getSettingsPageData,
+    {},
+  ) as {
+    data: SettingsPageData | undefined;
+    refresh: () => Promise<unknown>;
+  };
   const setDashboardTermDates = useMutation(api.mutations.setDashboardTermDates);
   const setPlannerSubjectPriority = useMutation(
     api.mutations.setPlannerSubjectPriority,
@@ -535,6 +540,7 @@ export default function SettingsWorkspace() {
 
     try {
       await action();
+      await refresh();
     } catch (error) {
       console.error("Settings update failed:", error);
       if (error instanceof Error && error.message.includes("custom subjects")) {

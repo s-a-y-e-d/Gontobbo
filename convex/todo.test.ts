@@ -454,6 +454,101 @@ describe("todo", () => {
     expect(studyLogs.page).toEqual([]);
   });
 
+  test("paginates study logs with subject and event filters", async () => {
+    const t = await createAuthenticatedTestContext("todo-log-pagination");
+
+    const physicsId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-log-pagination",
+      order: 1,
+      chapterTrackers: [
+        { key: "mcq", label: "MCQ", avgMinutes: 30 },
+        { key: "board", label: "Board", avgMinutes: 45 },
+      ],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+    const chemistryId = await t.mutation(api.mutations.createSubject, {
+      name: "Chemistry",
+      slug: "chemistry-log-pagination",
+      order: 2,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+
+    const physicsChapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId: physicsId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+    const chemistryChapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId: chemistryId,
+      name: "Atom",
+      order: 1,
+      inNextTerm: true,
+    });
+
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId: physicsId });
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId: chemistryId });
+
+    const physicsItems = await t.query(api.queries.getChapterStudyItems, {
+      chapterId: physicsChapterId,
+    });
+    const chemistryItems = await t.query(api.queries.getChapterStudyItems, {
+      chapterId: chemistryChapterId,
+    });
+
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: physicsItems[0]!._id,
+    });
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: physicsItems[1]!._id,
+    });
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: chemistryItems[0]!._id,
+    });
+
+    const firstPage = await t.query(api.queries.getStudyLogsFeed, {
+      paginationOpts: { numItems: 1, cursor: null },
+      subjectId: physicsId,
+    });
+    const secondPage = await t.query(api.queries.getStudyLogsFeed, {
+      paginationOpts: { numItems: 10, cursor: firstPage.continueCursor },
+      subjectId: physicsId,
+    });
+    const completedPhysicsLogs = await t.query(api.queries.getStudyLogsFeed, {
+      paginationOpts: { numItems: 10, cursor: null },
+      subjectId: physicsId,
+      eventType: "study_item_completed",
+    });
+
+    expect(firstPage.page).toHaveLength(1);
+    expect(firstPage.isDone).toBe(false);
+    expect(secondPage.page).toHaveLength(1);
+    expect([...firstPage.page, ...secondPage.page]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          subjectId: physicsId,
+          eventType: "study_item_completed",
+        }),
+        expect.objectContaining({
+          subjectId: physicsId,
+          eventType: "study_item_completed",
+        }),
+      ]),
+    );
+    expect(completedPhysicsLogs.page).toEqual([
+      expect.objectContaining({
+        subjectId: physicsId,
+        eventType: "study_item_completed",
+      }),
+      expect.objectContaining({
+        subjectId: physicsId,
+        eventType: "study_item_completed",
+      }),
+    ]);
+  });
+
   test("updates a custom todo title and schedule", async () => {
     const t = await createAuthenticatedTestContext("todo-custom-update");
     const date = getDhakaDayBucket(Date.now());
@@ -495,7 +590,9 @@ describe("todo", () => {
       durationMinutes: 15,
     });
 
-    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {
+      today: date,
+    });
 
     expect(dashboard.today.totalCount).toBe(0);
     expect(dashboard.today.completedCount).toBe(0);
@@ -514,7 +611,9 @@ describe("todo", () => {
       source: "manual",
     });
 
-    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {
+      today: date,
+    });
 
     expect(dashboard.today.totalCount).toBe(1);
     expect(dashboard.today.tasks).toEqual([
@@ -732,6 +831,108 @@ describe("todo", () => {
         ]),
       );
     }
+  });
+
+  test("searches study items with a two-character threshold", async () => {
+    const { t, date, studyItemId } = await createStudyItemFixture(
+      "todo-study-item-search",
+    );
+
+    const tooShortResults = await t.query(api.todoQueries.searchStudyItemsForTodo, {
+      date,
+      searchText: "m",
+    });
+    const englishResults = await t.query(api.todoQueries.searchStudyItemsForTodo, {
+      date,
+      searchText: "Motion",
+    });
+
+    expect(tooShortResults).toEqual([]);
+    expect(englishResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          _id: studyItemId,
+          subjectName: "Physics",
+          chapterName: "Motion",
+        }),
+      ]),
+    );
+  });
+
+  test("revision dashboard only includes overdue, today, and next seven day reviews", async () => {
+    const t = await createAuthenticatedTestContext("todo-revision-dashboard-range");
+    const date = getDhakaDayBucket(Date.now());
+    const now = date + 12 * 60 * 60 * 1000;
+
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-revision-dashboard-range",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+    const chapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+
+    const overdueId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Overdue",
+      order: 1,
+    });
+    const todayId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Today",
+      order: 2,
+    });
+    const upcomingId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Upcoming",
+      order: 3,
+    });
+    const farFutureId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Far future",
+      order: 4,
+    });
+
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId: overdueId,
+      newNextReviewAt: date - 86400000,
+    });
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId: todayId,
+      newNextReviewAt: date + 60 * 60 * 1000,
+    });
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId: upcomingId,
+      newNextReviewAt: date + 3 * 86400000,
+    });
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId: farFutureId,
+      newNextReviewAt: date + 12 * 86400000,
+    });
+
+    const dashboard = await t.query(api.queries.getReviewsDashboardData, {
+      now,
+    });
+
+    expect(dashboard.stats).toMatchObject({
+      overdueCount: 1,
+      dueTodayCount: 1,
+      upcomingCount: 1,
+    });
+    expect(dashboard.overdue.map((concept) => concept._id)).toEqual([overdueId]);
+    expect(dashboard.dueToday.map((concept) => concept._id)).toEqual([todayId]);
+    expect(dashboard.upcoming.map((concept) => concept._id)).toEqual([upcomingId]);
+    expect(
+      [...dashboard.overdue, ...dashboard.dueToday, ...dashboard.upcoming].some(
+        (concept) => concept._id === farFutureId,
+      ),
+    ).toBe(false);
   });
 
   test("hides already scheduled revision concepts from todo search", async () => {

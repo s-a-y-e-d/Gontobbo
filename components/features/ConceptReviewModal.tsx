@@ -8,6 +8,7 @@ import { Id } from "@/convex/_generated/dataModel";
 type ConceptReviewModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  onCompleted?: () => Promise<unknown> | void;
   concept: {
     _id: Id<"concepts">;
     name: string;
@@ -16,7 +17,12 @@ type ConceptReviewModalProps = {
   };
 };
 
-export default function ConceptReviewModal({ isOpen, onClose, concept }: ConceptReviewModalProps) {
+export default function ConceptReviewModal({
+  isOpen,
+  onClose,
+  onCompleted,
+  concept,
+}: ConceptReviewModalProps) {
   const [rating, setRating] = useState<"hard" | "medium" | "easy" | null>(null);
   const review = useMutation(api.mutations.reviewConcept);
 
@@ -35,6 +41,7 @@ export default function ConceptReviewModal({ isOpen, onClose, concept }: Concept
   const handleSubmit = async () => {
     if (!rating) return;
     await review({ conceptId: concept._id, rating });
+    await onCompleted?.();
     onClose();
     setRating(null);
   };

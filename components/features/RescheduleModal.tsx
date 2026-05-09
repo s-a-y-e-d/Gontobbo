@@ -8,6 +8,7 @@ import { Id } from "@/convex/_generated/dataModel";
 type RescheduleModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  onCompleted?: () => Promise<unknown> | void;
   concept: {
     _id: Id<"concepts">;
     name: string;
@@ -28,6 +29,7 @@ function getDateInputValue(timestamp?: number) {
 export default function RescheduleModal({
   isOpen,
   onClose,
+  onCompleted,
   concept,
 }: RescheduleModalProps) {
   const [selectedDate, setSelectedDate] = useState(() =>
@@ -77,6 +79,7 @@ export default function RescheduleModal({
         conceptId: concept._id,
         newNextReviewAt: timestamp,
       });
+      await onCompleted?.();
       onClose();
     } finally {
       setIsSubmitting(false);

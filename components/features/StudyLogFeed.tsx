@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
+import { useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { LogsSkeleton } from "./LoadingSkeletons";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 
 // Helper for event labels in Bengali
 const EVENT_LABELS = {
@@ -21,7 +22,10 @@ export default function StudyLogFeed() {
   const [eventType, setEventType] = useState<StudyLogEventType | undefined>();
 
   // Queries
-  const subjects = useQuery(api.queries.getStudyLogSubjectsFilterData);
+  const { data: subjects } = useSnapshotQuery(
+    api.queries.getStudyLogSubjectsFilterData,
+    {},
+  );
   const { results: logs, status, loadMore } = usePaginatedQuery(
     api.queries.getStudyLogsFeed,
     {

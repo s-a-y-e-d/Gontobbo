@@ -1,5 +1,6 @@
 import { query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { v } from "convex/values";
 import {
   isLegacyWorkspaceOwner,
   requireCurrentUser,
@@ -195,10 +196,10 @@ async function getDashboardStudyLogs(
 }
 
 export const getDashboardPageData = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { today: v.number() },
+  handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    const today = getDhakaDayBucket(Date.now());
+    const today = args.today;
     const recentStartDate = today - (STUDY_VOLUME_DAYS - 1) * DAY_MS;
 
     const [

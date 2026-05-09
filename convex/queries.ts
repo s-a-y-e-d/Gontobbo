@@ -247,14 +247,118 @@ export const getStudyLogsFeed = query({
       assertCanAccessOwnedDocument(currentUser, subject);
     }
 
-    const studyLogs = filterOwnedDocuments(
-      currentUser,
-      await ctx.db.query("studyLogs").collect(),
-    )
+    if (!isLegacyWorkspaceOwner(currentUser)) {
+      if (
+        args.subjectId &&
+        args.eventType &&
+        !args.editableOnly &&
+        args.dayBucket === undefined
+      ) {
+        return await ctx.db
+          .query("studyLogs")
+          .withIndex("by_userId_and_subjectId_and_eventType_and_loggedAt", (q) =>
+            q
+              .eq("userId", currentUser._id)
+              .eq("subjectId", args.subjectId!)
+              .eq("eventType", args.eventType!),
+          )
+          .order("desc")
+          .paginate(args.paginationOpts);
+      }
+
+      if (args.subjectId && !args.eventType && !args.editableOnly && args.dayBucket === undefined) {
+        return await ctx.db
+          .query("studyLogs")
+          .withIndex("by_userId_and_subjectId_and_loggedAt", (q) =>
+            q.eq("userId", currentUser._id).eq("subjectId", args.subjectId!),
+          )
+          .order("desc")
+          .paginate(args.paginationOpts);
+      }
+
+      if (!args.subjectId && args.eventType && !args.editableOnly && args.dayBucket === undefined) {
+        return await ctx.db
+          .query("studyLogs")
+          .withIndex("by_userId_and_eventType_and_loggedAt", (q) =>
+            q.eq("userId", currentUser._id).eq("eventType", args.eventType!),
+          )
+          .order("desc")
+          .paginate(args.paginationOpts);
+      }
+
+      if (!args.subjectId && !args.eventType && args.editableOnly && args.dayBucket === undefined) {
+        return await ctx.db
+          .query("studyLogs")
+          .withIndex("by_userId_and_isEditable_and_loggedAt", (q) =>
+            q.eq("userId", currentUser._id).eq("isEditable", true),
+          )
+          .order("desc")
+          .paginate(args.paginationOpts);
+      }
+
+      if (
+        !args.subjectId &&
+        !args.eventType &&
+        !args.editableOnly &&
+        args.dayBucket !== undefined
+      ) {
+        return await ctx.db
+          .query("studyLogs")
+          .withIndex("by_userId_and_dayBucket", (q) =>
+            q.eq("userId", currentUser._id).eq("dayBucket", args.dayBucket!),
+          )
+          .order("desc")
+          .paginate(args.paginationOpts);
+      }
+
+      if (
+        !args.subjectId &&
+        !args.eventType &&
+        !args.editableOnly &&
+        args.dayBucket === undefined
+      ) {
+        return await ctx.db
+          .query("studyLogs")
+          .withIndex("by_userId_and_loggedAt", (q) =>
+            q.eq("userId", currentUser._id),
+          )
+          .order("desc")
+          .paginate(args.paginationOpts);
+      }
+    }
+
+    const baseLogs = isLegacyWorkspaceOwner(currentUser)
+      ? [
+          ...(await ctx.db
+            .query("studyLogs")
+            .withIndex("by_userId_and_loggedAt", (q) =>
+              q.eq("userId", currentUser._id),
+            )
+            .order("desc")
+            .collect()),
+          ...(await ctx.db
+            .query("studyLogs")
+            .withIndex("by_userId_and_loggedAt", (q) =>
+              q.eq("userId", undefined),
+            )
+            .order("desc")
+            .collect()),
+        ]
+      : await ctx.db
+          .query("studyLogs")
+          .withIndex("by_userId_and_loggedAt", (q) =>
+            q.eq("userId", currentUser._id),
+          )
+          .order("desc")
+          .collect();
+
+    const studyLogs = baseLogs
       .filter((log) => (args.subjectId ? log.subjectId === args.subjectId : true))
       .filter((log) => (args.eventType ? log.eventType === args.eventType : true))
       .filter((log) => (args.editableOnly ? log.isEditable : true))
-      .filter((log) => (args.dayBucket !== undefined ? log.dayBucket === args.dayBucket : true))
+      .filter((log) =>
+        args.dayBucket !== undefined ? log.dayBucket === args.dayBucket : true,
+      )
       .sort((left, right) => right.loggedAt - left.loggedAt);
 
     return paginateResults(studyLogs, args.paginationOpts);
@@ -456,7 +560,10 @@ export const getReviewsDashboardData = query({
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    let concepts = await getOwnedConcepts(ctx, currentUser);
+    const startOfToday = getDhakaDayBucket(args.now);
+    const endOfToday = startOfToday + 86400000 - 1;
+    const upcomingEnd = args.now + 7 * 86400000;
+    let subjectChapterIds: Set<Id<"chapters">> | null = null;
 
     if (args.subjectId) {
       const subjectId = args.subjectId;
@@ -480,23 +587,71 @@ export const getReviewsDashboardData = query({
         currentUser,
         subjectId,
       );
-      const chapterIds = new Set(chapters.map((chapter) => chapter._id));
-      concepts = concepts.filter((concept) => chapterIds.has(concept.chapterId));
+      subjectChapterIds = new Set(chapters.map((chapter) => chapter._id));
     }
 
-    const startOfToday = getDhakaDayBucket(args.now);
-    const endOfToday = startOfToday + 86400000 - 1;
-    const completedTodayLogs = filterOwnedDocuments(
-      currentUser,
-      await ctx.db
-        .query("studyLogs")
-        .withIndex("by_dayBucket", (q) => q.eq("dayBucket", startOfToday))
-        .filter((q) => q.eq(q.field("eventType"), "concept_review"))
-        .collect(),
-    );
+    const concepts = isLegacyWorkspaceOwner(currentUser)
+      ? await getOwnedConcepts(ctx, currentUser)
+      : [
+          ...(await ctx.db
+            .query("concepts")
+            .withIndex("by_userId_and_nextReviewAt", (q) =>
+              q
+                .eq("userId", currentUser._id)
+                .lt("nextReviewAt", startOfToday),
+            )
+            .collect()),
+          ...(await ctx.db
+            .query("concepts")
+            .withIndex("by_userId_and_nextReviewAt", (q) =>
+              q
+                .eq("userId", currentUser._id)
+                .gte("nextReviewAt", startOfToday)
+                .lte("nextReviewAt", endOfToday),
+            )
+            .collect()),
+          ...(await ctx.db
+            .query("concepts")
+            .withIndex("by_userId_and_nextReviewAt", (q) =>
+              q
+                .eq("userId", currentUser._id)
+                .gt("nextReviewAt", endOfToday)
+                .lte("nextReviewAt", upcomingEnd),
+            )
+            .collect()),
+        ];
+
+    const filteredConcepts =
+      subjectChapterIds === null
+        ? concepts
+        : concepts.filter((concept) => subjectChapterIds.has(concept.chapterId));
+
+    const completedTodayLogs = (
+      isLegacyWorkspaceOwner(currentUser)
+        ? [
+            ...(await ctx.db
+              .query("studyLogs")
+              .withIndex("by_userId_and_dayBucket", (q) =>
+                q.eq("userId", currentUser._id).eq("dayBucket", startOfToday),
+              )
+              .collect()),
+            ...(await ctx.db
+              .query("studyLogs")
+              .withIndex("by_userId_and_dayBucket", (q) =>
+                q.eq("userId", undefined).eq("dayBucket", startOfToday),
+              )
+              .collect()),
+          ]
+        : await ctx.db
+            .query("studyLogs")
+            .withIndex("by_userId_and_dayBucket", (q) =>
+              q.eq("userId", currentUser._id).eq("dayBucket", startOfToday),
+            )
+            .collect()
+    ).filter((log) => log.eventType === "concept_review");
 
     const enrichedConcepts = await Promise.all(
-      concepts
+      filteredConcepts
         .filter((concept) => concept.nextReviewAt !== undefined)
         .map(async (concept) => {
           const chapter = await ctx.db.get(concept.chapterId);

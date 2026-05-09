@@ -1,8 +1,8 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import {
   CartesianGrid,
   Line,
@@ -20,12 +20,14 @@ import {
   formatClockTime,
   formatDurationLabel,
 } from "./todoAgendaTime";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 
 const numberFormatter = new Intl.NumberFormat("bn-BD");
 const decimalFormatter = new Intl.NumberFormat("bn-BD", {
   maximumFractionDigits: 1,
   minimumFractionDigits: 0,
 });
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
 
 type DashboardTodoTask = {
   id: string;
@@ -85,8 +87,18 @@ function getUrgencyTone(status: "ahead" | "on_track" | "behind" | "overdue") {
   return "bg-surface-container text-on-surface";
 }
 
+function getDhakaDayBucket(timestamp: number) {
+  const dhakaTime = new Date(timestamp + DHAKA_OFFSET_MS);
+  dhakaTime.setUTCHours(0, 0, 0, 0);
+  return dhakaTime.getTime() - DHAKA_OFFSET_MS;
+}
+
 export default function DashboardWorkspace() {
-  const dashboard = useQuery(api.dashboardQueries.getDashboardPageData);
+  const [today] = useState(() => getDhakaDayBucket(Date.now()));
+  const { data: dashboard, refresh } = useSnapshotQuery(
+    api.dashboardQueries.getDashboardPageData,
+    { today },
+  );
 
   if (dashboard === undefined) {
     return <DashboardSkeleton />;
@@ -98,6 +110,7 @@ export default function DashboardWorkspace() {
         totalCount={dashboard.today.totalCount}
         completedCount={dashboard.today.completedCount}
         tasks={dashboard.today.tasks}
+        onCompleted={refresh}
       />
 
       <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
@@ -159,10 +172,12 @@ function TodoStrip({
   totalCount,
   completedCount,
   tasks,
+  onCompleted,
 }: {
   totalCount: number;
   completedCount: number;
   tasks: DashboardTodoTask[];
+  onCompleted: () => Promise<unknown>;
 }) {
   const hasTasks = totalCount > 0;
 
@@ -217,7 +232,11 @@ function TodoStrip({
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {tasks.map((task) => (
-              <DashboardTodoCard key={task.id} task={task} />
+              <DashboardTodoCard
+                key={task.id}
+                task={task}
+                onCompleted={onCompleted}
+              />
             ))}
           </div>
         </div>
@@ -226,17 +245,24 @@ function TodoStrip({
   );
 }
 
-function DashboardTodoCard({ task }: { task: DashboardTodoTask }) {
+function DashboardTodoCard({
+  task,
+  onCompleted,
+}: {
+  task: DashboardTodoTask;
+  onCompleted: () => Promise<unknown>;
+}) {
   const checkboxId = useId();
   const toggleStudyItemCompletion = useMutation(
     api.mutations.toggleStudyItemCompletion,
   );
   const theme = getSubjectTheme(task.subjectColor);
 
-  const handleToggle = () => {
-    void toggleStudyItemCompletion({
+  const handleToggle = async () => {
+    await toggleStudyItemCompletion({
       studyItemId: task.studyItemId as Id<"studyItems">,
     });
+    await onCompleted();
   };
 
   return (

@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import SubjectGrid from "./SubjectGrid";
 import AddSubjectModal from "./AddSubjectModal";
 import { SubjectsSkeleton } from "./LoadingSkeletons";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 
 export default function SubjectsWorkspace() {
-  const subjects = useQuery(api.queries.getSubjectsWithStats);
+  const { data: subjects, refresh } = useSnapshotQuery(
+    api.queries.getSubjectsWithStats,
+    {},
+  );
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   return (
@@ -41,6 +44,7 @@ export default function SubjectsWorkspace() {
       <AddSubjectModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+        onCreated={refresh}
       />
     </div>
   );

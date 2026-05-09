@@ -13,6 +13,9 @@ import {
 } from "./studyItemSearch";
 
 const DAY_MS = 86400000;
+const TODO_SEARCH_RESULT_LIMIT = 12;
+const TODO_SEARCH_INDEX_LIMIT = 36;
+const TODO_SEARCH_FALLBACK_LIMIT = 60;
 
 function getDhakaDayBucket(timestamp: number) {
   const dhakaOffset = 6 * 60 * 60 * 1000;
@@ -231,7 +234,7 @@ export const searchStudyItemsForTodo = query({
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     const normalizedSearchText = normalizeStudyItemSearchQuery(args.searchText);
-    if (normalizedSearchText.length === 0) {
+    if (normalizedSearchText.length < 2) {
       return [];
     }
 
@@ -266,22 +269,25 @@ export const searchStudyItemsForTodo = query({
           .eq("userId", currentUser._id)
           .eq("isCompleted", false),
       )
-      .take(36);
+      .take(TODO_SEARCH_INDEX_LIMIT);
 
-    const fallbackStudyItems = isLegacyWorkspaceOwner(currentUser)
-      ? filterOwnedDocuments(
-          currentUser,
-          await ctx.db
-            .query("studyItems")
-            .withIndex("by_isCompleted", (q) => q.eq("isCompleted", false))
-            .take(200),
-        )
-      : await ctx.db
-          .query("studyItems")
-          .withIndex("by_userId_and_isCompleted", (q) =>
-            q.eq("userId", currentUser._id).eq("isCompleted", false),
-          )
-          .take(200);
+    const fallbackStudyItems =
+      matchingStudyItems.length >= TODO_SEARCH_INDEX_LIMIT
+        ? []
+        : isLegacyWorkspaceOwner(currentUser)
+          ? filterOwnedDocuments(
+              currentUser,
+              await ctx.db
+                .query("studyItems")
+                .withIndex("by_isCompleted", (q) => q.eq("isCompleted", false))
+                .take(TODO_SEARCH_FALLBACK_LIMIT),
+            )
+          : await ctx.db
+              .query("studyItems")
+              .withIndex("by_userId_and_isCompleted", (q) =>
+                q.eq("userId", currentUser._id).eq("isCompleted", false),
+              )
+              .take(TODO_SEARCH_FALLBACK_LIMIT);
 
     const candidateStudyItems = new Map<string, Doc<"studyItems">>();
 
@@ -361,7 +367,7 @@ export const searchStudyItemsForTodo = query({
 
         return left.title.localeCompare(right.title);
       })
-      .slice(0, 12)
+      .slice(0, TODO_SEARCH_RESULT_LIMIT)
       .map((result) => ({
         _id: result._id,
         title: result.title,
@@ -382,7 +388,7 @@ export const searchConceptReviewsForTodo = query({
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     const normalizedSearchText = normalizeStudyItemSearchQuery(args.searchText);
-    if (normalizedSearchText.length === 0) {
+    if (normalizedSearchText.length < 2) {
       return [];
     }
 
@@ -429,14 +435,26 @@ export const searchConceptReviewsForTodo = query({
     );
 
     const concepts = currentUser.legacyWorkspaceOwner
-      ? filterOwnedDocuments(
-          currentUser,
-          await ctx.db.query("concepts").take(500),
-        )
+      ? filterOwnedDocuments(currentUser, [
+          ...(await ctx.db
+            .query("concepts")
+            .withIndex("by_userId_and_nextReviewAt", (q) =>
+              q.eq("userId", currentUser._id).gte("nextReviewAt", 0),
+            )
+            .take(120)),
+          ...(await ctx.db
+            .query("concepts")
+            .withIndex("by_userId_and_nextReviewAt", (q) =>
+              q.eq("userId", undefined).gte("nextReviewAt", 0),
+            )
+            .take(120)),
+        ])
       : await ctx.db
           .query("concepts")
-          .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
-          .take(500);
+          .withIndex("by_userId_and_nextReviewAt", (q) =>
+            q.eq("userId", currentUser._id).gte("nextReviewAt", 0),
+          )
+          .take(120);
 
     const rankedResults = await Promise.all(
       concepts
@@ -502,7 +520,7 @@ export const searchConceptReviewsForTodo = query({
 
         return left.title.localeCompare(right.title);
       })
-      .slice(0, 12)
+      .slice(0, TODO_SEARCH_RESULT_LIMIT)
       .map((result) => ({
         _id: result._id,
         title: result.title,

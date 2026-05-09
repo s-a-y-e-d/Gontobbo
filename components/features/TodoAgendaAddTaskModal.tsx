@@ -1,7 +1,7 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useEffect, useState } from "react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useToast } from "@/components/ui/Toast";
@@ -20,6 +20,7 @@ import {
   roundToNearestDuration,
   roundToNearestQuarterHour,
 } from "./todoAgendaTime";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 
 type TodoAgendaAddTaskModalProps = {
   isOpen: boolean;
@@ -29,6 +30,20 @@ type TodoAgendaAddTaskModalProps = {
   initialStartTimeMinutes?: number;
   initialDurationMinutes?: number;
 };
+
+function useDebouncedValue(value: string, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedValue(value);
+    }, delayMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
 
 export default function TodoAgendaAddTaskModal({
   isOpen,
@@ -48,7 +63,7 @@ export default function TodoAgendaAddTaskModal({
     useState<"study_item" | "concept_review" | "custom">("study_item");
   const [searchText, setSearchText] = useState("");
   const [customTitle, setCustomTitle] = useState("");
-  const deferredSearchText = useDeferredValue(searchText.trim());
+  const debouncedSearchText = useDebouncedValue(searchText.trim(), 275);
   const [selectedStudyItem, setSelectedStudyItem] =
     useState<TodoStudyItemSearchResult | null>(null);
   const [selectedConceptReview, setSelectedConceptReview] =
@@ -65,16 +80,24 @@ export default function TodoAgendaAddTaskModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const searchResults = useQuery(
+  const {
+    data: searchResults,
+    isLoading: isSearchingStudyItems,
+    isRefreshing: isRefreshingStudyItems,
+  } = useSnapshotQuery(
     api.todoQueries.searchStudyItemsForTodo,
-    isOpen && taskMode === "study_item" && deferredSearchText.length > 0
-      ? { date, searchText: deferredSearchText }
+    isOpen && taskMode === "study_item" && debouncedSearchText.length >= 2
+      ? { date, searchText: debouncedSearchText }
       : "skip",
   );
-  const revisionSearchResults = useQuery(
+  const {
+    data: revisionSearchResults,
+    isLoading: isSearchingRevisions,
+    isRefreshing: isRefreshingRevisions,
+  } = useSnapshotQuery(
     api.todoQueries.searchConceptReviewsForTodo,
-    isOpen && taskMode === "concept_review" && deferredSearchText.length > 0
-      ? { date, searchText: deferredSearchText }
+    isOpen && taskMode === "concept_review" && debouncedSearchText.length >= 2
+      ? { date, searchText: debouncedSearchText }
       : "skip",
   );
   const maxDurationMinutes = getMaxDurationMinutes(startTimeValue);
@@ -98,11 +121,11 @@ export default function TodoAgendaAddTaskModal({
   const canShowResults =
     taskMode === "study_item" &&
     selectedStudyItem === null &&
-    deferredSearchText.length > 0;
+    debouncedSearchText.length >= 2;
   const canShowRevisionResults =
     taskMode === "concept_review" &&
     selectedConceptReview === null &&
-    deferredSearchText.length > 0;
+    debouncedSearchText.length >= 2;
   const normalizedCustomTitle = customTitle.trim();
   const isDurationPastSelectedDay =
     durationMinutes !== null &&
@@ -416,7 +439,9 @@ export default function TodoAgendaAddTaskModal({
 
               {canShowResults ? (
                 <div className="mt-3 overflow-hidden rounded-[24px] border border-border-subtle bg-pure-white shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
-                  {searchResults === undefined ? (
+                  {searchResults === undefined ||
+                  isSearchingStudyItems ||
+                  isRefreshingStudyItems ? (
                     <div className="px-4 py-4 text-sm text-gray-500">
                       খোঁজা হচ্ছে...
                     </div>
@@ -458,7 +483,9 @@ export default function TodoAgendaAddTaskModal({
 
               {canShowRevisionResults ? (
                 <div className="mt-3 overflow-hidden rounded-[24px] border border-border-subtle bg-pure-white shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
-                  {revisionSearchResults === undefined ? (
+                  {revisionSearchResults === undefined ||
+                  isSearchingRevisions ||
+                  isRefreshingRevisions ? (
                     <div className="px-4 py-4 text-sm text-gray-500">
                       Searching...
                     </div>

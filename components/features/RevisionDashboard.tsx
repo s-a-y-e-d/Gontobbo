@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "convex/react";
+import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import ConceptReviewModal from "./ConceptReviewModal";
 import RescheduleModal from "./RescheduleModal";
 import { RevisionSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 
 type ReviewConcept = {
   _id: Id<"concepts">;
@@ -30,12 +30,19 @@ export default function RevisionDashboard() {
   const [selectedSubjectId, setSelectedSubjectId] = useState<Id<"subjects"> | "all">("all");
   const [activeModal, setActiveModal] = useState<ActiveModalState>(null);
   const [now] = useState(() => Date.now());
+  const dashboardArgs = useMemo(
+    () => ({
+      now,
+      subjectId: selectedSubjectId === "all" ? undefined : selectedSubjectId,
+    }),
+    [now, selectedSubjectId],
+  );
 
-  const dashboardData = useQuery(api.queries.getReviewsDashboardData, {
-    now,
-    subjectId: selectedSubjectId === "all" ? undefined : selectedSubjectId,
-  });
-  const subjects = useQuery(api.queries.getSubjectsForFilter);
+  const { data: dashboardData, refresh: refreshReviews } = useSnapshotQuery(
+    api.queries.getReviewsDashboardData,
+    dashboardArgs,
+  );
+  const { data: subjects } = useSnapshotQuery(api.queries.getSubjectsForFilter, {});
 
   if (!dashboardData || !subjects) {
     return <RevisionSkeleton />;
@@ -162,6 +169,7 @@ export default function RevisionDashboard() {
           isOpen
           onClose={() => setActiveModal(null)}
           concept={activeModal.concept}
+          onCompleted={refreshReviews}
         />
       ) : null}
 
@@ -171,6 +179,7 @@ export default function RevisionDashboard() {
           isOpen
           onClose={() => setActiveModal(null)}
           concept={activeModal.concept}
+          onCompleted={refreshReviews}
         />
       ) : null}
     </div>

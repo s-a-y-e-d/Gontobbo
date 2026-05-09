@@ -110,7 +110,9 @@ describe("dashboard", () => {
       nextTermExamDate,
     });
 
-    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {
+      today,
+    });
 
     expect(dashboard.completion.nextTerm).toMatchObject({
       completedItems: 1,
@@ -176,7 +178,9 @@ describe("dashboard", () => {
       rating: "medium",
     });
 
-    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {
+      today,
+    });
     const todayVolume = dashboard.studyVolume.days.find((day) => day.date === today);
 
     expect(dashboard.studyVolume.totalActivities).toBe(2);
@@ -230,7 +234,9 @@ describe("dashboard", () => {
       studyItemId: highItems[0]!._id,
     });
 
-    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {
+      today: getDhakaDayBucket(Date.now()),
+    });
 
     expect(dashboard.subjectProgress.map((subject) => subject.name)).toEqual([
       "High",
@@ -295,7 +301,9 @@ describe("dashboard", () => {
       studyItemId: chemistryItems[0]!._id,
     });
 
-    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {});
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {
+      today: getDhakaDayBucket(Date.now()),
+    });
     const chemistryEffort = dashboard.effortWeightage.subjects.find(
       (subject) => subject.name === "Chemistry",
     );
