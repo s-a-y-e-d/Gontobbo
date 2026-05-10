@@ -407,6 +407,17 @@ export const startDashboardStudyItemStatsBackfill = mutation({
       throw new Error("Only owners can run this backfill");
     }
     const includeLegacy = isLegacyWorkspaceOwner(currentUser);
+    const existingStatus = await getDashboardStudyItemStatsMigrationStatus(
+      ctx,
+      currentUser._id,
+    );
+
+    if (
+      existingStatus?.status === "running" ||
+      existingStatus?.status === "completed"
+    ) {
+      return null;
+    }
 
     await upsertMigrationStatus(ctx, {
       status: "running",

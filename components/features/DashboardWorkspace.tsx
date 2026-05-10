@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useMutation } from "convex/react";
 import {
@@ -95,10 +95,21 @@ function getDhakaDayBucket(timestamp: number) {
 
 export default function DashboardWorkspace() {
   const [today] = useState(() => getDhakaDayBucket(Date.now()));
+  const startStatsBackfill = useMutation(
+    api.dashboardStudyItemStats.startDashboardStudyItemStatsBackfill,
+  );
   const { data: dashboard, refresh } = useSnapshotQuery(
     api.dashboardQueries.getDashboardPageData,
     { today },
   );
+
+  useEffect(() => {
+    if (dashboard === undefined) {
+      return;
+    }
+
+    void startStatsBackfill({}).catch(() => undefined);
+  }, [dashboard, startStatsBackfill]);
 
   if (dashboard === undefined) {
     return <DashboardSkeleton />;
