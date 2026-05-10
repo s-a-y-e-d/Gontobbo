@@ -29,6 +29,16 @@ type HscChapterSeed = {
 
 const classLevelValidator = v.union(v.literal("hsc"), v.literal("other"));
 
+const HSC_NEXT_TERM_CHAPTER_ORDERS_BY_SUBJECT_SLUG: Record<string, ReadonlySet<number>> = {
+  "physics-1": new Set([6, 7, 8, 9, 10]),
+  "biology-1": new Set([5, 6, 7, 8, 9, 10, 11, 12]),
+  "chemistry-1": new Set([4, 5]),
+};
+
+function isHscChapterInNextTerm(subjectSlug: string, chapterOrder: number) {
+  return HSC_NEXT_TERM_CHAPTER_ORDERS_BY_SUBJECT_SLUG[subjectSlug]?.has(chapterOrder) ?? false;
+}
+
 const HSC_CHAPTER_TRACKERS: TrackerConfig[] = [
   { key: "mcq", label: "MCQ", avgMinutes: 30 },
   { key: "board", label: "বোর্ড", avgMinutes: 45 },
@@ -543,17 +553,19 @@ async function ensureHscSubject(ctx: MutationCtx, currentUser: CurrentUser, seed
 
   for (const [index, chapterSeed] of seed.chapters.entries()) {
     const slug = `chapter-${index + 1}`;
+    const chapterOrder = index + 1;
+    const inNextTerm = isHscChapterInNextTerm(seed.slug, chapterOrder);
     const existingChapter = existingChaptersBySlug.get(slug);
     if (existingChapter) {
       if (
         existingChapter.name !== chapterSeed.name ||
-        existingChapter.order !== index + 1 ||
-        !existingChapter.inNextTerm
+        existingChapter.order !== chapterOrder ||
+        existingChapter.inNextTerm !== inNextTerm
       ) {
         await ctx.db.patch(existingChapter._id, {
           name: chapterSeed.name,
-          order: index + 1,
-          inNextTerm: true,
+          order: chapterOrder,
+          inNextTerm,
         });
       }
       continue;
@@ -564,8 +576,8 @@ async function ensureHscSubject(ctx: MutationCtx, currentUser: CurrentUser, seed
       subjectId,
       name: chapterSeed.name,
       slug,
-      order: index + 1,
-      inNextTerm: true,
+      order: chapterOrder,
+      inNextTerm,
     };
     await ctx.db.insert("chapters", chapter);
   }

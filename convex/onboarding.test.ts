@@ -67,6 +67,15 @@ describe("HSC onboarding", () => {
       const chemistryFirstChapters = chapters
         .filter((chapter) => chapter.subjectId === chemistryFirst?._id)
         .sort((left, right) => left.order - right.order);
+      const nextTermOrdersBySubjectSlug = Object.fromEntries(
+        subjects.map((subject) => [
+          subject.slug,
+          chapters
+            .filter((chapter) => chapter.subjectId === subject._id && chapter.inNextTerm)
+            .map((chapter) => chapter.order)
+            .sort((left, right) => left - right),
+        ]),
+      );
       const vectorChapterConcepts = concepts
         .filter((concept) => concept.chapterId === physicsFirstChapters[1]?._id)
         .sort((left, right) => left.order - right.order);
@@ -117,7 +126,16 @@ describe("HSC onboarding", () => {
         "তরঙ্গ",
         "আদর্শ গ্যাস ও গ্যাসের গতিতত্ত্ব",
       ]);
-      expect(physicsFirstChapters.every((chapter) => chapter.inNextTerm)).toBe(true);
+      expect(nextTermOrdersBySubjectSlug).toMatchObject({
+        "physics-1": [6, 7, 8, 9, 10],
+        "physics-2": [],
+        "chemistry-1": [4, 5],
+        "chemistry-2": [],
+        "biology-1": [5, 6, 7, 8, 9, 10, 11, 12],
+        "biology-2": [],
+        "higher-math-1": [],
+        "higher-math-2": [],
+      });
       expect(physicsFirstChapters.map((chapter) => chapter.slug)).toEqual([
         "chapter-1",
         "chapter-2",
