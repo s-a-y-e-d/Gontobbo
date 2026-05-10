@@ -18,6 +18,12 @@ import {
   requireCurrentUser,
   type CurrentUser,
 } from "./auth";
+import {
+  deleteStudyItemStatsForChapter,
+  rebuildStudyItemStatsForChapter,
+  recordStudyItemCompletionInStats,
+  recordStudyItemCreatedInStats,
+} from "./dashboardStudyItemStats";
 
 const TODO_DURATION_MINUTES = Array.from({ length: 48 }, (_, index) => (index + 1) * 15);
 const TODO_CUSTOM_COLORS = [
@@ -466,7 +472,7 @@ async function ensureChapterStudyItemsForSubject(
             title,
           }).searchText || legacySearchText;
 
-        await ctx.db.insert("studyItems", {
+        const studyItemId = await ctx.db.insert("studyItems", {
           userId: currentUser._id,
           subjectId,
           chapterId: chapter._id,
@@ -476,6 +482,10 @@ async function ensureChapterStudyItemsForSubject(
           estimatedMinutes: tracker.avgMinutes,
           isCompleted: false,
         });
+        const studyItem = await ctx.db.get(studyItemId);
+        if (studyItem) {
+          await recordStudyItemCreatedInStats(ctx, currentUser, studyItem);
+        }
       } else {
         await syncStudyItemPresentation(ctx, existingItem._id);
       }
@@ -525,7 +535,7 @@ async function ensureConceptStudyItemsForChapter(
             title,
           }).searchText || legacySearchText;
 
-        await ctx.db.insert("studyItems", {
+        const studyItemId = await ctx.db.insert("studyItems", {
           userId: currentUser._id,
           subjectId: subject._id,
           chapterId,
@@ -536,6 +546,10 @@ async function ensureConceptStudyItemsForChapter(
           estimatedMinutes: tracker.avgMinutes,
           isCompleted: false,
         });
+        const studyItem = await ctx.db.get(studyItemId);
+        if (studyItem) {
+          await recordStudyItemCreatedInStats(ctx, currentUser, studyItem);
+        }
       } else {
         await syncStudyItemPresentation(ctx, existingItem._id);
       }
@@ -640,6 +654,7 @@ export const updateSubject = mutation({
     const { subjectId, ...updates } = args;
 
     const oldSubject = await getOwnedSubjectOrThrow(ctx, currentUser, subjectId);
+    const affectedChapterIds = new Set<Id<"chapters">>();
 
     if (updates.slug && updates.slug !== oldSubject.slug) {
       const conflictingSubject = await ctx.db
@@ -673,6 +688,7 @@ export const updateSubject = mutation({
           for (const log of logs) await ctx.db.delete(log._id);
 
           await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
+          affectedChapterIds.add(item.chapterId);
           await ctx.db.delete(item._id);
         }
       }
@@ -698,6 +714,7 @@ export const updateSubject = mutation({
           for (const log of logs) await ctx.db.delete(log._id);
 
           await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
+          affectedChapterIds.add(item.chapterId);
           await ctx.db.delete(item._id);
         }
       }
@@ -705,6 +722,9 @@ export const updateSubject = mutation({
 
     await ctx.db.patch(subjectId, updates);
     await syncStudyItemsBySubject(ctx, subjectId);
+    for (const chapterId of affectedChapterIds) {
+      await rebuildStudyItemStatsForChapter(ctx, currentUser, chapterId);
+    }
   },
 });
 
@@ -901,6 +921,7 @@ export const deleteChapter = mutation({
       await ctx.db.delete(item._id);
     }
 
+    await deleteStudyItemStatsForChapter(ctx, currentUser._id, args.chapterId);
     await ctx.db.delete(args.chapterId);
   },
 });
@@ -963,7 +984,7 @@ export const deleteConcept = mutation({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
+    const concept = await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
     // Delete associated studyItems first and their logs
     const studyItems = filterOwnedDocuments(currentUser, await ctx.db
       .query("studyItems")
@@ -995,6 +1016,7 @@ export const deleteConcept = mutation({
     }
 
     await ctx.db.delete(args.conceptId);
+    await rebuildStudyItemStatsForChapter(ctx, currentUser, concept.chapterId);
   },
 });
 
@@ -1049,6 +1071,8 @@ export const resetChapterProgress = mutation({
         repetitionLevel: undefined,
       });
     }
+
+    await rebuildStudyItemStatsForChapter(ctx, currentUser, args.chapterId);
   },
 });
 
@@ -2304,6 +2328,12 @@ export const toggleStudyItemCompletion = mutation({
     });
 
     if (newIsCompleted) {
+      await recordStudyItemCompletionInStats(
+        ctx,
+        currentUser,
+        { ...item, isCompleted: true, lastStudiedAt: now },
+        1,
+      );
       // Fetch ancestry for logging
       const subject = await ctx.db.get(item.subjectId);
       const chapter = await ctx.db.get(item.chapterId);
@@ -2353,6 +2383,7 @@ export const toggleStudyItemCompletion = mutation({
         }
       }
     } else {
+      await recordStudyItemCompletionInStats(ctx, currentUser, item, -1);
       // Unchecked: Delete all logs related to this study item
       const logs = await ctx.db
         .query("studyLogs")
@@ -2437,7 +2468,7 @@ export const resetConceptProgress = mutation({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
+    const concept = await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
     // 1. Reset Concept SR fields
     await ctx.db.patch(args.conceptId, {
       reviewCount: undefined,
@@ -2476,6 +2507,7 @@ export const resetConceptProgress = mutation({
       .collect();
     for (const log of revisionLogs) await ctx.db.delete(log._id);
     await removeTodoTasksForConcept(ctx, currentUser, args.conceptId);
+    await rebuildStudyItemStatsForChapter(ctx, currentUser, concept.chapterId);
   },
 });
 
@@ -2504,6 +2536,18 @@ export const migrateAndSeed = internalMutation({
     const studyItems = await ctx.db.query("studyItems").take(500);
     for (const item of studyItems) {
       await ctx.db.delete(item._id);
+    }
+
+    const chapterStats = await ctx.db.query("studyItemChapterStats").take(500);
+    for (const stat of chapterStats) {
+      await ctx.db.delete(stat._id);
+    }
+
+    const completionDayStats = await ctx.db
+      .query("studyItemCompletionDayStats")
+      .take(500);
+    for (const stat of completionDayStats) {
+      await ctx.db.delete(stat._id);
     }
 
     // 2. Delete all concepts

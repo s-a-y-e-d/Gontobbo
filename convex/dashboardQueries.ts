@@ -6,6 +6,11 @@ import {
   requireCurrentUser,
   type CurrentUser,
 } from "./auth";
+import {
+  getDashboardCompletionDayStats,
+  getDashboardStudyItemChapterStats,
+  getDashboardStudyItemStatsMigrationStatus,
+} from "./dashboardStudyItemStats";
 
 const DAY_MS = 86400000;
 const DASHBOARD_TODO_LIMIT = 5;
@@ -118,6 +123,28 @@ async function getDashboardStudyItems(ctx: QueryCtx, currentUser: CurrentUser) {
   return [...ownedStudyItems, ...legacyStudyItems];
 }
 
+async function getDashboardStudyItemsByIds(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  studyItemIds: Id<"studyItems">[],
+) {
+  const uniqueStudyItemIds = Array.from(new Set(studyItemIds));
+  const studyItems: Doc<"studyItems">[] = [];
+
+  for (const studyItemId of uniqueStudyItemIds) {
+    const studyItem = await ctx.db.get(studyItemId);
+    if (
+      studyItem &&
+      (studyItem.userId === currentUser._id ||
+        (studyItem.userId === undefined && isLegacyWorkspaceOwner(currentUser)))
+    ) {
+      studyItems.push(studyItem);
+    }
+  }
+
+  return studyItems;
+}
+
 async function getDashboardSettings(ctx: QueryCtx, currentUser: CurrentUser) {
   const ownedSettings = await ctx.db
     .query("settings")
@@ -205,56 +232,117 @@ export const getDashboardPageData = query({
     const [
       subjects,
       chapters,
-      studyItems,
       todayTodoTasks,
       recentStudyLogs,
       settings,
+      summaryStats,
+      summaryMigrationStatus,
     ] = await Promise.all([
       getDashboardSubjects(ctx, currentUser),
       getDashboardChapters(ctx, currentUser),
-      getDashboardStudyItems(ctx, currentUser),
       getDashboardTodoTasks(ctx, currentUser, today),
       getDashboardStudyLogs(ctx, currentUser, recentStartDate, today),
       getDashboardSettings(ctx, currentUser),
+      getDashboardStudyItemChapterStats(ctx, currentUser),
+      getDashboardStudyItemStatsMigrationStatus(ctx, currentUser._id),
     ]);
 
     const settingByKey = new Map(settings.map((setting) => [setting.key, setting]));
     const subjectById = new Map(subjects.map((subject) => [subject._id, subject]));
     const chapterById = new Map(chapters.map((chapter) => [chapter._id, chapter]));
-    const studyItemById = new Map(studyItems.map((studyItem) => [studyItem._id, studyItem]));
     const nextTermChapterIds = new Set(
       chapters.filter((chapter) => chapter.inNextTerm).map((chapter) => chapter._id),
     );
+    const termStartDateSetting = settingByKey.get("termStartDate");
+    const nextTermExamDateSetting = settingByKey.get("nextTermExamDate");
+    const termStartDate =
+      typeof termStartDateSetting?.value === "number"
+        ? termStartDateSetting.value
+        : undefined;
+    const nextTermExamDate =
+      typeof nextTermExamDateSetting?.value === "number"
+        ? nextTermExamDateSetting.value
+        : undefined;
+    const hasTermDates =
+      termStartDate !== undefined && nextTermExamDate !== undefined;
 
-    const allCompletedItems = studyItems.filter((item) => item.isCompleted).length;
-    const nextTermStudyItems = studyItems.filter((item) =>
-      nextTermChapterIds.has(item.chapterId),
+    const shouldUseSummaryStats = summaryMigrationStatus?.status === "completed";
+    const fallbackStudyItems = shouldUseSummaryStats
+      ? null
+      : await getDashboardStudyItems(ctx, currentUser);
+    const summaryStatByChapterId = new Map(
+      summaryStats.map((stat) => [stat.chapterId, stat]),
     );
-    const nextTermCompletedItems = nextTermStudyItems.filter(
-      (item) => item.isCompleted,
-    ).length;
+
+    const chapterCountStats = chapters.map((chapter) => {
+      const summaryStat = summaryStatByChapterId.get(chapter._id);
+      if (summaryStat) {
+        return {
+          chapterId: chapter._id,
+          subjectId: chapter.subjectId,
+          totalItems: summaryStat.totalItems,
+          completedItems: summaryStat.completedItems,
+        };
+      }
+
+      const chapterItems =
+        fallbackStudyItems?.filter((item) => item.chapterId === chapter._id) ?? [];
+      return {
+        chapterId: chapter._id,
+        subjectId: chapter.subjectId,
+        totalItems: chapterItems.length,
+        completedItems: chapterItems.filter((item) => item.isCompleted).length,
+      };
+    });
+
+    const allTotalItems = chapterCountStats.reduce(
+      (sum, stat) => sum + stat.totalItems,
+      0,
+    );
+    const allCompletedItems = chapterCountStats.reduce(
+      (sum, stat) => sum + stat.completedItems,
+      0,
+    );
+    const nextTermStats = chapterCountStats.filter((stat) =>
+      nextTermChapterIds.has(stat.chapterId),
+    );
+    const nextTermTotalItems = nextTermStats.reduce(
+      (sum, stat) => sum + stat.totalItems,
+      0,
+    );
+    const nextTermCompletedItems = nextTermStats.reduce(
+      (sum, stat) => sum + stat.completedItems,
+      0,
+    );
     const nextTermProgressPercentage = getRoundedPercentage(
       nextTermCompletedItems,
-      nextTermStudyItems.length,
+      nextTermTotalItems,
     );
 
     const subjectProgress = subjects
       .map((subject) => {
-        const subjectItems = nextTermStudyItems.filter(
-          (item) => item.subjectId === subject._id,
+        const subjectStats = nextTermStats.filter(
+          (stat) => stat.subjectId === subject._id,
         );
-        const completedItems = subjectItems.filter((item) => item.isCompleted).length;
+        const totalItems = subjectStats.reduce(
+          (sum, stat) => sum + stat.totalItems,
+          0,
+        );
+        const completedItems = subjectStats.reduce(
+          (sum, stat) => sum + stat.completedItems,
+          0,
+        );
 
         return {
           subjectId: subject._id,
           name: subject.name,
           color: subject.color ?? "gray",
           icon: subject.icon ?? "menu_book",
-          totalItems: subjectItems.length,
+          totalItems,
           completedItems,
           progressPercentage: getRoundedPercentage(
             completedItems,
-            subjectItems.length,
+            totalItems,
           ),
         };
       })
@@ -272,6 +360,17 @@ export const getDashboardPageData = query({
 
         return left.name.localeCompare(right.name);
       });
+
+    const todoStudyItems = await getDashboardStudyItemsByIds(
+      ctx,
+      currentUser,
+      todayTodoTasks
+        .map((todoTask) => todoTask.studyItemId)
+        .filter((studyItemId): studyItemId is Id<"studyItems"> => Boolean(studyItemId)),
+    );
+    const studyItemById = new Map(
+      todoStudyItems.map((studyItem) => [studyItem._id, studyItem]),
+    );
 
     const todoCandidates = todayTodoTasks.map((todoTask) => {
       if ((todoTask.kind ?? "study_item") !== "study_item" || !todoTask.studyItemId) {
@@ -323,19 +422,6 @@ export const getDashboardPageData = query({
       return left.sortValue - right.sortValue;
     });
 
-    const termStartDateSetting = settingByKey.get("termStartDate");
-    const nextTermExamDateSetting = settingByKey.get("nextTermExamDate");
-    const termStartDate =
-      typeof termStartDateSetting?.value === "number"
-        ? termStartDateSetting.value
-        : undefined;
-    const nextTermExamDate =
-      typeof nextTermExamDateSetting?.value === "number"
-        ? nextTermExamDateSetting.value
-        : undefined;
-    const hasTermDates =
-      termStartDate !== undefined && nextTermExamDate !== undefined;
-
     const urgency =
       termStartDate === undefined || nextTermExamDate === undefined
         ? null
@@ -381,7 +467,7 @@ export const getDashboardPageData = query({
             );
             const remainingItems = Math.max(
               0,
-              nextTermStudyItems.length - nextTermCompletedItems,
+              nextTermTotalItems - nextTermCompletedItems,
             );
             const actualItemsPerDay = nextTermCompletedItems / elapsedDays;
             const examPassed = today > nextTermExamDate;
@@ -417,7 +503,7 @@ export const getDashboardPageData = query({
     const progression =
       termStartDate === undefined || nextTermExamDate === undefined
         ? null
-        : (() => {
+        : await (async () => {
             const chartEndDate = clamp(
               today,
               termStartDate,
@@ -431,10 +517,36 @@ export const getDashboardPageData = query({
               1,
               Math.floor((nextTermExamDate - termStartDate) / DAY_MS),
             );
-            const completionDays = nextTermStudyItems
-              .filter((item) => item.isCompleted)
-              .map((item) => getCompletionDay(item, termStartDate))
-              .sort((left, right) => left - right);
+            const completionDays: number[] = [];
+
+            if (shouldUseSummaryStats) {
+              const completionDayStats = await getDashboardCompletionDayStats(ctx, {
+                userId: currentUser._id,
+                startDate: termStartDate,
+                endDate: chartEndDate,
+              });
+
+              for (const stat of completionDayStats) {
+                if (!nextTermChapterIds.has(stat.chapterId)) {
+                  continue;
+                }
+                const completionDay =
+                  stat.dayBucket === 0
+                    ? termStartDate
+                    : Math.max(termStartDate, stat.dayBucket);
+                for (let index = 0; index < stat.completedCount; index += 1) {
+                  completionDays.push(completionDay);
+                }
+              }
+            } else {
+              for (const item of fallbackStudyItems ?? []) {
+                if (item.isCompleted && nextTermChapterIds.has(item.chapterId)) {
+                  completionDays.push(getCompletionDay(item, termStartDate));
+                }
+              }
+            }
+
+            completionDays.sort((left, right) => left - right);
             let completedCount = 0;
 
             const pointCount = Math.min(
@@ -461,7 +573,7 @@ export const getDashboardPageData = query({
                 date,
                 actualPercentage: getRoundedPercentage(
                   completedCount,
-                  nextTermStudyItems.length,
+                  nextTermTotalItems,
                 ),
                 requiredPercentage: clamp(
                   Math.round((dayIndex / totalWindowDays) * 100),
@@ -569,15 +681,15 @@ export const getDashboardPageData = query({
       completion: {
         nextTerm: {
           completedItems: nextTermCompletedItems,
-          totalItems: nextTermStudyItems.length,
+          totalItems: nextTermTotalItems,
           progressPercentage: nextTermProgressPercentage,
         },
         allSyllabus: {
           completedItems: allCompletedItems,
-          totalItems: studyItems.length,
+          totalItems: allTotalItems,
           progressPercentage: getRoundedPercentage(
             allCompletedItems,
-            studyItems.length,
+            allTotalItems,
           ),
         },
       },

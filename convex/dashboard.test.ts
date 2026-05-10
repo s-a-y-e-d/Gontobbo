@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
@@ -314,5 +314,224 @@ describe("dashboard", () => {
       weightShare: 70,
       isUnderStudied: true,
     });
+  });
+
+  test("maintains chapter and daily stats while toggling study item completion", async () => {
+    const t = await createAuthenticatedTestContext("dashboard-summary-toggle");
+
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-summary-toggle",
+      color: "blue",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [],
+    });
+    const chapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId });
+    const [item] = await t.query(api.queries.getChapterStudyItems, { chapterId });
+
+    let stats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemChapterStats").collect();
+    });
+    expect(stats).toMatchObject([{ totalItems: 1, completedItems: 0 }]);
+
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: item!._id,
+    });
+
+    stats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemChapterStats").collect();
+    });
+    let dayStats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemCompletionDayStats").collect();
+    });
+    expect(stats).toMatchObject([{ totalItems: 1, completedItems: 1 }]);
+    expect(dayStats).toMatchObject([{ completedCount: 1 }]);
+
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: item!._id,
+    });
+
+    stats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemChapterStats").collect();
+    });
+    dayStats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemCompletionDayStats").collect();
+    });
+    expect(stats).toMatchObject([{ totalItems: 1, completedItems: 0 }]);
+    expect(dayStats).toEqual([]);
+  });
+
+  test("reset and delete paths rebuild or remove dashboard stats", async () => {
+    const t = await createAuthenticatedTestContext("dashboard-summary-reset");
+
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-summary-reset",
+      color: "blue",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [],
+    });
+    const chapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId });
+    const [item] = await t.query(api.queries.getChapterStudyItems, { chapterId });
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: item!._id,
+    });
+
+    await t.mutation(api.mutations.resetChapterProgress, { chapterId });
+    let stats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemChapterStats").collect();
+    });
+    let dayStats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemCompletionDayStats").collect();
+    });
+    expect(stats).toMatchObject([{ totalItems: 1, completedItems: 0 }]);
+    expect(dayStats).toEqual([]);
+
+    await t.mutation(api.mutations.deleteChapter, { chapterId });
+    stats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemChapterStats").collect();
+    });
+    dayStats = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItemCompletionDayStats").collect();
+    });
+    expect(stats).toEqual([]);
+    expect(dayStats).toEqual([]);
+  });
+
+  test("dashboard falls back when summary rows are missing", async () => {
+    const t = await createAuthenticatedTestContext("dashboard-summary-fallback");
+    const today = getDhakaDayBucket(Date.now());
+
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-summary-fallback",
+      color: "blue",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [],
+    });
+    const chapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId });
+    const [item] = await t.query(api.queries.getChapterStudyItems, { chapterId });
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: item!._id,
+    });
+
+    await t.run(async (ctx) => {
+      const chapterStats = await ctx.db.query("studyItemChapterStats").collect();
+      for (const stat of chapterStats) await ctx.db.delete(stat._id);
+      const dayStats = await ctx.db.query("studyItemCompletionDayStats").collect();
+      for (const stat of dayStats) await ctx.db.delete(stat._id);
+    });
+
+    const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {
+      today,
+    });
+
+    expect(dashboard.completion.nextTerm).toMatchObject({
+      completedItems: 1,
+      totalItems: 1,
+      progressPercentage: 100,
+    });
+  });
+
+  test("manual backfill creates summary rows for existing legacy study items", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      const identity = {
+        subject: "dashboard-summary-backfill",
+        tokenIdentifier: "test|dashboard-summary-backfill",
+        name: "dashboard-summary-backfill",
+      };
+      const now = Date.now();
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("users", {
+          tokenIdentifier: identity.tokenIdentifier,
+          clerkUserId: identity.subject,
+          role: "owner",
+          name: identity.name,
+        });
+        const subjectId = await ctx.db.insert("subjects", {
+          name: "Legacy Physics",
+          slug: "legacy-physics-summary",
+          order: 1,
+          chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+          conceptTrackers: [],
+        });
+        const chapterId = await ctx.db.insert("chapters", {
+          subjectId,
+          name: "Motion",
+          slug: "motion",
+          order: 1,
+          inNextTerm: true,
+        });
+        await ctx.db.insert("studyItems", {
+          subjectId,
+          chapterId,
+          type: "mcq",
+          title: "Motion - MCQ",
+          estimatedMinutes: 30,
+          isCompleted: true,
+          lastStudiedAt: now,
+        });
+      });
+
+      const owner = t.withIdentity(identity);
+      await owner.mutation(api.auth.ensureCurrentUser, {});
+      await owner.mutation(
+        api.dashboardStudyItemStats.startDashboardStudyItemStatsBackfill,
+        {},
+      );
+      await t.finishAllScheduledFunctions(() => {
+        vi.runAllTimers();
+      });
+
+      const status = await owner.query(
+        api.dashboardStudyItemStats.getDashboardStudyItemStatsBackfillStatus,
+        {},
+      );
+      const stats = await t.run(async (ctx) => {
+        return await ctx.db.query("studyItemChapterStats").collect();
+      });
+      const dayStats = await t.run(async (ctx) => {
+        return await ctx.db.query("studyItemCompletionDayStats").collect();
+      });
+      const dashboard = await owner.query(api.dashboardQueries.getDashboardPageData, {
+        today: getDhakaDayBucket(Date.now()),
+      });
+
+      expect(status.status).toBe("completed");
+      expect(stats).toMatchObject([{ totalItems: 1, completedItems: 1 }]);
+      expect(dayStats).toMatchObject([{ completedCount: 1 }]);
+      expect(dashboard.completion.nextTerm).toMatchObject({
+        totalItems: 1,
+        completedItems: 1,
+        progressPercentage: 100,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

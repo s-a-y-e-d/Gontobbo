@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as dashboardQueries from "../dashboardQueries.js";
+import type * as dashboardStudyItemStats from "../dashboardStudyItemStats.js";
 import type * as mutations from "../mutations.js";
 import type * as onboarding from "../onboarding.js";
 import type * as ownershipMigration from "../ownershipMigration.js";
@@ -28,6 +29,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   dashboardQueries: typeof dashboardQueries;
+  dashboardStudyItemStats: typeof dashboardStudyItemStats;
   mutations: typeof mutations;
   onboarding: typeof onboarding;
   ownershipMigration: typeof ownershipMigration;

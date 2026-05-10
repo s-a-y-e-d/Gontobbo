@@ -132,6 +132,49 @@ export default defineSchema({
       filterFields: ["userId", "isCompleted"],
     }),
 
+  studyItemChapterStats: defineTable({
+    userId: v.id("users"),
+    subjectId: v.id("subjects"),
+    chapterId: v.id("chapters"),
+    totalItems: v.number(),
+    completedItems: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_chapterId", ["userId", "chapterId"])
+    .index("by_userId_and_subjectId", ["userId", "subjectId"]),
+
+  studyItemCompletionDayStats: defineTable({
+    userId: v.id("users"),
+    subjectId: v.id("subjects"),
+    chapterId: v.id("chapters"),
+    dayBucket: v.number(),
+    completedCount: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId_and_dayBucket", ["userId", "dayBucket"])
+    .index("by_userId_and_chapterId_and_dayBucket", [
+      "userId",
+      "chapterId",
+      "dayBucket",
+    ]),
+
+  dashboardStudyItemStatsMigrations: defineTable({
+    key: v.string(),
+    status: v.union(
+      v.literal("idle"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    ownerUserId: v.optional(v.id("users")),
+    includeLegacy: v.boolean(),
+    processedChapters: v.number(),
+    lastCursor: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   // ======================================
   // STUDY LOGS — explicit event records
   // ======================================
