@@ -7,6 +7,7 @@ import type {
   FunctionReference,
   FunctionReturnType,
 } from "convex/server";
+import { getFunctionName } from "convex/server";
 
 type SnapshotQueryResult<Query extends FunctionReference<"query">> = {
   data: FunctionReturnType<Query> | undefined;
@@ -31,12 +32,11 @@ export function useSnapshotQuery<Query extends FunctionReference<"query">>(
   const [isRefreshing, setIsRefreshing] = useState(false);
   const requestIdRef = useRef(0);
   const isMountedRef = useRef(false);
+  const queryRef = useRef(query);
   const argsRef = useRef(args);
   const dataRef = useRef<FunctionReturnType<Query> | undefined>(undefined);
+  const queryName = useMemo(() => getFunctionName(query), [query]);
   const argsKey = useMemo(() => getArgsKey(args), [args]);
-
-  argsRef.current = args;
-  dataRef.current = data;
 
   const refresh = useCallback(async () => {
     const requestId = requestIdRef.current + 1;
@@ -56,7 +56,7 @@ export function useSnapshotQuery<Query extends FunctionReference<"query">>(
     setIsRefreshing(dataRef.current !== undefined);
 
     try {
-      const result = await convex.query(query, currentArgs);
+      const result = await convex.query(queryRef.current, currentArgs);
       if (isMountedRef.current && requestIdRef.current === requestId) {
         setData(result);
         setError(null);
@@ -77,7 +77,7 @@ export function useSnapshotQuery<Query extends FunctionReference<"query">>(
         setIsRefreshing(false);
       }
     }
-  }, [convex, query]);
+  }, [convex]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -87,19 +87,17 @@ export function useSnapshotQuery<Query extends FunctionReference<"query">>(
   }, []);
 
   useEffect(() => {
-    if (args === "skip") {
-      requestIdRef.current += 1;
-      setData(undefined);
-      setError(null);
-      setIsLoading(false);
-      setIsRefreshing(false);
-      return;
-    }
+    queryRef.current = query;
+    argsRef.current = args;
+  }, [args, argsKey, query, queryName]);
 
-    setData(undefined);
-    setIsLoading(true);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
     void refresh();
-  }, [argsKey, refresh]);
+  }, [argsKey, queryName, refresh]);
 
   return {
     data,

@@ -89,6 +89,50 @@ studyItems are created **on-demand**, not pre-populated:
 
 ---
 
+## Convex Bandwidth & Performance Rules (CRITICAL)
+
+Gontobbo has hit Convex database bandwidth limits before. Treat database bandwidth as a product constraint, not an afterthought.
+
+### Before Adding or Changing Convex Reads
+
+- Use the `convex-performance-audit` skill for any work that adds a new page query, broad dashboard/settings/planner query, subscription, search, pagination, aggregation, or migration that touches Convex data.
+- Trace the full read set before coding: every `ctx.db.get()`, `ctx.db.query()`, `.collect()`, `.take()`, `.paginate()`, and every client `useQuery`, `usePaginatedQuery`, or snapshot read.
+- Estimate the payload shape for a real user with 1,000+ `studyItems`. If a page can read hundreds of documents, call that out and choose a bounded or summarized design.
+- Prefer user-scoped indexes (`by_userId...`) for all authenticated data. Do not add broad table scans plus JS filtering for normal user paths.
+- Legacy fallback for `userId: undefined` rows is only for migration compatibility. Do not rely on it for new features, and do not add new fallback-heavy code paths unless explicitly required.
+
+### Live Subscriptions vs Snapshots
+
+- Do not use `useQuery` for low-freshness, heavy pages such as dashboard, settings, subjects overview, logs filters, revision overview, reports, or analytics. Use a snapshot/one-shot query with explicit `refresh()` after local mutations.
+- Use live `useQuery` only when the user experience genuinely needs real-time updates, such as active Todo editing. If in doubt, default to snapshot reads.
+- Any mutation on a snapshot-backed screen must trigger an explicit refresh or update local state so the UI does not appear stale.
+- Avoid mounting multiple large reactive queries on one screen. A single write to `studyItems`, `studyLogs`, `concepts`, or `todoTasks` can invalidate many subscriptions and resend large payloads.
+
+### Query Shape Rules
+
+- Avoid unbounded `.collect()` in public queries. Use indexed `.take(n)`, `.paginate()`, or a deliberately bounded range.
+- Do not read all `studyItems` just to calculate small summary numbers unless the page truly needs item-level rows. Prefer narrow queries, per-page data, or summary/digest data when the read is repeated often.
+- Avoid N+1 query patterns like looping over chapters/concepts and fetching each child set separately when one indexed query plus in-memory grouping would read less and return the same result.
+- Do not return full Convex documents when the UI needs only a few fields. Map results to a narrow return type.
+- Search queries must be debounced on the client, must have a minimum normalized query length of at least 2 characters, and must use bounded fallbacks.
+- Pagination must use Convex `.paginate()` for feeds/logs. Do not collect all rows and slice in memory.
+- Do not use Convex `.filter()` for database filtering in normal paths. Add/use the correct index instead.
+
+### Writes and Invalidation
+
+- Before patching high-fanout tables (`studyItems`, `studyLogs`, `concepts`, `todoTasks`), check which live queries will be invalidated.
+- Keep frequently changing operational state out of documents that are read by broad dashboard/settings queries unless there is a clear reason.
+- For batch migrations or backfills, use small scheduled batches. Never write a single mutation that scans or patches an unbounded table.
+
+### Verification for Bandwidth-Sensitive Changes
+
+- Add or update tests for query correctness when changing indexed reads, pagination, search thresholds, or snapshot refresh behavior.
+- Run `tsc --noEmit` and the relevant Convex/Vitest tests.
+- For changes suspected to affect usage, compare Convex usage by function after deploy and mention which functions should be watched.
+- If a change intentionally adds a broad read, document why it is acceptable and what would trigger a future summary-table or pagination refactor.
+
+---
+
 ## AI Operational Rules (CRITICAL)
 
 1. **Schema First:** ALWAYS read `convex/schema.ts` and understand the data model before touching UI components.
