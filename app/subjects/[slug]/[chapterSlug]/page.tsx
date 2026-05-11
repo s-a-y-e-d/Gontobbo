@@ -20,13 +20,22 @@ export default function ChapterPage() {
   });
   
   const ensureItems = useMutation(api.mutations.ensureConceptStudyItems);
+  const startSyllabusSummaryBackfill = useMutation(
+    api.syllabusSummaries.startSyllabusSummaryBackfill,
+  );
+
+  useEffect(() => {
+    void startSyllabusSummaryBackfill({}).catch((error) => {
+      console.error("Failed to start syllabus summary backfill:", error);
+    });
+  }, [startSyllabusSummaryBackfill]);
 
   // Lazy creation: ensure studyItems exist on first visit
   useEffect(() => {
-    if (data?.chapter) {
+    if (data?.chapter && data.needsEnsureConceptStudyItems) {
       ensureItems({ chapterId: data.chapter._id });
     }
-  }, [data?.chapter?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data?.chapter?._id, data?.needsEnsureConceptStudyItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (data === undefined) {
     return <ChapterDetailSkeleton />;

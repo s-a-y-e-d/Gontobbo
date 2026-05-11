@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/convex/_generated/api";
+import { useMutation } from "convex/react";
 import SubjectGrid from "./SubjectGrid";
 import AddSubjectModal from "./AddSubjectModal";
 import { SubjectsSkeleton } from "./LoadingSkeletons";
@@ -12,7 +13,16 @@ export default function SubjectsWorkspace() {
     api.queries.getSubjectsWithStats,
     {},
   );
+  const startSyllabusSummaryBackfill = useMutation(
+    api.syllabusSummaries.startSyllabusSummaryBackfill,
+  );
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  useEffect(() => {
+    void startSyllabusSummaryBackfill({}).catch((error) => {
+      console.error("Failed to start syllabus summary backfill:", error);
+    });
+  }, [startSyllabusSummaryBackfill]);
 
   return (
     <div className="w-full">

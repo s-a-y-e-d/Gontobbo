@@ -16,13 +16,22 @@ export default function SubjectPage() {
 
   const data = useQuery(api.queries.getSubjectPageData, { slug });
   const ensureItems = useMutation(api.mutations.ensureChapterStudyItems);
+  const startSyllabusSummaryBackfill = useMutation(
+    api.syllabusSummaries.startSyllabusSummaryBackfill,
+  );
+
+  useEffect(() => {
+    void startSyllabusSummaryBackfill({}).catch((error) => {
+      console.error("Failed to start syllabus summary backfill:", error);
+    });
+  }, [startSyllabusSummaryBackfill]);
 
   // Lazy creation: ensure studyItems exist on first visit
   useEffect(() => {
-    if (data?.subject) {
+    if (data?.subject && data.needsEnsureChapterStudyItems) {
       ensureItems({ subjectId: data.subject._id });
     }
-  }, [data?.subject?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data?.needsEnsureChapterStudyItems, data?.subject?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (data === undefined) {
     return <SubjectDetailSkeleton />;

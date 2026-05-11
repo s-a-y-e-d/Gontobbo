@@ -18,6 +18,7 @@ import type * as planner from "../planner.js";
 import type * as plannerQueries from "../plannerQueries.js";
 import type * as queries from "../queries.js";
 import type * as studyItemSearch from "../studyItemSearch.js";
+import type * as syllabusSummaries from "../syllabusSummaries.js";
 import type * as todoQueries from "../todoQueries.js";
 import type * as todoStudyItemSearchDigests from "../todoStudyItemSearchDigests.js";
 
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   plannerQueries: typeof plannerQueries;
   queries: typeof queries;
   studyItemSearch: typeof studyItemSearch;
+  syllabusSummaries: typeof syllabusSummaries;
   todoQueries: typeof todoQueries;
   todoStudyItemSearchDigests: typeof todoStudyItemSearchDigests;
 }>;

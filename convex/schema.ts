@@ -118,12 +118,18 @@ export default defineSchema({
   })
     .index("by_subject", ["subjectId"])
     .index("by_chapter", ["chapterId"])
+    .index("by_chapter_and_conceptId", ["chapterId", "conceptId"])
     .index("by_concept", ["conceptId"])
     .index("by_isCompleted", ["isCompleted"])
     .index("by_next_review", ["nextReviewAt"])
     .index("by_userId", ["userId"])
     .index("by_userId_and_subjectId", ["userId", "subjectId"])
     .index("by_userId_and_chapterId", ["userId", "chapterId"])
+    .index("by_userId_and_chapterId_and_conceptId", [
+      "userId",
+      "chapterId",
+      "conceptId",
+    ])
     .index("by_userId_and_conceptId", ["userId", "conceptId"])
     .index("by_userId_and_isCompleted", ["userId", "isCompleted"])
     .index("by_userId_and_nextReviewAt", ["userId", "nextReviewAt"])
@@ -213,6 +219,66 @@ export default defineSchema({
     lastError: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  syllabusStudyItemCells: defineTable({
+    userId: v.id("users"),
+    subjectId: v.id("subjects"),
+    chapterId: v.id("chapters"),
+    conceptId: v.optional(v.id("concepts")),
+    studyItemId: v.id("studyItems"),
+    trackerKey: v.string(),
+    isCompleted: v.boolean(),
+    completionScore: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_studyItemId", ["userId", "studyItemId"])
+    .index("by_userId_and_subjectId", ["userId", "subjectId"])
+    .index("by_userId_and_chapterId", ["userId", "chapterId"])
+    .index("by_userId_and_conceptId", ["userId", "conceptId"]),
+
+  studyItemConceptStats: defineTable({
+    userId: v.id("users"),
+    subjectId: v.id("subjects"),
+    chapterId: v.id("chapters"),
+    conceptId: v.id("concepts"),
+    totalItems: v.number(),
+    completedItems: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_subjectId", ["userId", "subjectId"])
+    .index("by_userId_and_chapterId", ["userId", "chapterId"])
+    .index("by_userId_and_conceptId", ["userId", "conceptId"]),
+
+  syllabusSummaryMigrations: defineTable({
+    key: v.string(),
+    status: v.union(
+      v.literal("idle"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    ownerUserId: v.id("users"),
+    includeLegacy: v.boolean(),
+    processedChapters: v.number(),
+    lastCursor: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  syllabusLazyCreationStatuses: defineTable({
+    key: v.string(),
+    userId: v.id("users"),
+    scope: v.union(v.literal("subject"), v.literal("chapter")),
+    subjectId: v.optional(v.id("subjects")),
+    chapterId: v.optional(v.id("chapters")),
+    status: v.union(v.literal("needed"), v.literal("completed")),
+    updatedAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_userId_and_subjectId", ["userId", "subjectId"])
+    .index("by_userId_and_chapterId", ["userId", "chapterId"]),
 
   // ======================================
   // STUDY LOGS — explicit event records
