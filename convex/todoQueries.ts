@@ -11,6 +11,7 @@ import {
   normalizeStudyItemSearchQuery,
   scoreStudyItemSearchMatch,
 } from "./studyItemSearch";
+import { getTodoStudyItemSearchDigestMigrationStatus } from "./todoStudyItemSearchDigests";
 
 const DAY_MS = 86400000;
 const TODO_SEARCH_RESULT_LIMIT = 12;
@@ -260,6 +261,66 @@ export const searchStudyItemsForTodo = query({
           studyItemId !== undefined,
         ),
     );
+
+    const digestStatus = await getTodoStudyItemSearchDigestMigrationStatus(
+      ctx,
+      currentUser._id,
+    );
+
+    if (digestStatus?.status === "completed") {
+      const matchingDigests = await ctx.db
+        .query("todoStudyItemSearchDigests")
+        .withSearchIndex("search_searchText", (q) =>
+          q
+            .search("searchText", normalizedSearchText)
+            .eq("userId", currentUser._id)
+            .eq("isCompleted", false),
+        )
+        .take(TODO_SEARCH_INDEX_LIMIT);
+
+      return matchingDigests
+        .filter((digest) => !scheduledStudyItemIds.has(digest.studyItemId))
+        .map((digest) => {
+          const score = scoreStudyItemSearchMatch({
+            query: normalizedSearchText,
+            titleAliases: [digest.title, digest.searchText],
+            contextAliases: [
+              digest.subjectName,
+              digest.chapterName,
+              digest.conceptName ?? "",
+            ],
+          });
+
+          return {
+            _id: digest.studyItemId,
+            title: digest.title,
+            subjectName: digest.subjectName,
+            chapterName: digest.chapterName,
+            conceptName: digest.conceptName,
+            subjectColor: digest.subjectColor ?? "gray",
+            estimatedMinutes: digest.estimatedMinutes,
+            score,
+          };
+        })
+        .filter((result) => result.score > 0)
+        .sort((left, right) => {
+          if (right.score !== left.score) {
+            return right.score - left.score;
+          }
+
+          return left.title.localeCompare(right.title);
+        })
+        .slice(0, TODO_SEARCH_RESULT_LIMIT)
+        .map((result) => ({
+          _id: result._id,
+          title: result.title,
+          subjectName: result.subjectName,
+          chapterName: result.chapterName,
+          conceptName: result.conceptName,
+          subjectColor: result.subjectColor,
+          estimatedMinutes: result.estimatedMinutes,
+        }));
+    }
 
     const matchingStudyItems = await ctx.db
       .query("studyItems")

@@ -19,6 +19,7 @@ import type * as plannerQueries from "../plannerQueries.js";
 import type * as queries from "../queries.js";
 import type * as studyItemSearch from "../studyItemSearch.js";
 import type * as todoQueries from "../todoQueries.js";
+import type * as todoStudyItemSearchDigests from "../todoStudyItemSearchDigests.js";
 
 import type {
   ApiFromModules,
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   queries: typeof queries;
   studyItemSearch: typeof studyItemSearch;
   todoQueries: typeof todoQueries;
+  todoStudyItemSearchDigests: typeof todoStudyItemSearchDigests;
 }>;
 
 /**

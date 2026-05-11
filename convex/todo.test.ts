@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -51,7 +51,40 @@ async function createStudyItemFixture(subject: string) {
   });
   const studyItemId = studyItems[0]!._id;
 
-  return { t, date, chapterId, studyItemId };
+  return { t, date, subjectId, chapterId, studyItemId };
+}
+
+async function markTodoSearchDigestBackfillCompleted(
+  t: Awaited<ReturnType<typeof createAuthenticatedTestContext>>,
+) {
+  return await t.run(async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    const user = users[0]!;
+    const key = `todo_study_item_search_digest_backfill:${user._id}`;
+    const existing = await ctx.db
+      .query("todoStudyItemSearchDigestMigrations")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        status: "completed",
+        processedItems: 0,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("todoStudyItemSearchDigestMigrations", {
+        key,
+        status: "completed",
+        ownerUserId: user._id,
+        includeLegacy: user.legacyWorkspaceOwner === true,
+        processedItems: 0,
+        updatedAt: Date.now(),
+      });
+    }
+
+    return user._id;
+  });
 }
 
 async function createRevisionFixture(subject: string) {
@@ -857,6 +890,256 @@ describe("todo", () => {
         }),
       ]),
     );
+  });
+
+  test("creates todo study item search digests during lazy item creation", async () => {
+    const { t, studyItemId } = await createStudyItemFixture(
+      "todo-search-digest-lazy",
+    );
+
+    const digests = await t.run(async (ctx) => {
+      return await ctx.db.query("todoStudyItemSearchDigests").collect();
+    });
+
+    expect(digests).toEqual([
+      expect.objectContaining({
+        studyItemId,
+        title: "Motion — MCQ",
+        subjectName: "Physics",
+        chapterName: "Motion",
+        estimatedMinutes: 30,
+        isCompleted: false,
+      }),
+    ]);
+  });
+
+  test("uses digest-backed study item search and hides scheduled items", async () => {
+    const { t, date, studyItemId } = await createStudyItemFixture(
+      "todo-search-digest-path",
+    );
+    await markTodoSearchDigestBackfillCompleted(t);
+
+    const beforeScheduling = await t.query(api.todoQueries.searchStudyItemsForTodo, {
+      date,
+      searchText: "Motion",
+    });
+    expect(beforeScheduling).toEqual([
+      expect.objectContaining({
+        _id: studyItemId,
+        title: "Motion — MCQ",
+        subjectName: "Physics",
+        chapterName: "Motion",
+        subjectColor: "gray",
+        estimatedMinutes: 30,
+      }),
+    ]);
+
+    await t.mutation(api.mutations.createTodoTask, {
+      date,
+      studyItemId,
+      durationMinutes: 30,
+      source: "manual",
+    });
+
+    const afterScheduling = await t.query(api.todoQueries.searchStudyItemsForTodo, {
+      date,
+      searchText: "Motion",
+    });
+    expect(afterScheduling.some((result) => result._id === studyItemId)).toBe(false);
+  });
+
+  test("keeps digest completion state in sync with study item completion", async () => {
+    const { t, date, studyItemId } = await createStudyItemFixture(
+      "todo-search-digest-completion",
+    );
+    await markTodoSearchDigestBackfillCompleted(t);
+
+    await t.mutation(api.mutations.toggleStudyItemCompletion, { studyItemId });
+
+    let digests = await t.run(async (ctx) => {
+      return await ctx.db.query("todoStudyItemSearchDigests").collect();
+    });
+    expect(digests[0]?.isCompleted).toBe(true);
+
+    let results = await t.query(api.todoQueries.searchStudyItemsForTodo, {
+      date,
+      searchText: "Motion",
+    });
+    expect(results.some((result) => result._id === studyItemId)).toBe(false);
+
+    await t.mutation(api.mutations.toggleStudyItemCompletion, { studyItemId });
+
+    digests = await t.run(async (ctx) => {
+      return await ctx.db.query("todoStudyItemSearchDigests").collect();
+    });
+    expect(digests[0]?.isCompleted).toBe(false);
+
+    results = await t.query(api.todoQueries.searchStudyItemsForTodo, {
+      date,
+      searchText: "Motion",
+    });
+    expect(results.some((result) => result._id === studyItemId)).toBe(true);
+  });
+
+  test("updates digest display fields after subject and chapter edits", async () => {
+    const { t, date, subjectId, chapterId, studyItemId } =
+      await createStudyItemFixture("todo-search-digest-renames");
+    await markTodoSearchDigestBackfillCompleted(t);
+
+    await t.mutation(api.mutations.updateSubject, {
+      subjectId,
+      name: "Advanced Physics",
+      color: "emerald",
+    });
+    await t.mutation(api.mutations.updateChapter, {
+      chapterId,
+      name: "Kinematics",
+      slug: "kinematics",
+      order: 1,
+      inNextTerm: true,
+    });
+
+    const digests = await t.run(async (ctx) => {
+      return await ctx.db.query("todoStudyItemSearchDigests").collect();
+    });
+    expect(digests).toEqual([
+      expect.objectContaining({
+        studyItemId,
+        title: "Kinematics — MCQ",
+        subjectName: "Advanced Physics",
+        chapterName: "Kinematics",
+        subjectColor: "emerald",
+      }),
+    ]);
+
+    const results = await t.query(api.todoQueries.searchStudyItemsForTodo, {
+      date,
+      searchText: "Kinematics",
+    });
+    expect(results).toEqual([
+      expect.objectContaining({
+        _id: studyItemId,
+        subjectName: "Advanced Physics",
+        chapterName: "Kinematics",
+        subjectColor: "emerald",
+      }),
+    ]);
+  });
+
+  test("updates and removes concept-level digest rows", async () => {
+    const { t, date, conceptId, studyItemIds } =
+      await createConceptTodoFixture("digest-concept-maintenance");
+    await markTodoSearchDigestBackfillCompleted(t);
+
+    await t.mutation(api.mutations.updateConcept, {
+      conceptId,
+      name: "Speed",
+      order: 1,
+    });
+
+    let digests = await t.run(async (ctx) => {
+      return await ctx.db.query("todoStudyItemSearchDigests").collect();
+    });
+    expect(digests).toHaveLength(3);
+    expect(digests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          studyItemId: studyItemIds[0],
+          conceptName: "Speed",
+          chapterName: "Motion",
+        }),
+      ]),
+    );
+
+    const results = await t.query(api.todoQueries.searchStudyItemsForTodo, {
+      date,
+      searchText: "Speed",
+    });
+    expect(results.map((result) => result._id)).toEqual(
+      expect.arrayContaining(studyItemIds),
+    );
+
+    await t.mutation(api.mutations.deleteConcept, { conceptId });
+
+    digests = await t.run(async (ctx) => {
+      return await ctx.db.query("todoStudyItemSearchDigests").collect();
+    });
+    expect(digests).toEqual([]);
+  });
+
+  test("backfills todo search digests for existing legacy study items", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      const identity = {
+        subject: "todo-search-digest-legacy",
+        tokenIdentifier: "test|todo-search-digest-legacy",
+        name: "todo-search-digest-legacy",
+      };
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("users", {
+          tokenIdentifier: identity.tokenIdentifier,
+          clerkUserId: identity.subject,
+          role: "owner",
+          legacyWorkspaceOwner: true,
+          name: identity.name,
+        });
+        const subjectId = await ctx.db.insert("subjects", {
+          name: "Legacy Physics",
+          slug: "legacy-physics-todo-search",
+          color: "blue",
+          order: 1,
+          chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+          conceptTrackers: [],
+        });
+        const chapterId = await ctx.db.insert("chapters", {
+          subjectId,
+          name: "Motion",
+          slug: "motion",
+          order: 1,
+          inNextTerm: true,
+        });
+        await ctx.db.insert("studyItems", {
+          subjectId,
+          chapterId,
+          type: "mcq",
+          title: "Motion — MCQ",
+          estimatedMinutes: 30,
+          isCompleted: false,
+        });
+      });
+
+      const owner = t.withIdentity(identity);
+      await owner.mutation(api.auth.ensureCurrentUser, {});
+      await owner.mutation(
+        api.todoStudyItemSearchDigests.startTodoStudyItemSearchDigestBackfill,
+        {},
+      );
+      await t.finishAllScheduledFunctions(() => {
+        vi.runAllTimers();
+      });
+
+      const status = await owner.query(
+        api.todoStudyItemSearchDigests.getTodoStudyItemSearchDigestBackfillStatus,
+        {},
+      );
+      const digests = await t.run(async (ctx) => {
+        return await ctx.db.query("todoStudyItemSearchDigests").collect();
+      });
+
+      expect(status.status).toBe("completed");
+      expect(digests).toEqual([
+        expect.objectContaining({
+          subjectName: "Legacy Physics",
+          chapterName: "Motion",
+          title: "Motion — MCQ",
+          isCompleted: false,
+        }),
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("revision dashboard only includes overdue, today, and next seven day reviews", async () => {

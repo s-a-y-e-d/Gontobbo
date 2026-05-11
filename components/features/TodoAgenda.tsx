@@ -38,10 +38,19 @@ export default function TodoAgenda() {
   const backfillStudyItemSearchText = useMutation(
     api.mutations.backfillStudyItemSearchText,
   );
+  const startTodoStudyItemSearchDigestBackfill = useMutation(
+    api.todoStudyItemSearchDigests.startTodoStudyItemSearchDigestBackfill,
+  );
   const agenda = useQuery(api.todoQueries.getTodoAgenda, {
     startDate: rangeStartDate,
     days: DAY_COUNT,
   });
+
+  useEffect(() => {
+    void startTodoStudyItemSearchDigestBackfill({}).catch((error) => {
+      console.error("Failed to start todo study item search digest backfill:", error);
+    });
+  }, [startTodoStudyItemSearchDigestBackfill]);
 
   useEffect(() => {
     let isCancelled = false;

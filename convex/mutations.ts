@@ -24,6 +24,10 @@ import {
   recordStudyItemCompletionInStats,
   recordStudyItemCreatedInStats,
 } from "./dashboardStudyItemStats";
+import {
+  deleteTodoStudyItemSearchDigestForStudyItem,
+  upsertTodoStudyItemSearchDigest,
+} from "./todoStudyItemSearchDigests";
 
 const TODO_DURATION_MINUTES = Array.from({ length: 48 }, (_, index) => (index + 1) * 15);
 const TODO_CUSTOM_COLORS = [
@@ -354,6 +358,7 @@ async function ensureNoDuplicateConceptReviewTodoOnDate(
 
 async function syncStudyItemPresentation(
   ctx: MutationCtx,
+  currentUser: CurrentUser | null,
   studyItemId: Id<"studyItems">,
 ) {
   const item = await ctx.db.get(studyItemId);
@@ -399,10 +404,15 @@ async function syncStudyItemPresentation(
       searchText,
     });
   }
+
+  if (currentUser) {
+    await upsertTodoStudyItemSearchDigest(ctx, currentUser, item._id);
+  }
 }
 
 async function syncStudyItemsBySubject(
   ctx: MutationCtx,
+  currentUser: CurrentUser | null,
   subjectId: Id<"subjects">,
 ) {
   const studyItems = await ctx.db
@@ -411,12 +421,13 @@ async function syncStudyItemsBySubject(
     .collect();
 
   for (const item of studyItems) {
-    await syncStudyItemPresentation(ctx, item._id);
+    await syncStudyItemPresentation(ctx, currentUser, item._id);
   }
 }
 
 async function syncStudyItemsByChapter(
   ctx: MutationCtx,
+  currentUser: CurrentUser | null,
   chapterId: Id<"chapters">,
 ) {
   const studyItems = await ctx.db
@@ -425,7 +436,7 @@ async function syncStudyItemsByChapter(
     .collect();
 
   for (const item of studyItems) {
-    await syncStudyItemPresentation(ctx, item._id);
+    await syncStudyItemPresentation(ctx, currentUser, item._id);
   }
 }
 
@@ -485,9 +496,10 @@ async function ensureChapterStudyItemsForSubject(
         const studyItem = await ctx.db.get(studyItemId);
         if (studyItem) {
           await recordStudyItemCreatedInStats(ctx, currentUser, studyItem);
+          await upsertTodoStudyItemSearchDigest(ctx, currentUser, studyItem._id);
         }
       } else {
-        await syncStudyItemPresentation(ctx, existingItem._id);
+        await syncStudyItemPresentation(ctx, currentUser, existingItem._id);
       }
     }
   }
@@ -549,9 +561,10 @@ async function ensureConceptStudyItemsForChapter(
         const studyItem = await ctx.db.get(studyItemId);
         if (studyItem) {
           await recordStudyItemCreatedInStats(ctx, currentUser, studyItem);
+          await upsertTodoStudyItemSearchDigest(ctx, currentUser, studyItem._id);
         }
       } else {
-        await syncStudyItemPresentation(ctx, existingItem._id);
+        await syncStudyItemPresentation(ctx, currentUser, existingItem._id);
       }
     }
   }
@@ -689,6 +702,11 @@ export const updateSubject = mutation({
 
           await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
           affectedChapterIds.add(item.chapterId);
+          await deleteTodoStudyItemSearchDigestForStudyItem(
+            ctx,
+            currentUser._id,
+            item._id,
+          );
           await ctx.db.delete(item._id);
         }
       }
@@ -715,13 +733,18 @@ export const updateSubject = mutation({
 
           await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
           affectedChapterIds.add(item.chapterId);
+          await deleteTodoStudyItemSearchDigestForStudyItem(
+            ctx,
+            currentUser._id,
+            item._id,
+          );
           await ctx.db.delete(item._id);
         }
       }
     }
 
     await ctx.db.patch(subjectId, updates);
-    await syncStudyItemsBySubject(ctx, subjectId);
+    await syncStudyItemsBySubject(ctx, currentUser, subjectId);
     for (const chapterId of affectedChapterIds) {
       await rebuildStudyItemStatsForChapter(ctx, currentUser, chapterId);
     }
@@ -840,7 +863,7 @@ export const updateChapter = mutation({
       }
     }
     await ctx.db.patch(chapterId, updates);
-    await syncStudyItemsByChapter(ctx, chapterId);
+    await syncStudyItemsByChapter(ctx, currentUser, chapterId);
   },
 });
 
@@ -869,6 +892,11 @@ export const deleteChapter = mutation({
         for (const log of logs) await ctx.db.delete(log._id);
 
         await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
+        await deleteTodoStudyItemSearchDigestForStudyItem(
+          ctx,
+          currentUser._id,
+          item._id,
+        );
         await ctx.db.delete(item._id);
       }
 
@@ -918,6 +946,11 @@ export const deleteChapter = mutation({
       for (const log of logs) await ctx.db.delete(log._id);
 
       await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
+      await deleteTodoStudyItemSearchDigestForStudyItem(
+        ctx,
+        currentUser._id,
+        item._id,
+      );
       await ctx.db.delete(item._id);
     }
 
@@ -974,7 +1007,7 @@ export const updateConcept = mutation({
     for (const item of studyItems) {
       const tracker = subject.conceptTrackers.find((t) => t.key === item.type);
       if (!tracker) continue;
-      await syncStudyItemPresentation(ctx, item._id);
+      await syncStudyItemPresentation(ctx, currentUser, item._id);
     }
   },
 });
@@ -997,6 +1030,11 @@ export const deleteConcept = mutation({
         .collect();
       for (const log of logs) await ctx.db.delete(log._id);
       await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
+      await deleteTodoStudyItemSearchDigestForStudyItem(
+        ctx,
+        currentUser._id,
+        item._id,
+      );
       await ctx.db.delete(item._id);
     }
 
@@ -1048,6 +1086,7 @@ export const resetChapterProgress = mutation({
         easeFactor: undefined,
         weaknessScore: undefined,
       });
+      await upsertTodoStudyItemSearchDigest(ctx, currentUser, item._id);
     }
 
     // 2. Reset all concepts for this chapter (SR fields) and delete their logs
@@ -1167,7 +1206,7 @@ export const fixInvalidTrackerKeys = internalMutation({
           chapterTrackers: chapterTrackersWithOld.map(stripOldKey),
           conceptTrackers: conceptTrackersWithOld.map(stripOldKey),
         });
-        await syncStudyItemsBySubject(ctx, subject._id);
+        await syncStudyItemsBySubject(ctx, null, subject._id);
       }
     }
   },
@@ -1213,7 +1252,7 @@ export const backfillStudyItemSearchText = mutation({
       });
 
     for (const item of filterOwnedDocuments(currentUser, page.page)) {
-      await syncStudyItemPresentation(ctx, item._id);
+      await syncStudyItemPresentation(ctx, currentUser, item._id);
     }
 
     if (page.isDone) {
@@ -2326,6 +2365,7 @@ export const toggleStudyItemCompletion = mutation({
       isCompleted: newIsCompleted,
       lastStudiedAt: now,
     });
+    await upsertTodoStudyItemSearchDigest(ctx, currentUser, args.studyItemId);
 
     if (newIsCompleted) {
       await recordStudyItemCompletionInStats(
@@ -2499,6 +2539,7 @@ export const resetConceptProgress = mutation({
         easeFactor: undefined,
         weaknessScore: undefined,
       });
+      await upsertTodoStudyItemSearchDigest(ctx, currentUser, item._id);
     }
 
     // 3. Delete revision logs for this concept
@@ -2548,6 +2589,13 @@ export const migrateAndSeed = internalMutation({
       .take(500);
     for (const stat of completionDayStats) {
       await ctx.db.delete(stat._id);
+    }
+
+    const todoSearchDigests = await ctx.db
+      .query("todoStudyItemSearchDigests")
+      .take(500);
+    for (const digest of todoSearchDigests) {
+      await ctx.db.delete(digest._id);
     }
 
     // 2. Delete all concepts

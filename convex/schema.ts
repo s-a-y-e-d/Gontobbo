@@ -132,6 +132,45 @@ export default defineSchema({
       filterFields: ["userId", "isCompleted"],
     }),
 
+  todoStudyItemSearchDigests: defineTable({
+    userId: v.id("users"),
+    studyItemId: v.id("studyItems"),
+    subjectId: v.id("subjects"),
+    chapterId: v.id("chapters"),
+    conceptId: v.optional(v.id("concepts")),
+    searchText: v.string(),
+    title: v.string(),
+    subjectName: v.string(),
+    chapterName: v.string(),
+    conceptName: v.optional(v.string()),
+    subjectColor: v.optional(v.string()),
+    estimatedMinutes: v.number(),
+    isCompleted: v.boolean(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_studyItemId", ["userId", "studyItemId"])
+    .searchIndex("search_searchText", {
+      searchField: "searchText",
+      filterFields: ["userId", "isCompleted"],
+    }),
+
+  todoStudyItemSearchDigestMigrations: defineTable({
+    key: v.string(),
+    status: v.union(
+      v.literal("idle"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    ownerUserId: v.id("users"),
+    includeLegacy: v.boolean(),
+    processedItems: v.number(),
+    lastCursor: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   studyItemChapterStats: defineTable({
     userId: v.id("users"),
     subjectId: v.id("subjects"),
