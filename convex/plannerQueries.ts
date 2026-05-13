@@ -7,6 +7,11 @@ import {
   requireCurrentUser,
   type CurrentUser,
 } from "./auth";
+import {
+  DASHBOARD_COMPONENT_KEYS,
+  getDashboardComponentSettingKey,
+  resolveDashboardComponentVisibility,
+} from "./dashboardComponents";
 
 function getDhakaDayBucket(timestamp: number) {
   const dhakaOffset = 6 * 60 * 60 * 1000;
@@ -65,6 +70,43 @@ async function getNumberSettingValue(
   }
 
   return undefined;
+}
+
+async function getDashboardComponentSettings(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+) {
+  const settingKeys = DASHBOARD_COMPONENT_KEYS.map((key) =>
+    getDashboardComponentSettingKey(key),
+  );
+  const ownedSettings = await Promise.all(
+    settingKeys.map((key) =>
+      ctx.db
+        .query("settings")
+        .withIndex("by_userId_and_key", (q) =>
+          q.eq("userId", currentUser._id).eq("key", key),
+        )
+        .unique(),
+    ),
+  );
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSettings.filter((setting) => setting !== null);
+  }
+
+  const legacySettings = await Promise.all(
+    settingKeys.map(async (key) => {
+      const settings = await ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", key))
+        .collect();
+      return settings.find((setting) => setting.userId === undefined) ?? null;
+    }),
+  );
+
+  return [...ownedSettings, ...legacySettings].filter(
+    (setting) => setting !== null,
+  );
 }
 
 async function getPlannerSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
@@ -405,11 +447,13 @@ export const getSettingsPageData = query({
       defaultRevisionMinutes,
       termStartDate,
       nextTermExamDate,
+      dashboardComponentSettings,
     ] = await Promise.all([
       getPlannerSettingsSubjects(ctx, currentUser),
       getNumberSettingValue(ctx, currentUser, "defaultRevisionMinutes"),
       getNumberSettingValue(ctx, currentUser, "termStartDate"),
       getNumberSettingValue(ctx, currentUser, "nextTermExamDate"),
+      getDashboardComponentSettings(ctx, currentUser),
     ]);
 
     return {
@@ -418,6 +462,9 @@ export const getSettingsPageData = query({
       defaultRevisionMinutes: defaultRevisionMinutes ?? 15,
       termStartDate,
       nextTermExamDate,
+      dashboardComponentVisibility: resolveDashboardComponentVisibility(
+        dashboardComponentSettings,
+      ),
     };
   },
 });

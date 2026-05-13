@@ -42,6 +42,10 @@ import {
   rebuildSyllabusSummariesForConcept,
   upsertSyllabusStudyItemCell,
 } from "./syllabusSummaries";
+import {
+  getDashboardComponentSettingKey,
+  isDashboardComponentKey,
+} from "./dashboardComponents";
 
 const TODO_DURATION_MINUTES = Array.from({ length: 48 }, (_, index) => (index + 1) * 15);
 const TODO_CUSTOM_COLORS = [
@@ -55,6 +59,16 @@ const TODO_CUSTOM_COLORS = [
   "indigo",
   "pink",
 ] as const;
+const DASHBOARD_COMPONENT_KEY_VALIDATOR = v.union(
+  v.literal("todayTodo"),
+  v.literal("todoCompletion"),
+  v.literal("syllabusCompletion"),
+  v.literal("nextTermTime"),
+  v.literal("progressionRate"),
+  v.literal("studyVolume"),
+  v.literal("subjectProgress"),
+  v.literal("effortWeightage"),
+);
 const STUDY_ITEM_SEARCH_VERSION_SETTING_KEY = "study_item_search_text_version";
 const STUDY_ITEM_SEARCH_BACKFILL_BATCH_SIZE = 64;
 
@@ -1893,6 +1907,38 @@ export const setDashboardTermDates = mutation({
       userId: currentUser._id,
       key: "nextTermExamDate",
       value: args.nextTermExamDate,
+    });
+  },
+});
+
+export const setDashboardComponentVisibility = mutation({
+  args: {
+    componentKey: DASHBOARD_COMPONENT_KEY_VALIDATOR,
+    isVisible: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    if (!isDashboardComponentKey(args.componentKey)) {
+      throw new Error("Dashboard component key is invalid");
+    }
+
+    const key = getDashboardComponentSettingKey(args.componentKey);
+    const existingSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_userId_and_key", (q) =>
+        q.eq("userId", currentUser._id).eq("key", key),
+      )
+      .unique();
+
+    if (existingSetting) {
+      await ctx.db.patch(existingSetting._id, { value: args.isVisible });
+      return existingSetting._id;
+    }
+
+    return await ctx.db.insert("settings", {
+      userId: currentUser._id,
+      key,
+      value: args.isVisible,
     });
   },
 });

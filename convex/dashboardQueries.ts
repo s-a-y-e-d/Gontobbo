@@ -7,6 +7,11 @@ import {
   type CurrentUser,
 } from "./auth";
 import {
+  DASHBOARD_COMPONENT_KEYS,
+  getDashboardComponentSettingKey,
+  resolveDashboardComponentVisibility,
+} from "./dashboardComponents";
+import {
   getDashboardCompletionDayStats,
   getDashboardStudyItemChapterStats,
   getDashboardStudyItemStatsMigrationStatus,
@@ -34,11 +39,39 @@ type DashboardTodoItem = {
   isScheduled: boolean;
 };
 
+type TodoCompletionPeriod = "day" | "week" | "month";
+
 function getDhakaDayBucket(timestamp: number) {
   const dhakaOffset = 6 * 60 * 60 * 1000;
   const dhakaTime = new Date(timestamp + dhakaOffset);
   dhakaTime.setUTCHours(0, 0, 0, 0);
   return dhakaTime.getTime() - dhakaOffset;
+}
+
+function getDhakaMonthStart(dayBucket: number) {
+  const dhakaOffset = 6 * 60 * 60 * 1000;
+  const dhakaDate = new Date(dayBucket + dhakaOffset);
+  return (
+    Date.UTC(dhakaDate.getUTCFullYear(), dhakaDate.getUTCMonth(), 1) -
+    dhakaOffset
+  );
+}
+
+function getTodoCompletionRanges(today: number) {
+  const dhakaOffset = 6 * 60 * 60 * 1000;
+  const dhakaDate = new Date(today + dhakaOffset);
+  const daysSinceMonday = (dhakaDate.getUTCDay() + 6) % 7;
+  const weekStart = today - daysSinceMonday * DAY_MS;
+  const monthStart = getDhakaMonthStart(today);
+  const nextMonthStart =
+    Date.UTC(dhakaDate.getUTCFullYear(), dhakaDate.getUTCMonth() + 1, 1) -
+    dhakaOffset;
+
+  return {
+    day: { startDate: today, endDate: today },
+    week: { startDate: weekStart, endDate: weekStart + 6 * DAY_MS },
+    month: { startDate: monthStart, endDate: nextMonthStart - DAY_MS },
+  } satisfies Record<TodoCompletionPeriod, { startDate: number; endDate: number }>;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -145,22 +178,39 @@ async function getDashboardStudyItemsByIds(
   return studyItems;
 }
 
-async function getDashboardSettings(ctx: QueryCtx, currentUser: CurrentUser) {
-  const ownedSettings = await ctx.db
-    .query("settings")
-    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
-    .collect();
+async function getDashboardSettingsByKeys(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  keys: string[],
+) {
+  const ownedSettings = await Promise.all(
+    keys.map((key) =>
+      ctx.db
+        .query("settings")
+        .withIndex("by_userId_and_key", (q) =>
+          q.eq("userId", currentUser._id).eq("key", key),
+        )
+        .unique(),
+    ),
+  );
 
   if (!isLegacyWorkspaceOwner(currentUser)) {
-    return ownedSettings;
+    return ownedSettings.filter((setting) => setting !== null);
   }
 
-  const legacySettings = await ctx.db
-    .query("settings")
-    .withIndex("by_userId", (q) => q.eq("userId", undefined))
-    .collect();
+  const legacySettings = await Promise.all(
+    keys.map(async (key) => {
+      const settings = await ctx.db
+        .query("settings")
+        .withIndex("by_key", (q) => q.eq("key", key))
+        .collect();
+      return settings.find((setting) => setting.userId === undefined) ?? null;
+    }),
+  );
 
-  return [...ownedSettings, ...legacySettings];
+  return [...ownedSettings, ...legacySettings].filter(
+    (setting) => setting !== null,
+  );
 }
 
 async function getDashboardTodoTasks(
@@ -187,6 +237,180 @@ async function getDashboardTodoTasks(
     .collect();
 
   return [...ownedTodoTasks, ...legacyTodoTasks];
+}
+
+async function getDashboardTodoTasksForRange(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  startDate: number,
+  endDate: number,
+) {
+  const ownedTodoTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date", (q) =>
+      q
+        .eq("userId", currentUser._id)
+        .gte("date", startDate)
+        .lte("date", endDate),
+    )
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTodoTasks;
+  }
+
+  const legacyTodoTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date", (q) =>
+      q
+        .eq("userId", undefined)
+        .gte("date", startDate)
+        .lte("date", endDate),
+    )
+    .collect();
+
+  return [...ownedTodoTasks, ...legacyTodoTasks];
+}
+
+async function getDashboardTodoCompletion(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  today: number,
+) {
+  const ranges = getTodoCompletionRanges(today);
+  const taskGroups = await Promise.all([
+    getDashboardTodoTasksForRange(
+      ctx,
+      currentUser,
+      ranges.week.startDate,
+      ranges.week.endDate,
+    ),
+    getDashboardTodoTasksForRange(
+      ctx,
+      currentUser,
+      ranges.month.startDate,
+      ranges.month.endDate,
+    ),
+  ]);
+  const todoTaskById = new Map<Id<"todoTasks">, Doc<"todoTasks">>();
+  for (const taskGroup of taskGroups) {
+    for (const task of taskGroup) {
+      todoTaskById.set(task._id, task);
+    }
+  }
+  const todoTasks = Array.from(todoTaskById.values());
+  const studyItemIds = Array.from(
+    new Set(
+      todoTasks
+        .map((task) => task.studyItemId)
+        .filter((studyItemId): studyItemId is Id<"studyItems"> =>
+          studyItemId !== undefined,
+        ),
+    ),
+  );
+  const conceptIds = Array.from(
+    new Set(
+      todoTasks
+        .map((task) => task.conceptId)
+        .filter((conceptId): conceptId is Id<"concepts"> =>
+          conceptId !== undefined,
+        ),
+    ),
+  );
+  const [studyItems, concepts] = await Promise.all([
+    Promise.all(studyItemIds.map((studyItemId) => ctx.db.get(studyItemId))),
+    Promise.all(conceptIds.map((conceptId) => ctx.db.get(conceptId))),
+  ]);
+  const studyItemById = new Map(
+    studyItems
+      .filter((item): item is Doc<"studyItems"> => item !== null)
+      .filter(
+        (item) =>
+          item.userId === currentUser._id ||
+          (item.userId === undefined && isLegacyWorkspaceOwner(currentUser)),
+      )
+      .map((item) => [item._id, item]),
+  );
+  const conceptById = new Map(
+    concepts
+      .filter((concept): concept is Doc<"concepts"> => concept !== null)
+      .filter(
+        (concept) =>
+          concept.userId === currentUser._id ||
+          (concept.userId === undefined && isLegacyWorkspaceOwner(currentUser)),
+      )
+      .map((concept) => [concept._id, concept]),
+  );
+
+  const getTaskCompletion = (task: (typeof todoTasks)[number]) => {
+    const taskKind = task.kind ?? "study_item";
+    if (taskKind === "custom") {
+      return task.isCompleted ?? false;
+    }
+
+    if (taskKind === "concept_review") {
+      if (!task.conceptId) {
+        return null;
+      }
+      const concept = conceptById.get(task.conceptId);
+      if (!concept) {
+        return null;
+      }
+      return (
+        concept.lastReviewedAt !== undefined &&
+        getDhakaDayBucket(concept.lastReviewedAt) === task.date
+      );
+    }
+
+    if (!task.studyItemId) {
+      return null;
+    }
+    const studyItem = studyItemById.get(task.studyItemId);
+    return studyItem?.isCompleted ?? null;
+  };
+
+  return Object.fromEntries(
+    (Object.entries(ranges) as Array<
+      [TodoCompletionPeriod, { startDate: number; endDate: number }]
+    >).map(([period, range]) => {
+      let totalCount = 0;
+      let completedCount = 0;
+
+      for (const task of todoTasks) {
+        if (task.date < range.startDate || task.date > range.endDate) {
+          continue;
+        }
+        const isCompleted = getTaskCompletion(task);
+        if (isCompleted === null) {
+          continue;
+        }
+        totalCount += 1;
+        if (isCompleted) {
+          completedCount += 1;
+        }
+      }
+
+      return [
+        period,
+        {
+          startDate: range.startDate,
+          endDate: range.endDate,
+          totalCount,
+          completedCount,
+          progressPercentage: getRoundedPercentage(completedCount, totalCount),
+        },
+      ];
+    }),
+  ) as Record<
+    TodoCompletionPeriod,
+    {
+      startDate: number;
+      endDate: number;
+      totalCount: number;
+      completedCount: number;
+      progressPercentage: number;
+    }
+  >;
 }
 
 async function getDashboardStudyLogs(
@@ -229,22 +453,54 @@ export const getDashboardPageData = query({
     const today = args.today;
     const recentStartDate = today - (STUDY_VOLUME_DAYS - 1) * DAY_MS;
 
+    const settings = await getDashboardSettingsByKeys(ctx, currentUser, [
+      "termStartDate",
+      "nextTermExamDate",
+      ...DASHBOARD_COMPONENT_KEYS.map((key) =>
+        getDashboardComponentSettingKey(key),
+      ),
+    ]);
+    const componentVisibility =
+      resolveDashboardComponentVisibility(settings);
+    const needsTodo = componentVisibility.todayTodo;
+    const needsTodoCompletion = componentVisibility.todoCompletion;
+    const needsWorkload =
+      componentVisibility.syllabusCompletion ||
+      componentVisibility.nextTermTime ||
+      componentVisibility.progressionRate ||
+      componentVisibility.subjectProgress;
+    const needsStudyLogs =
+      componentVisibility.studyVolume || componentVisibility.effortWeightage;
+    const needsSubjects =
+      needsTodo || needsWorkload || componentVisibility.effortWeightage;
+    const needsChapters = needsTodo || needsWorkload;
+
     const [
       subjects,
       chapters,
       todayTodoTasks,
+      todoCompletion,
       recentStudyLogs,
-      settings,
       summaryStats,
       summaryMigrationStatus,
     ] = await Promise.all([
-      getDashboardSubjects(ctx, currentUser),
-      getDashboardChapters(ctx, currentUser),
-      getDashboardTodoTasks(ctx, currentUser, today),
-      getDashboardStudyLogs(ctx, currentUser, recentStartDate, today),
-      getDashboardSettings(ctx, currentUser),
-      getDashboardStudyItemChapterStats(ctx, currentUser),
-      getDashboardStudyItemStatsMigrationStatus(ctx, currentUser._id),
+      needsSubjects ? getDashboardSubjects(ctx, currentUser) : Promise.resolve([]),
+      needsChapters ? getDashboardChapters(ctx, currentUser) : Promise.resolve([]),
+      needsTodo
+        ? getDashboardTodoTasks(ctx, currentUser, today)
+        : Promise.resolve([]),
+      needsTodoCompletion
+        ? getDashboardTodoCompletion(ctx, currentUser, today)
+        : Promise.resolve(null),
+      needsStudyLogs
+        ? getDashboardStudyLogs(ctx, currentUser, recentStartDate, today)
+        : Promise.resolve([]),
+      needsWorkload
+        ? getDashboardStudyItemChapterStats(ctx, currentUser)
+        : Promise.resolve([]),
+      needsWorkload
+        ? getDashboardStudyItemStatsMigrationStatus(ctx, currentUser._id)
+        : Promise.resolve(null),
     ]);
 
     const settingByKey = new Map(settings.map((setting) => [setting.key, setting]));
@@ -267,7 +523,7 @@ export const getDashboardPageData = query({
       termStartDate !== undefined && nextTermExamDate !== undefined;
 
     const shouldUseSummaryStats = summaryMigrationStatus?.status === "completed";
-    const fallbackStudyItems = shouldUseSummaryStats
+    const fallbackStudyItems = !needsWorkload || shouldUseSummaryStats
       ? null
       : await getDashboardStudyItems(ctx, currentUser);
     const summaryStatByChapterId = new Map(
@@ -319,55 +575,61 @@ export const getDashboardPageData = query({
       nextTermTotalItems,
     );
 
-    const subjectProgress = subjects
-      .map((subject) => {
-        const subjectStats = nextTermStats.filter(
-          (stat) => stat.subjectId === subject._id,
-        );
-        const totalItems = subjectStats.reduce(
-          (sum, stat) => sum + stat.totalItems,
-          0,
-        );
-        const completedItems = subjectStats.reduce(
-          (sum, stat) => sum + stat.completedItems,
-          0,
-        );
+    const subjectProgress = componentVisibility.subjectProgress
+      ? subjects
+          .map((subject) => {
+            const subjectStats = nextTermStats.filter(
+              (stat) => stat.subjectId === subject._id,
+            );
+            const totalItems = subjectStats.reduce(
+              (sum, stat) => sum + stat.totalItems,
+              0,
+            );
+            const completedItems = subjectStats.reduce(
+              (sum, stat) => sum + stat.completedItems,
+              0,
+            );
 
-        return {
-          subjectId: subject._id,
-          name: subject.name,
-          color: subject.color ?? "gray",
-          icon: subject.icon ?? "menu_book",
-          totalItems,
-          completedItems,
-          progressPercentage: getRoundedPercentage(
-            completedItems,
-            totalItems,
-          ),
-        };
-      })
-      .filter((subject) => subject.totalItems > 0)
-      .sort((left, right) => {
-        if (left.progressPercentage !== right.progressPercentage) {
-          return right.progressPercentage - left.progressPercentage;
-        }
+            return {
+              subjectId: subject._id,
+              name: subject.name,
+              color: subject.color ?? "gray",
+              icon: subject.icon ?? "menu_book",
+              totalItems,
+              completedItems,
+              progressPercentage: getRoundedPercentage(
+                completedItems,
+                totalItems,
+              ),
+            };
+          })
+          .filter((subject) => subject.totalItems > 0)
+          .sort((left, right) => {
+            if (left.progressPercentage !== right.progressPercentage) {
+              return right.progressPercentage - left.progressPercentage;
+            }
 
-        const leftRemaining = left.totalItems - left.completedItems;
-        const rightRemaining = right.totalItems - right.completedItems;
-        if (leftRemaining !== rightRemaining) {
-          return leftRemaining - rightRemaining;
-        }
+            const leftRemaining = left.totalItems - left.completedItems;
+            const rightRemaining = right.totalItems - right.completedItems;
+            if (leftRemaining !== rightRemaining) {
+              return leftRemaining - rightRemaining;
+            }
 
-        return left.name.localeCompare(right.name);
-      });
+            return left.name.localeCompare(right.name);
+          })
+      : null;
 
-    const todoStudyItems = await getDashboardStudyItemsByIds(
-      ctx,
-      currentUser,
-      todayTodoTasks
-        .map((todoTask) => todoTask.studyItemId)
-        .filter((studyItemId): studyItemId is Id<"studyItems"> => Boolean(studyItemId)),
-    );
+    const todoStudyItems = needsTodo
+      ? await getDashboardStudyItemsByIds(
+          ctx,
+          currentUser,
+          todayTodoTasks
+            .map((todoTask) => todoTask.studyItemId)
+            .filter((studyItemId): studyItemId is Id<"studyItems"> =>
+              Boolean(studyItemId),
+            ),
+        )
+      : [];
     const studyItemById = new Map(
       todoStudyItems.map((studyItem) => [studyItem._id, studyItem]),
     );
@@ -423,7 +685,9 @@ export const getDashboardPageData = query({
     });
 
     const urgency =
-      termStartDate === undefined || nextTermExamDate === undefined
+      !componentVisibility.nextTermTime ||
+      termStartDate === undefined ||
+      nextTermExamDate === undefined
         ? null
         : (() => {
             const totalWindow = Math.max(1, nextTermExamDate - termStartDate);
@@ -458,7 +722,9 @@ export const getDashboardPageData = query({
           })();
 
     const pace =
-      termStartDate === undefined || nextTermExamDate === undefined
+      !componentVisibility.progressionRate ||
+      termStartDate === undefined ||
+      nextTermExamDate === undefined
         ? null
         : (() => {
             const elapsedDays = Math.max(
@@ -501,7 +767,9 @@ export const getDashboardPageData = query({
           })();
 
     const progression =
-      termStartDate === undefined || nextTermExamDate === undefined
+      !componentVisibility.progressionRate ||
+      termStartDate === undefined ||
+      nextTermExamDate === undefined
         ? null
         : await (async () => {
             const chartEndDate = clamp(
@@ -656,56 +924,69 @@ export const getDashboardPageData = query({
             .sort((left, right) => right.weightShare - left.weightShare);
 
     return {
-      today: {
-        date: today,
-        totalCount: todoItems.length,
-        completedCount: todoItems.filter((item) => item.isCompleted).length,
-        tasks: todoItems.slice(0, DASHBOARD_TODO_LIMIT).map((item) => ({
-          id: item.id,
-          kind: item.kind,
-          studyItemId: item.studyItemId,
-          title: item.title,
-          subjectName: item.subjectName,
-          chapterName: item.chapterName,
-          subjectColor: item.subjectColor,
-          durationMinutes: item.durationMinutes,
-          startTimeMinutes: item.startTimeMinutes,
-          isCompleted: item.isCompleted,
-        })),
-      },
+      componentVisibility,
+      today: componentVisibility.todayTodo
+        ? {
+            date: today,
+            totalCount: todoItems.length,
+            completedCount: todoItems.filter((item) => item.isCompleted).length,
+            tasks: todoItems.slice(0, DASHBOARD_TODO_LIMIT).map((item) => ({
+              id: item.id,
+              kind: item.kind,
+              studyItemId: item.studyItemId,
+              title: item.title,
+              subjectName: item.subjectName,
+              chapterName: item.chapterName,
+              subjectColor: item.subjectColor,
+              durationMinutes: item.durationMinutes,
+              startTimeMinutes: item.startTimeMinutes,
+              isCompleted: item.isCompleted,
+            })),
+          }
+        : null,
+      todoCompletion,
       termDates: {
         termStartDate,
         nextTermExamDate,
         isConfigured: hasTermDates,
       },
-      completion: {
-        nextTerm: {
-          completedItems: nextTermCompletedItems,
-          totalItems: nextTermTotalItems,
-          progressPercentage: nextTermProgressPercentage,
-        },
-        allSyllabus: {
-          completedItems: allCompletedItems,
-          totalItems: allTotalItems,
-          progressPercentage: getRoundedPercentage(
-            allCompletedItems,
-            allTotalItems,
-          ),
-        },
-      },
+      completion:
+        componentVisibility.syllabusCompletion ||
+        componentVisibility.nextTermTime ||
+        componentVisibility.progressionRate
+          ? {
+              nextTerm: {
+                completedItems: nextTermCompletedItems,
+                totalItems: nextTermTotalItems,
+                progressPercentage: nextTermProgressPercentage,
+              },
+              allSyllabus: {
+                completedItems: allCompletedItems,
+                totalItems: allTotalItems,
+                progressPercentage: getRoundedPercentage(
+                  allCompletedItems,
+                  allTotalItems,
+                ),
+              },
+            }
+          : null,
       urgency,
       pace,
       progression,
-      studyVolume: {
-        days: studyVolumeDays,
-        totalActivities: totalRecentActivities,
-        activeDays: studyVolumeDays.filter((day) => day.activityCount > 0).length,
-      },
-      effortWeightage: {
-        subjects: effortWeightageSubjects,
-        missingWeightCount: subjects.length - configuredWeightSubjects.length,
-        hasConfiguredWeights: totalConfiguredWeight > 0,
-      },
+      studyVolume: componentVisibility.studyVolume
+        ? {
+            days: studyVolumeDays,
+            totalActivities: totalRecentActivities,
+            activeDays: studyVolumeDays.filter((day) => day.activityCount > 0).length,
+          }
+        : null,
+      effortWeightage: componentVisibility.effortWeightage
+        ? {
+            subjects: effortWeightageSubjects,
+            missingWeightCount: subjects.length - configuredWeightSubjects.length,
+            hasConfiguredWeights: totalConfiguredWeight > 0,
+          }
+        : null,
       subjectProgress,
     };
   },

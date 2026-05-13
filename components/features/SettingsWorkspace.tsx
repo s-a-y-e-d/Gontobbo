@@ -4,6 +4,12 @@ import { useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import {
+  DASHBOARD_COMPONENT_KEYS,
+  DEFAULT_DASHBOARD_COMPONENT_VISIBILITY,
+  type DashboardComponentKey,
+  type DashboardComponentVisibility,
+} from "@/convex/dashboardComponents";
 import { useTheme } from "@/components/ThemeProvider";
 import PwaInstallAction, {
   usePwaInstallPromptContext,
@@ -59,6 +65,7 @@ type SettingsPageData = {
   defaultRevisionMinutes: number;
   termStartDate?: number;
   nextTermExamDate?: number;
+  dashboardComponentVisibility: DashboardComponentVisibility;
 };
 
 type SectionId =
@@ -171,6 +178,44 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
   { value: "system", label: "ডিভাইস অনুযায়ী" },
   { value: "dark", label: "ডার্ক" },
 ];
+
+const dashboardComponentLabels: Record<
+  DashboardComponentKey,
+  { title: string; description: string }
+> = {
+  todayTodo: {
+    title: "আজকের Todo",
+    description: "আজকের কাজের ছোট তালিকা হোমে দেখাবে।",
+  },
+  todoCompletion: {
+    title: "Todo Completion",
+    description: "Day, week, month অনুযায়ী Todo completion donut দেখাবে।",
+  },
+  syllabusCompletion: {
+    title: "Syllabus Completion",
+    description: "Next term আর পুরো সিলেবাসের progress দেখাবে।",
+  },
+  nextTermTime: {
+    title: "Next Term Time",
+    description: "পরীক্ষা পর্যন্ত সময় আর urgency দেখাবে।",
+  },
+  progressionRate: {
+    title: "Progression Rate",
+    description: "Actual pace আর required pace চার্টে দেখাবে।",
+  },
+  studyVolume: {
+    title: "Study Volume",
+    description: "শেষ ৯০ দিনের activity heatmap দেখাবে।",
+  },
+  subjectProgress: {
+    title: "Subject Progress",
+    description: "প্রতি বিষয়ের next-term progress দেখাবে।",
+  },
+  effortWeightage: {
+    title: "Effort vs Weightage",
+    description: "পড়ার সময় আর exam weightage তুলনা করবে।",
+  },
+};
 
 function SettingsNav({
   activeSection,
@@ -462,6 +507,9 @@ export default function SettingsWorkspace() {
     refresh: () => Promise<unknown>;
   };
   const setDashboardTermDates = useMutation(api.mutations.setDashboardTermDates);
+  const setDashboardComponentVisibility = useMutation(
+    api.mutations.setDashboardComponentVisibility,
+  );
   const setPlannerSubjectPriority = useMutation(
     api.mutations.setPlannerSubjectPriority,
   );
@@ -533,6 +581,8 @@ export default function SettingsWorkspace() {
     termStartDateDraft ?? formatDateInputValue(data.termStartDate);
   const nextTermExamDate =
     nextTermExamDateDraft ?? formatDateInputValue(data.nextTermExamDate);
+  const dashboardComponentVisibility =
+    data.dashboardComponentVisibility ?? DEFAULT_DASHBOARD_COMPONENT_VISIBILITY;
 
   const runMutation = async (key: string, action: () => Promise<unknown>) => {
     setSavingKey(key);
@@ -649,6 +699,17 @@ export default function SettingsWorkspace() {
     );
   };
 
+  const handleDashboardComponentVisibility = (
+        componentKey: DashboardComponentKey,
+  ) => {
+    void runMutation(`dashboard-component-${componentKey}`, () =>
+      setDashboardComponentVisibility({
+        componentKey,
+        isVisible: !dashboardComponentVisibility[componentKey],
+      }),
+    );
+  };
+
   const renderSection = () => {
     if (activeSection === "dashboard") {
       return (
@@ -657,10 +718,20 @@ export default function SettingsWorkspace() {
           nextTermExamDate={nextTermExamDate}
           savedTermStartDate={data.termStartDate}
           savedNextTermExamDate={data.nextTermExamDate}
+          componentVisibility={dashboardComponentVisibility}
           saving={savingKey === "dashboard-term-dates"}
+          savingComponentKey={
+            savingKey?.startsWith("dashboard-component-")
+              ? (savingKey.replace(
+                  "dashboard-component-",
+                  "",
+                ) as DashboardComponentKey)
+              : null
+          }
           onTermStartDateChange={setTermStartDateDraft}
           onNextTermExamDateChange={setNextTermExamDateDraft}
           onSave={handleSaveDashboardTermDates}
+          onToggleComponent={handleDashboardComponentVisibility}
         />
       );
     }
@@ -738,10 +809,20 @@ export default function SettingsWorkspace() {
         nextTermExamDate={nextTermExamDate}
         savedTermStartDate={data.termStartDate}
         savedNextTermExamDate={data.nextTermExamDate}
+        componentVisibility={dashboardComponentVisibility}
         saving={savingKey === "dashboard-term-dates"}
+        savingComponentKey={
+          savingKey?.startsWith("dashboard-component-")
+            ? (savingKey.replace(
+                "dashboard-component-",
+                "",
+              ) as DashboardComponentKey)
+            : null
+        }
         onTermStartDateChange={setTermStartDateDraft}
         onNextTermExamDateChange={setNextTermExamDateDraft}
         onSave={handleSaveDashboardTermDates}
+        onToggleComponent={handleDashboardComponentVisibility}
         sectionOptions={{ collapsible: true, defaultOpen: true }}
       />
       <PlannerSection
@@ -812,20 +893,26 @@ function DashboardSettingsSection({
   nextTermExamDate,
   savedTermStartDate,
   savedNextTermExamDate,
+  componentVisibility,
   saving,
+  savingComponentKey,
   onTermStartDateChange,
   onNextTermExamDateChange,
   onSave,
+  onToggleComponent,
   sectionOptions,
 }: {
   termStartDate: string;
   nextTermExamDate: string;
   savedTermStartDate?: number;
   savedNextTermExamDate?: number;
+  componentVisibility: DashboardComponentVisibility;
   saving: boolean;
+  savingComponentKey: DashboardComponentKey | null;
   onTermStartDateChange: (value: string) => void;
   onNextTermExamDateChange: (value: string) => void;
   onSave: () => void;
+  onToggleComponent: (componentKey: DashboardComponentKey) => void;
   sectionOptions?: SettingsSectionOptions;
 }) {
   const parsedTermStartDate = parseDateInputValue(termStartDate);
@@ -883,6 +970,42 @@ function DashboardSettingsSection({
         >
           {saving ? "Saving" : "Save"}
         </button>
+      </div>
+      <div className="px-4 py-4 sm:px-5">
+        <div className="mb-3">
+          <p className="text-sm font-semibold text-on-surface">
+            ড্যাশবোর্ডে যা দেখাবেন
+          </p>
+          <p className="mt-1 text-sm leading-6 text-gray-500">
+            আপনার দরকারি analytics আর components অন/অফ করুন।
+          </p>
+        </div>
+        <div className="divide-y divide-border-subtle rounded-2xl border border-border-subtle">
+          {DASHBOARD_COMPONENT_KEYS.map((componentKey) => {
+            const label = dashboardComponentLabels[componentKey];
+            return (
+              <div
+                key={componentKey}
+                className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-on-surface">
+                    {label.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-gray-500">
+                    {label.description}
+                  </p>
+                </div>
+                <Switch
+                  checked={componentVisibility[componentKey]}
+                  disabled={savingComponentKey === componentKey}
+                  label={`${label.title} dashboard visibility`}
+                  onChange={() => onToggleComponent(componentKey)}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </SettingsSection>
   );

@@ -622,16 +622,20 @@ describe("todo", () => {
       title: "Pack bag",
       durationMinutes: 15,
     });
+    await t.mutation(api.mutations.setDashboardComponentVisibility, {
+      componentKey: "studyVolume",
+      isVisible: true,
+    });
 
     const dashboard = await t.query(api.dashboardQueries.getDashboardPageData, {
       today: date,
     });
 
-    expect(dashboard.today.totalCount).toBe(0);
-    expect(dashboard.today.completedCount).toBe(0);
-    expect(dashboard.today.tasks).toEqual([]);
-    expect(dashboard.completion.allSyllabus.completedItems).toBe(0);
-    expect(dashboard.studyVolume.totalActivities).toBe(0);
+    expect(dashboard.today!.totalCount).toBe(0);
+    expect(dashboard.today!.completedCount).toBe(0);
+    expect(dashboard.today!.tasks).toEqual([]);
+    expect(dashboard.completion!.allSyllabus.completedItems).toBe(0);
+    expect(dashboard.studyVolume!.totalActivities).toBe(0);
   });
 
   test("dashboard still includes study item todos", async () => {
@@ -648,8 +652,8 @@ describe("todo", () => {
       today: date,
     });
 
-    expect(dashboard.today.totalCount).toBe(1);
-    expect(dashboard.today.tasks).toEqual([
+    expect(dashboard.today!.totalCount).toBe(1);
+    expect(dashboard.today!.tasks).toEqual([
       expect.objectContaining({
         kind: "study_item",
         studyItemId,

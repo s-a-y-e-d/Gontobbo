@@ -5,8 +5,11 @@ import Link from "next/link";
 import { useMutation } from "convex/react";
 import {
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -14,6 +17,7 @@ import {
 } from "recharts";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { DEFAULT_DASHBOARD_COMPONENT_VISIBILITY } from "@/convex/dashboardComponents";
 import { DashboardSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
 import {
@@ -48,12 +52,44 @@ type ProgressionPoint = {
   requiredPercentage: number;
 };
 
+type TodoCompletionPeriod = "day" | "week" | "month";
+
+type TodoCompletionStats = {
+  startDate: number;
+  endDate: number;
+  totalCount: number;
+  completedCount: number;
+  progressPercentage: number;
+};
+
+const todoCompletionPeriodOptions: Array<{
+  value: TodoCompletionPeriod;
+  label: string;
+}> = [
+  { value: "day", label: "দিন" },
+  { value: "week", label: "সপ্তাহ" },
+  { value: "month", label: "মাস" },
+];
+
 function formatShortDate(date: number) {
   return new Intl.DateTimeFormat("bn-BD", {
     day: "numeric",
     month: "short",
     timeZone: "Asia/Dhaka",
   }).format(date);
+}
+
+function getTodoCompletionRangeLabel(
+  period: TodoCompletionPeriod,
+  stats: TodoCompletionStats,
+) {
+  if (period === "day") {
+    return formatShortDate(stats.startDate);
+  }
+
+  return `${formatShortDate(stats.startDate)} - ${formatShortDate(
+    stats.endDate,
+  )}`;
 }
 
 function formatRateLabel(value: number) {
@@ -95,6 +131,8 @@ function getDhakaDayBucket(timestamp: number) {
 
 export default function DashboardWorkspace() {
   const [today] = useState(() => getDhakaDayBucket(Date.now()));
+  const [todoCompletionPeriod, setTodoCompletionPeriod] =
+    useState<TodoCompletionPeriod>("day");
   const startStatsBackfill = useMutation(
     api.dashboardStudyItemStats.startDashboardStudyItemStatsBackfill,
   );
@@ -107,6 +145,16 @@ export default function DashboardWorkspace() {
     if (dashboard === undefined) {
       return;
     }
+    const visible =
+      dashboard.componentVisibility ?? DEFAULT_DASHBOARD_COMPONENT_VISIBILITY;
+    const shouldBackfillStats =
+      visible.syllabusCompletion ||
+      visible.nextTermTime ||
+      visible.progressionRate ||
+      visible.subjectProgress;
+    if (!shouldBackfillStats) {
+      return;
+    }
 
     void startStatsBackfill({}).catch(() => undefined);
   }, [dashboard, startStatsBackfill]);
@@ -115,38 +163,213 @@ export default function DashboardWorkspace() {
     return <DashboardSkeleton />;
   }
 
+  const visible =
+    dashboard.componentVisibility ?? DEFAULT_DASHBOARD_COMPONENT_VISIBILITY;
+  const hasVisibleComponent = Object.values(visible).some(Boolean);
+  const nextTermTotalItems = dashboard.completion?.nextTerm.totalItems ?? 0;
+  const hasLeftColumn =
+    (visible.todoCompletion && dashboard.todoCompletion !== null) ||
+    (visible.syllabusCompletion && dashboard.completion !== null) ||
+    visible.progressionRate ||
+    (visible.studyVolume && dashboard.studyVolume !== null);
+  const hasRightColumn =
+    visible.nextTermTime ||
+    (visible.subjectProgress && dashboard.subjectProgress !== null) ||
+    (visible.effortWeightage && dashboard.effortWeightage !== null);
+
+  if (!hasVisibleComponent) {
+    return <EmptyDashboardState />;
+  }
+
   return (
     <div className="space-y-5">
-      <TodoStrip
-        totalCount={dashboard.today.totalCount}
-        completedCount={dashboard.today.completedCount}
-        tasks={dashboard.today.tasks}
-        onCompleted={refresh}
-      />
+      {visible.todayTodo && dashboard.today ? (
+        <TodoStrip
+          totalCount={dashboard.today.totalCount}
+          completedCount={dashboard.today.completedCount}
+          tasks={dashboard.today.tasks}
+          onCompleted={refresh}
+        />
+      ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
-        <div className="space-y-5">
-          <SyllabusCompletionCard completion={dashboard.completion} />
-          <ProgressionRateCard
-            pace={dashboard.pace}
-            progression={dashboard.progression}
-            termDates={dashboard.termDates}
-            nextTermTotalItems={dashboard.completion.nextTerm.totalItems}
-          />
-          <StudyVolumeCard studyVolume={dashboard.studyVolume} />
+      {hasLeftColumn || hasRightColumn ? (
+        <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+          {hasLeftColumn ? (
+            <div className="space-y-5">
+              {visible.todoCompletion && dashboard.todoCompletion ? (
+                <TodoCompletionCard
+                  todoCompletion={dashboard.todoCompletion}
+                  selectedPeriod={todoCompletionPeriod}
+                  onSelectedPeriodChange={setTodoCompletionPeriod}
+                />
+              ) : null}
+              {visible.syllabusCompletion && dashboard.completion ? (
+                <SyllabusCompletionCard completion={dashboard.completion} />
+              ) : null}
+              {visible.progressionRate ? (
+                <ProgressionRateCard
+                  pace={dashboard.pace}
+                  progression={dashboard.progression}
+                  termDates={dashboard.termDates}
+                  nextTermTotalItems={nextTermTotalItems}
+                />
+              ) : null}
+              {visible.studyVolume && dashboard.studyVolume ? (
+                <StudyVolumeCard studyVolume={dashboard.studyVolume} />
+              ) : null}
+            </div>
+          ) : null}
+
+          {hasRightColumn ? (
+            <div className="space-y-5">
+              {visible.nextTermTime ? (
+                <NextTermTimeCard
+                  urgency={dashboard.urgency}
+                  termDates={dashboard.termDates}
+                  nextTermTotalItems={nextTermTotalItems}
+                />
+              ) : null}
+              {visible.subjectProgress && dashboard.subjectProgress ? (
+                <SubjectProgressCard subjectProgress={dashboard.subjectProgress} />
+              ) : null}
+              {visible.effortWeightage && dashboard.effortWeightage ? (
+                <EffortWeightageCard effortWeightage={dashboard.effortWeightage} />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TodoCompletionCard({
+  todoCompletion,
+  selectedPeriod,
+  onSelectedPeriodChange,
+}: {
+  todoCompletion: Record<TodoCompletionPeriod, TodoCompletionStats>;
+  selectedPeriod: TodoCompletionPeriod;
+  onSelectedPeriodChange: (period: TodoCompletionPeriod) => void;
+}) {
+  const selectedStats = todoCompletion[selectedPeriod];
+  const remainingCount = Math.max(
+    0,
+    selectedStats.totalCount - selectedStats.completedCount,
+  );
+  const chartData =
+    selectedStats.totalCount === 0
+      ? [{ name: "Empty", value: 1, color: "var(--color-border-subtle)" }]
+      : [
+          {
+            name: "Complete",
+            value: selectedStats.completedCount,
+            color: "#18E299",
+          },
+          {
+            name: "Remaining",
+            value: remainingCount,
+            color: "var(--color-surface-container)",
+          },
+        ];
+
+  return (
+    <DashboardCard
+      eyebrow="Todo"
+      title="Todo Completion"
+      action={
+        <div className="flex rounded-full border border-border-subtle bg-surface-container p-1">
+          {todoCompletionPeriodOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onSelectedPeriodChange(option.value)}
+              className={`h-8 rounded-full px-3 text-xs font-semibold transition-colors ${
+                selectedPeriod === option.value
+                  ? "bg-white text-on-surface shadow-[0_4px_14px_rgba(0,0,0,0.08)]"
+                  : "text-gray-500 hover:text-on-surface"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div className="grid gap-5 md:grid-cols-[180px_1fr] md:items-center">
+        <div className="relative h-44 min-h-44 w-full">
+          <ResponsiveContainer width="100%" height={176} minWidth={0}>
+            <PieChart>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                innerRadius={58}
+                outerRadius={78}
+                paddingAngle={selectedStats.totalCount === 0 ? 0 : 3}
+                startAngle={90}
+                endAngle={-270}
+                stroke="none"
+                isAnimationActive={false}
+              >
+                {chartData.map((entry) => (
+                  <Cell key={entry.name} fill={entry.color} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+            <p className="font-section-heading text-3xl text-on-surface">
+              {numberFormatter.format(selectedStats.progressPercentage)}%
+            </p>
+            <p className="mt-1 text-sm text-gray-500">complete</p>
+          </div>
         </div>
 
-        <div className="space-y-5">
-          <NextTermTimeCard
-            urgency={dashboard.urgency}
-            termDates={dashboard.termDates}
-            nextTermTotalItems={dashboard.completion.nextTerm.totalItems}
+        <div className="space-y-3">
+          <MetricPill
+            label="Done"
+            value={`${numberFormatter.format(
+              selectedStats.completedCount,
+            )}/${numberFormatter.format(selectedStats.totalCount)}`}
+            tone="bg-brand-green-light text-brand-green-deep"
           />
-          <SubjectProgressCard subjectProgress={dashboard.subjectProgress} />
-          <EffortWeightageCard effortWeightage={dashboard.effortWeightage} />
+          <MetricPill
+            label="Range"
+            value={getTodoCompletionRangeLabel(selectedPeriod, selectedStats)}
+            tone="bg-surface-container text-on-surface"
+          />
+          {selectedStats.totalCount === 0 ? (
+            <p className="rounded-[20px] bg-surface-container px-4 py-3 text-sm text-gray-500">
+              এই সময়ের জন্য কোনো Todo task নেই।
+            </p>
+          ) : null}
         </div>
       </div>
-    </div>
+    </DashboardCard>
+  );
+}
+
+function EmptyDashboardState() {
+  return (
+    <section className="rounded-[30px] border border-dashed border-border-medium bg-white px-5 py-10 text-center shadow-[0_14px_40px_rgba(0,0,0,0.03)]">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-container text-on-surface">
+        <span className="material-symbols-outlined text-[24px]">
+          dashboard_customize
+        </span>
+      </div>
+      <h1 className="mt-4 font-card-title text-2xl text-on-surface">
+        ড্যাশবোর্ড খালি আছে
+      </h1>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
+        Settings থেকে যেসব analytics দরকার সেগুলো চালু করলে এখানে দেখা যাবে।
+      </p>
+      <Link
+        href="/settings"
+        className="mt-5 inline-flex h-10 items-center justify-center rounded-full bg-on-surface px-5 text-sm font-semibold text-pure-white transition-colors hover:bg-brand-green hover:text-on-surface"
+      >
+        Settings
+      </Link>
+    </section>
   );
 }
 
