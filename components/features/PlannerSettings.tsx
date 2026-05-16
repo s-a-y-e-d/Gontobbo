@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { PlannerSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 
 export default function PlannerSettings() {
-  const data = useQuery(api.plannerQueries.getPlannerSettingsData);
+  const { data, refresh } = useSnapshotQuery(
+    api.plannerQueries.getPlannerSettingsData,
+    {},
+  );
   const setPlannerSubjectPriority = useMutation(
     api.mutations.setPlannerSubjectPriority,
   );
@@ -34,6 +38,7 @@ export default function PlannerSettings() {
         subjectId: subjectId as Id<"subjects">,
         priority: currentPriority === "important" ? "normal" : "important",
       });
+      await refresh();
     } catch (error) {
       console.error("Failed to update planner subject priority:", error);
       setErrorMessage("গুরুত্বপূর্ণ বিষয় সেট করা যায়নি।");
@@ -58,6 +63,7 @@ export default function PlannerSettings() {
           chapterId: chapter._id as Id<"chapters">,
         });
       }
+      await refresh();
     } catch (error) {
       console.error("Failed to toggle chapter weekly target:", error);
       setErrorMessage("চ্যাপ্টার টার্গেট আপডেট করা যায়নি।");
@@ -83,6 +89,7 @@ export default function PlannerSettings() {
           conceptId: concept._id as Id<"concepts">,
         });
       }
+      await refresh();
     } catch (error) {
       console.error("Failed to toggle concept weekly target:", error);
       setErrorMessage("কনসেপ্ট টার্গেট আপডেট করা যায়নি।");
@@ -191,21 +198,24 @@ export default function PlannerSettings() {
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                         <select
                           value={chapter.coachingStatus}
-                          onChange={(event) =>
-                            void setCoachingChapterProgress({
-                              chapterId: chapter._id as Id<"chapters">,
-                              status: event.target.value as
-                                | "not_started"
-                                | "running"
-                                | "finished",
-                            }).catch((error) => {
+                          onChange={(event) => {
+                            void (async () => {
+                              await setCoachingChapterProgress({
+                                chapterId: chapter._id as Id<"chapters">,
+                                status: event.target.value as
+                                  | "not_started"
+                                  | "running"
+                                  | "finished",
+                              });
+                              await refresh();
+                            })().catch((error) => {
                               console.error(
                                 "Failed to update coaching progress:",
                                 error,
                               );
                               setErrorMessage("কোচিং অগ্রগতি আপডেট করা যায়নি।");
-                            })
-                          }
+                            });
+                          }}
                           className="rounded-full border border-border-medium bg-white px-4 py-2.5 text-sm text-on-surface outline-none transition-all focus:border-brand-green"
                         >
                           <option value="not_started">Not started</option>

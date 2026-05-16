@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useToast } from "@/components/ui/Toast";
 import DateRangeStrip from "./DateRangeStrip";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 import {
   DAY_COUNT,
   DAY_MS,
@@ -41,9 +42,10 @@ export default function PlannerWorkspace() {
   const [isGenerating, setIsGenerating] = useState(false);
   const toast = useToast();
 
-  const plannerData = useQuery(api.plannerQueries.getPlannerPageData, {
-    date: selectedDate,
-  });
+  const { data: plannerData, refresh } = useSnapshotQuery(
+    api.plannerQueries.getPlannerPageData,
+    { date: selectedDate },
+  );
   const generatePlannerSuggestions = useMutation(
     api.mutations.generatePlannerSuggestions,
   );
@@ -84,6 +86,7 @@ export default function PlannerWorkspace() {
         availableMinutes: parsedMinutes,
         comment: draft.comment.trim() || undefined,
       });
+      await refresh();
 
       toast.success(
         result.appendedCount > 0
@@ -103,6 +106,7 @@ export default function PlannerWorkspace() {
       await acceptPlannerSuggestion({
         suggestionId: suggestionId as Id<"plannerSuggestions">,
       });
+      await refresh();
       toast.success("টাস্কটি Todo-তে যোগ হয়েছে।");
     } catch (error) {
       console.error("Failed to accept planner suggestion:", error);
@@ -115,6 +119,7 @@ export default function PlannerWorkspace() {
       await dismissPlannerSuggestion({
         suggestionId: suggestionId as Id<"plannerSuggestions">,
       });
+      await refresh();
       toast.info("সাজেশনটি তালিকা থেকে সরিয়ে দেওয়া হয়েছে।");
     } catch (error) {
       console.error("Failed to dismiss planner suggestion:", error);

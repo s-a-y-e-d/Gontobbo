@@ -305,4 +305,129 @@ describe("planner", () => {
     // Keep chemistry referenced so the fixture stays intentional.
     expect(chemistry.subjectId).toBeTruthy();
   });
+
+  test("settings target completion uses summary stats and targeted fallback", async () => {
+    const t = await createAuthenticatedTestContext("planner-settings-summary");
+
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 20 }],
+    });
+    const chapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+    const conceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Velocity",
+      order: 1,
+    });
+
+    await t.mutation(api.mutations.ensureChapterStudyItems, { subjectId });
+    await t.mutation(api.mutations.ensureConceptStudyItems, { chapterId });
+    await t.mutation(api.mutations.addWeeklyTarget, {
+      kind: "chapter",
+      chapterId,
+    });
+    await t.mutation(api.mutations.addWeeklyTarget, {
+      kind: "concept",
+      chapterId,
+      conceptId,
+    });
+
+    const incomplete = await t.query(api.plannerQueries.getSettingsPageData, {});
+    const incompleteChapter = incomplete.subjects[0]?.chapters[0];
+    expect(incompleteChapter?.isTargetComplete).toBe(false);
+    expect(incompleteChapter?.concepts[0]?.isTargetComplete).toBe(false);
+
+    const studyItems = await t.run(async (ctx) => {
+      return await ctx.db.query("studyItems").collect();
+    });
+    for (const studyItem of studyItems) {
+      await t.mutation(api.mutations.toggleStudyItemCompletion, {
+        studyItemId: studyItem._id,
+      });
+    }
+
+    const completeFromSummaries = await t.query(
+      api.plannerQueries.getSettingsPageData,
+      {},
+    );
+    const summaryChapter = completeFromSummaries.subjects[0]?.chapters[0];
+    expect(summaryChapter?.isTargetComplete).toBe(true);
+    expect(summaryChapter?.concepts[0]?.isTargetComplete).toBe(true);
+
+    await t.run(async (ctx) => {
+      for (const stat of await ctx.db.query("studyItemChapterStats").collect()) {
+        await ctx.db.delete(stat._id);
+      }
+      for (const stat of await ctx.db.query("studyItemConceptStats").collect()) {
+        await ctx.db.delete(stat._id);
+      }
+    });
+
+    const completeFromFallback = await t.query(
+      api.plannerQueries.getSettingsPageData,
+      {},
+    );
+    const fallbackChapter = completeFromFallback.subjects[0]?.chapters[0];
+    expect(fallbackChapter?.isTargetComplete).toBe(true);
+    expect(fallbackChapter?.concepts[0]?.isTargetComplete).toBe(true);
+  });
+
+  test("planner page data is isolated between non-legacy users", async () => {
+    const base = convexTest(schema, modules);
+    const firstIdentity = {
+      subject: "planner-isolation-first",
+      tokenIdentifier: "test|planner-isolation-first",
+      name: "first",
+    };
+    const secondIdentity = {
+      subject: "planner-isolation-second",
+      tokenIdentifier: "test|planner-isolation-second",
+      name: "second",
+    };
+    const first = base.withIdentity(firstIdentity);
+    const second = base.withIdentity(secondIdentity);
+    await first.mutation(api.auth.ensureCurrentUser, {});
+    await second.mutation(api.auth.ensureCurrentUser, {});
+    const date = getDhakaDayBucket(Date.now());
+
+    const firstSubjectId = await first.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [],
+    });
+    await first.mutation(api.mutations.createChapter, {
+      subjectId: firstSubjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+    await first.mutation(api.mutations.ensureChapterStudyItems, {
+      subjectId: firstSubjectId,
+    });
+    await first.mutation(api.mutations.generatePlannerSuggestions, {
+      date,
+      availableMinutes: 30,
+    });
+
+    const firstPlanner = await first.query(api.plannerQueries.getPlannerPageData, {
+      date,
+    });
+    const secondPlanner = await second.query(api.plannerQueries.getPlannerPageData, {
+      date,
+    });
+
+    expect(firstPlanner.suggestions.length).toBeGreaterThan(0);
+    expect(secondPlanner.session).toBeNull();
+    expect(secondPlanner.suggestions).toEqual([]);
+  });
 });

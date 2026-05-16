@@ -15,6 +15,7 @@ import {
 import {
   assertCanAccessOwnedDocument,
   filterOwnedDocuments,
+  isLegacyWorkspaceOwner,
   requireCurrentUser,
   type CurrentUser,
 } from "./auth";
@@ -181,14 +182,385 @@ async function getOwnedSettingByKey(
   currentUser: CurrentUser,
   key: string,
 ) {
-  const settings = filterOwnedDocuments(
-    currentUser,
-    await ctx.db
-      .query("settings")
-      .withIndex("by_key", (q) => q.eq("key", key))
-      .collect(),
-  );
-  return settings[0] ?? null;
+  const ownedSetting = await ctx.db
+    .query("settings")
+    .withIndex("by_userId_and_key", (q) =>
+      q.eq("userId", currentUser._id).eq("key", key),
+    )
+    .unique();
+
+  if (ownedSetting || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSetting;
+  }
+
+  return await ctx.db
+    .query("settings")
+    .withIndex("by_userId_and_key", (q) =>
+      q.eq("userId", undefined).eq("key", key),
+    )
+    .unique();
+}
+
+async function getAccessibleChapters(ctx: MutationCtx, currentUser: CurrentUser) {
+  const ownedChapters = await ctx.db
+    .query("chapters")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedChapters;
+  }
+
+  const legacyChapters = await ctx.db
+    .query("chapters")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedChapters, ...legacyChapters];
+}
+
+async function getAccessibleSubjects(ctx: MutationCtx, currentUser: CurrentUser) {
+  const ownedSubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSubjects;
+  }
+
+  const legacySubjects = await ctx.db
+    .query("subjects")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedSubjects, ...legacySubjects];
+}
+
+async function getAccessiblePlannerPreferences(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+) {
+  const ownedPreferences = await ctx.db
+    .query("plannerSubjectPreferences")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedPreferences;
+  }
+
+  const legacyPreferences = await ctx.db
+    .query("plannerSubjectPreferences")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedPreferences, ...legacyPreferences];
+}
+
+async function getAccessibleWeeklyTargets(ctx: MutationCtx, currentUser: CurrentUser) {
+  const ownedTargets = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTargets;
+  }
+
+  const legacyTargets = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedTargets, ...legacyTargets];
+}
+
+async function getAccessibleCoachingStatuses(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+) {
+  const ownedStatuses = await ctx.db
+    .query("coachingProgress")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedStatuses;
+  }
+
+  const legacyStatuses = await ctx.db
+    .query("coachingProgress")
+    .withIndex("by_userId", (q) => q.eq("userId", undefined))
+    .collect();
+
+  return [...ownedStatuses, ...legacyStatuses];
+}
+
+async function getAccessibleConceptsForChapter(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  chapterId: Id<"chapters">,
+) {
+  const ownedConcepts = await ctx.db
+    .query("concepts")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", currentUser._id).eq("chapterId", chapterId),
+    )
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedConcepts;
+  }
+
+  const legacyConcepts = await ctx.db
+    .query("concepts")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", undefined).eq("chapterId", chapterId),
+    )
+    .collect();
+
+  return [...ownedConcepts, ...legacyConcepts];
+}
+
+async function getAccessibleStudyItemsForChapter(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  chapterId: Id<"chapters">,
+) {
+  const ownedItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", currentUser._id).eq("chapterId", chapterId),
+    )
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedItems;
+  }
+
+  const legacyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", undefined).eq("chapterId", chapterId),
+    )
+    .collect();
+
+  return [...ownedItems, ...legacyItems];
+}
+
+async function getAccessibleTodoTasksForDate(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  date: number,
+) {
+  const ownedTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date", (q) =>
+      q.eq("userId", currentUser._id).eq("date", date),
+    )
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTasks;
+  }
+
+  const legacyTasks = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date", (q) =>
+      q.eq("userId", undefined).eq("date", date),
+    )
+    .collect();
+
+  return [...ownedTasks, ...legacyTasks];
+}
+
+async function getAccessiblePlannerSessionForDate(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  date: number,
+) {
+  const ownedSession = await ctx.db
+    .query("plannerSessions")
+    .withIndex("by_userId_and_date", (q) =>
+      q.eq("userId", currentUser._id).eq("date", date),
+    )
+    .unique();
+
+  if (ownedSession || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSession;
+  }
+
+  return await ctx.db
+    .query("plannerSessions")
+    .withIndex("by_userId_and_date", (q) =>
+      q.eq("userId", undefined).eq("date", date),
+    )
+    .unique();
+}
+
+async function getExistingPlannerPreference(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  subjectId: Id<"subjects">,
+) {
+  const ownedPreference = await ctx.db
+    .query("plannerSubjectPreferences")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subjectId),
+    )
+    .unique();
+
+  if (ownedPreference || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedPreference;
+  }
+
+  return await ctx.db
+    .query("plannerSubjectPreferences")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", undefined).eq("subjectId", subjectId),
+    )
+    .unique();
+}
+
+async function getExistingChapterWeeklyTarget(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  chapterId: Id<"chapters">,
+) {
+  const ownedTargets = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", currentUser._id).eq("chapterId", chapterId),
+    )
+    .collect();
+  const ownedTarget = ownedTargets.find((target) => target.kind === "chapter") ?? null;
+
+  if (ownedTarget || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTarget;
+  }
+
+  const legacyTargets = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", undefined).eq("chapterId", chapterId),
+    )
+    .collect();
+  return legacyTargets.find((target) => target.kind === "chapter") ?? null;
+}
+
+async function getExistingConceptWeeklyTarget(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  conceptId: Id<"concepts">,
+) {
+  const ownedTarget = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId_and_conceptId", (q) =>
+      q.eq("userId", currentUser._id).eq("conceptId", conceptId),
+    )
+    .unique();
+
+  if (ownedTarget || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTarget;
+  }
+
+  return await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId_and_conceptId", (q) =>
+      q.eq("userId", undefined).eq("conceptId", conceptId),
+    )
+    .unique();
+}
+
+async function getExistingCoachingProgress(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  chapterId: Id<"chapters">,
+) {
+  const ownedProgress = await ctx.db
+    .query("coachingProgress")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", currentUser._id).eq("chapterId", chapterId),
+    )
+    .unique();
+
+  if (ownedProgress || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedProgress;
+  }
+
+  return await ctx.db
+    .query("coachingProgress")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", undefined).eq("chapterId", chapterId),
+    )
+    .unique();
+}
+
+async function getExistingTodoTaskForStudyItemOnDate(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  args: {
+    date: number;
+    studyItemId: Id<"studyItems">;
+  },
+) {
+  const ownedTask = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date_and_studyItemId", (q) =>
+      q
+        .eq("userId", currentUser._id)
+        .eq("date", args.date)
+        .eq("studyItemId", args.studyItemId),
+    )
+    .unique();
+
+  if (ownedTask || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTask;
+  }
+
+  return await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date_and_studyItemId", (q) =>
+      q
+        .eq("userId", undefined)
+        .eq("date", args.date)
+        .eq("studyItemId", args.studyItemId),
+    )
+    .unique();
+}
+
+async function getExistingTodoTaskForConceptOnDate(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  args: {
+    date: number;
+    conceptId: Id<"concepts">;
+  },
+) {
+  const ownedTask = await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date_and_conceptId", (q) =>
+      q
+        .eq("userId", currentUser._id)
+        .eq("date", args.date)
+        .eq("conceptId", args.conceptId),
+    )
+    .unique();
+
+  if (ownedTask || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedTask;
+  }
+
+  return await ctx.db
+    .query("todoTasks")
+    .withIndex("by_userId_and_date_and_conceptId", (q) =>
+      q
+        .eq("userId", undefined)
+        .eq("date", args.date)
+        .eq("conceptId", args.conceptId),
+    )
+    .unique();
 }
 
 function buildStudyItemTitle(baseName: string, trackerLabel: string) {
@@ -256,10 +628,7 @@ async function getNextTodoSortOrder(
   currentUser: CurrentUser,
   date: number,
 ) {
-  const todoTasks = filterOwnedDocuments(currentUser, await ctx.db
-    .query("todoTasks")
-    .withIndex("by_date", (q) => q.eq("date", date))
-    .collect());
+  const todoTasks = await getAccessibleTodoTasksForDate(ctx, currentUser, date);
 
   return (
     todoTasks.reduce((max, todoTask) => {
@@ -627,7 +996,7 @@ async function ensurePlannerStudyItems(
   ctx: MutationCtx,
   currentUser: CurrentUser,
 ) {
-  const chapters = filterOwnedDocuments(currentUser, await ctx.db.query("chapters").collect());
+  const chapters = await getAccessibleChapters(ctx, currentUser);
   const nextTermChapters = chapters.filter((chapter) => chapter.inNextTerm);
   const subjectIds = new Set(nextTermChapters.map((chapter) => chapter.subjectId));
 
@@ -1693,10 +2062,11 @@ export const setPlannerSubjectPriority = mutation({
     const currentUser = await requireCurrentUser(ctx);
     await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
 
-    const existingPreference = filterOwnedDocuments(currentUser, await ctx.db
-      .query("plannerSubjectPreferences")
-      .withIndex("by_subjectId", (q) => q.eq("subjectId", args.subjectId))
-      .collect())[0] ?? null;
+    const existingPreference = await getExistingPlannerPreference(
+      ctx,
+      currentUser,
+      args.subjectId,
+    );
 
     if (args.priority === "normal") {
       if (existingPreference) {
@@ -1730,10 +2100,11 @@ export const setCoachingChapterProgress = mutation({
     const currentUser = await requireCurrentUser(ctx);
     await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
 
-    const existingProgress = filterOwnedDocuments(currentUser, await ctx.db
-      .query("coachingProgress")
-      .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
-      .collect())[0] ?? null;
+    const existingProgress = await getExistingCoachingProgress(
+      ctx,
+      currentUser,
+      args.chapterId,
+    );
 
     if (args.status === "not_started") {
       if (existingProgress) {
@@ -1765,12 +2136,10 @@ export const addWeeklyTarget = mutation({
     const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
 
     if (args.kind === "chapter") {
-      const existingTargets = filterOwnedDocuments(currentUser, await ctx.db
-        .query("weeklyTargets")
-        .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
-        .collect());
-      const existingChapterTarget = existingTargets.find(
-        (target) => target.kind === "chapter",
+      const existingChapterTarget = await getExistingChapterWeeklyTarget(
+        ctx,
+        currentUser,
+        args.chapterId,
       );
       if (existingChapterTarget) {
         return existingChapterTarget._id;
@@ -1793,10 +2162,11 @@ export const addWeeklyTarget = mutation({
       throw new Error("Concept not found");
     }
 
-    const existingTarget = filterOwnedDocuments(currentUser, await ctx.db
-      .query("weeklyTargets")
-      .withIndex("by_conceptId", (q) => q.eq("conceptId", args.conceptId))
-      .collect())[0] ?? null;
+    const existingTarget = await getExistingConceptWeeklyTarget(
+      ctx,
+      currentUser,
+      args.conceptId,
+    );
 
     if (existingTarget) {
       return existingTarget._id;
@@ -1964,8 +2334,6 @@ export const generatePlannerSuggestions = mutation({
     const [
       subjects,
       chapters,
-      concepts,
-      studyItems,
       plannerPreferences,
       weeklyTargets,
       coachingStatuses,
@@ -1973,21 +2341,36 @@ export const generatePlannerSuggestions = mutation({
       existingSession,
       settings,
     ] = await Promise.all([
-      filterOwnedDocuments(currentUser, await ctx.db.query("subjects").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("chapters").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("concepts").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("studyItems").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("plannerSubjectPreferences").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("weeklyTargets").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("coachingProgress").collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("todoTasks").withIndex("by_date", (q) => q.eq("date", args.date)).collect()),
-      filterOwnedDocuments(currentUser, await ctx.db.query("plannerSessions").withIndex("by_date", (q) => q.eq("date", args.date)).collect())[0] ?? null,
+      getAccessibleSubjects(ctx, currentUser),
+      getAccessibleChapters(ctx, currentUser),
+      getAccessiblePlannerPreferences(ctx, currentUser),
+      getAccessibleWeeklyTargets(ctx, currentUser),
+      getAccessibleCoachingStatuses(ctx, currentUser),
+      getAccessibleTodoTasksForDate(ctx, currentUser, args.date),
+      getAccessiblePlannerSessionForDate(ctx, currentUser, args.date),
       getOwnedSettingByKey(ctx, currentUser, "defaultRevisionMinutes"),
     ]);
 
     const defaultRevisionMinutes = (settings?.value as number) ?? 15;
     const nextTermChapters = chapters.filter((chapter) => chapter.inNextTerm);
     const nextTermChapterIds = new Set(nextTermChapters.map((chapter) => chapter._id));
+    const nextTermChapterData = await Promise.all(
+      nextTermChapters.map(async (chapter) => ({
+        chapterId: chapter._id,
+        concepts: await getAccessibleConceptsForChapter(
+          ctx,
+          currentUser,
+          chapter._id,
+        ),
+        studyItems: await getAccessibleStudyItemsForChapter(
+          ctx,
+          currentUser,
+          chapter._id,
+        ),
+      })),
+    );
+    const concepts = nextTermChapterData.flatMap((chapter) => chapter.concepts);
+    const studyItems = nextTermChapterData.flatMap((chapter) => chapter.studyItems);
 
     const chapterById = new Map(chapters.map((chapter) => [chapter._id, chapter]));
     const subjectById = new Map(subjects.map((subject) => [subject._id, subject]));
@@ -2125,8 +2508,10 @@ export const generatePlannerSuggestions = mutation({
     const existingSuggestions = existingSession
       ? await ctx.db
           .query("plannerSuggestions")
-          .withIndex("by_sessionId_and_rankOrder", (q) =>
-            q.eq("sessionId", existingSession._id),
+          .withIndex("by_userId_and_sessionId_and_rankOrder", (q) =>
+            q
+              .eq("userId", existingSession.userId)
+              .eq("sessionId", existingSession._id),
           )
           .collect()
       : [];
@@ -2418,12 +2803,14 @@ export const acceptPlannerSuggestion = mutation({
         throw new Error("Study item is no longer available");
       }
 
-      const existingTodoTask = filterOwnedDocuments(currentUser, await ctx.db
-        .query("todoTasks")
-        .withIndex("by_date_and_studyItemId", (q) =>
-          q.eq("date", suggestion.date).eq("studyItemId", suggestion.studyItemId),
-        )
-        .collect())[0] ?? null;
+      const existingTodoTask = await getExistingTodoTaskForStudyItemOnDate(
+        ctx,
+        currentUser,
+        {
+          date: suggestion.date,
+          studyItemId: suggestion.studyItemId,
+        },
+      );
 
       if (existingTodoTask) {
         throw new Error("This study item is already in Todo for that day");
@@ -2445,12 +2832,14 @@ export const acceptPlannerSuggestion = mutation({
 
       await getOwnedConceptOrThrow(ctx, currentUser, suggestion.conceptId);
 
-      const existingTodoTask = filterOwnedDocuments(currentUser, await ctx.db
-        .query("todoTasks")
-        .withIndex("by_date_and_conceptId", (q) =>
-          q.eq("date", suggestion.date).eq("conceptId", suggestion.conceptId),
-        )
-        .collect())[0] ?? null;
+      const existingTodoTask = await getExistingTodoTaskForConceptOnDate(
+        ctx,
+        currentUser,
+        {
+          date: suggestion.date,
+          conceptId: suggestion.conceptId,
+        },
+      );
 
       if (existingTodoTask) {
         throw new Error("This revision is already in Todo for that day");

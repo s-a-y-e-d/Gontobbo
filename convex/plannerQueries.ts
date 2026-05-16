@@ -22,18 +22,18 @@ function getDhakaDayBucket(timestamp: number) {
 
 function isConceptTargetComplete(
   conceptId: Id<"concepts">,
-  studyItemsByConcept: Map<Id<"concepts">, Doc<"studyItems">[]>,
+  conceptStatsById: Map<Id<"concepts">, Doc<"studyItemConceptStats">>,
 ) {
-  const conceptItems = studyItemsByConcept.get(conceptId) ?? [];
-  return conceptItems.length > 0 && conceptItems.every((studyItem) => studyItem.isCompleted);
+  const stat = conceptStatsById.get(conceptId);
+  return Boolean(stat && stat.totalItems > 0 && stat.completedItems === stat.totalItems);
 }
 
 function isChapterTargetComplete(
   chapterId: Id<"chapters">,
-  studyItemsByChapter: Map<Id<"chapters">, Doc<"studyItems">[]>,
+  chapterStatsById: Map<Id<"chapters">, Doc<"studyItemChapterStats">>,
 ) {
-  const chapterItems = studyItemsByChapter.get(chapterId) ?? [];
-  return chapterItems.length > 0 && chapterItems.every((studyItem) => studyItem.isCompleted);
+  const stat = chapterStatsById.get(chapterId);
+  return Boolean(stat && stat.totalItems > 0 && stat.completedItems === stat.totalItems);
 }
 
 async function getNumberSettingValue(
@@ -58,7 +58,9 @@ async function getNumberSettingValue(
 
   const legacySetting = await ctx.db
     .query("settings")
-    .withIndex("by_key", (q) => q.eq("key", key))
+    .withIndex("by_userId_and_key", (q) =>
+      q.eq("userId", undefined).eq("key", key),
+    )
     .unique();
 
   if (
@@ -95,13 +97,14 @@ async function getDashboardComponentSettings(
   }
 
   const legacySettings = await Promise.all(
-    settingKeys.map(async (key) => {
-      const settings = await ctx.db
+    settingKeys.map((key) =>
+      ctx.db
         .query("settings")
-        .withIndex("by_key", (q) => q.eq("key", key))
-        .collect();
-      return settings.find((setting) => setting.userId === undefined) ?? null;
-    }),
+        .withIndex("by_userId_and_key", (q) =>
+          q.eq("userId", undefined).eq("key", key),
+        )
+        .unique(),
+    ),
   );
 
   return [...ownedSettings, ...legacySettings].filter(
@@ -163,24 +166,6 @@ async function getPlannerConcepts(ctx: QueryCtx, currentUser: CurrentUser) {
   return [...ownedConcepts, ...legacyConcepts];
 }
 
-async function getPlannerStudyItems(ctx: QueryCtx, currentUser: CurrentUser) {
-  const ownedStudyItems = await ctx.db
-    .query("studyItems")
-    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
-    .collect();
-
-  if (!isLegacyWorkspaceOwner(currentUser)) {
-    return ownedStudyItems;
-  }
-
-  const legacyStudyItems = await ctx.db
-    .query("studyItems")
-    .withIndex("by_userId", (q) => q.eq("userId", undefined))
-    .collect();
-
-  return [...ownedStudyItems, ...legacyStudyItems];
-}
-
 async function getPlannerPreferences(ctx: QueryCtx, currentUser: CurrentUser) {
   const ownedPreferences = await ctx.db
     .query("plannerSubjectPreferences")
@@ -238,16 +223,86 @@ async function getPlannerCoachingStatuses(
   return [...ownedStatuses, ...legacyStatuses];
 }
 
+async function getPlannerChapterStats(ctx: QueryCtx, currentUser: CurrentUser) {
+  return await ctx.db
+    .query("studyItemChapterStats")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+}
+
+async function getPlannerConceptStats(ctx: QueryCtx, currentUser: CurrentUser) {
+  return await ctx.db
+    .query("studyItemConceptStats")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+}
+
+async function isChapterTargetCompleteFallback(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  chapterId: Id<"chapters">,
+) {
+  const ownedItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", currentUser._id).eq("chapterId", chapterId),
+    )
+    .collect();
+  const legacyItems = isLegacyWorkspaceOwner(currentUser)
+    ? await ctx.db
+        .query("studyItems")
+        .withIndex("by_userId_and_chapterId", (q) =>
+          q.eq("userId", undefined).eq("chapterId", chapterId),
+        )
+        .collect()
+    : [];
+  const studyItems = [...ownedItems, ...legacyItems];
+  return studyItems.length > 0 && studyItems.every((studyItem) => studyItem.isCompleted);
+}
+
+async function isConceptTargetCompleteFallback(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  conceptId: Id<"concepts">,
+) {
+  const ownedItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_conceptId", (q) =>
+      q.eq("userId", currentUser._id).eq("conceptId", conceptId),
+    )
+    .collect();
+  const legacyItems = isLegacyWorkspaceOwner(currentUser)
+    ? await ctx.db
+        .query("studyItems")
+        .withIndex("by_userId_and_conceptId", (q) =>
+          q.eq("userId", undefined).eq("conceptId", conceptId),
+        )
+        .collect()
+    : [];
+  const studyItems = [...ownedItems, ...legacyItems];
+  return studyItems.length > 0 && studyItems.every((studyItem) => studyItem.isCompleted);
+}
+
 async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
-  const [subjects, chapters, concepts, studyItems, plannerPreferences, weeklyTargets, coachingStatuses] =
+  const [
+    subjects,
+    chapters,
+    concepts,
+    plannerPreferences,
+    weeklyTargets,
+    coachingStatuses,
+    chapterStats,
+    conceptStats,
+  ] =
     await Promise.all([
       getPlannerSubjects(ctx, currentUser),
       getPlannerChapters(ctx, currentUser),
       getPlannerConcepts(ctx, currentUser),
-      getPlannerStudyItems(ctx, currentUser),
       getPlannerPreferences(ctx, currentUser),
       getPlannerWeeklyTargets(ctx, currentUser),
       getPlannerCoachingStatuses(ctx, currentUser),
+      getPlannerChapterStats(ctx, currentUser),
+      getPlannerConceptStats(ctx, currentUser),
     ]);
 
   subjects.sort((a, b) => a.order - b.order);
@@ -261,20 +316,12 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
     coachingStatuses.map((status) => [status.chapterId, status.status]),
   );
 
-  const studyItemsByChapter = new Map<Id<"chapters">, Doc<"studyItems">[]>();
-  const studyItemsByConcept = new Map<Id<"concepts">, Doc<"studyItems">[]>();
-
-  for (const studyItem of studyItems) {
-    const chapterItems = studyItemsByChapter.get(studyItem.chapterId) ?? [];
-    chapterItems.push(studyItem);
-    studyItemsByChapter.set(studyItem.chapterId, chapterItems);
-
-    if (studyItem.conceptId) {
-      const conceptItems = studyItemsByConcept.get(studyItem.conceptId) ?? [];
-      conceptItems.push(studyItem);
-      studyItemsByConcept.set(studyItem.conceptId, conceptItems);
-    }
-  }
+  const chapterStatsById = new Map(
+    chapterStats.map((stat) => [stat.chapterId, stat]),
+  );
+  const conceptStatsById = new Map(
+    conceptStats.map((stat) => [stat.conceptId, stat]),
+  );
 
   const chapterTargetsById = new Map<Id<"chapters">, Doc<"weeklyTargets">>();
   const conceptTargetsById = new Map<Id<"concepts">, Doc<"weeklyTargets">>();
@@ -287,18 +334,19 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
     }
   }
 
-  return subjects.map((subject) => {
-    const subjectChapters = chapters
+  return await Promise.all(subjects.map(async (subject) => {
+    const subjectChapters = await Promise.all(chapters
       .filter((chapter) => chapter.subjectId === subject._id && chapter.inNextTerm)
-      .map((chapter) => {
-        const chapterConcepts = concepts
+      .map(async (chapter) => {
+        const chapterConcepts = await Promise.all(concepts
           .filter((concept) => concept.chapterId === chapter._id)
-          .map((concept) => {
+          .map(async (concept) => {
             const weeklyTarget = conceptTargetsById.get(concept._id) ?? null;
-            const isComplete = isConceptTargetComplete(
-              concept._id,
-              studyItemsByConcept,
-            );
+            const isComplete = weeklyTarget
+              ? conceptStatsById.has(concept._id)
+                ? isConceptTargetComplete(concept._id, conceptStatsById)
+                : await isConceptTargetCompleteFallback(ctx, currentUser, concept._id)
+              : false;
 
             return {
               _id: concept._id,
@@ -308,13 +356,14 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
               isWeeklyTarget: weeklyTarget !== null,
               isTargetComplete: weeklyTarget ? isComplete : false,
             };
-          });
+          }));
 
         const weeklyTarget = chapterTargetsById.get(chapter._id) ?? null;
-        const isChapterComplete = isChapterTargetComplete(
-          chapter._id,
-          studyItemsByChapter,
-        );
+        const isChapterComplete = weeklyTarget
+          ? chapterStatsById.has(chapter._id)
+            ? isChapterTargetComplete(chapter._id, chapterStatsById)
+            : await isChapterTargetCompleteFallback(ctx, currentUser, chapter._id)
+          : false;
 
         return {
           _id: chapter._id,
@@ -326,7 +375,7 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
           isTargetComplete: weeklyTarget ? isChapterComplete : false,
           concepts: chapterConcepts,
         };
-      });
+      }));
 
     return {
       _id: subject._id,
@@ -338,7 +387,59 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
       priority: subjectPriorityById.get(subject._id) ?? "normal",
       chapters: subjectChapters,
     };
-  });
+  }));
+}
+
+async function getPlannerSessionForDate(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  date: number,
+) {
+  const ownedSession = await ctx.db
+    .query("plannerSessions")
+    .withIndex("by_userId_and_date", (q) =>
+      q.eq("userId", currentUser._id).eq("date", date),
+    )
+    .unique();
+
+  if (ownedSession || !isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSession;
+  }
+
+  return await ctx.db
+    .query("plannerSessions")
+    .withIndex("by_userId_and_date", (q) =>
+      q.eq("userId", undefined).eq("date", date),
+    )
+    .unique();
+}
+
+async function getPlannerSuggestionsForDate(
+  ctx: QueryCtx,
+  currentUser: CurrentUser,
+  date: number,
+) {
+  const ownedSuggestions = await ctx.db
+    .query("plannerSuggestions")
+    .withIndex("by_userId_and_date_and_rankOrder", (q) =>
+      q.eq("userId", currentUser._id).eq("date", date),
+    )
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedSuggestions;
+  }
+
+  const legacySuggestions = await ctx.db
+    .query("plannerSuggestions")
+    .withIndex("by_userId_and_date_and_rankOrder", (q) =>
+      q.eq("userId", undefined).eq("date", date),
+    )
+    .collect();
+
+  return [...ownedSuggestions, ...legacySuggestions].sort(
+    (a, b) => a.rankOrder - b.rankOrder,
+  );
 }
 
 export const getPlannerPageData = query({
@@ -347,24 +448,10 @@ export const getPlannerPageData = query({
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    const [sessions, suggestions] = await Promise.all([
-      filterOwnedDocuments(
-        currentUser,
-        await ctx.db
-          .query("plannerSessions")
-          .withIndex("by_date", (q) => q.eq("date", args.date))
-          .collect(),
-      ),
-      filterOwnedDocuments(
-        currentUser,
-        await ctx.db
-          .query("plannerSuggestions")
-          .withIndex("by_date_and_rankOrder", (q) => q.eq("date", args.date))
-          .collect(),
-      ),
+    const [session, suggestions] = await Promise.all([
+      getPlannerSessionForDate(ctx, currentUser, args.date),
+      getPlannerSuggestionsForDate(ctx, currentUser, args.date),
     ]);
-
-    const session = sessions[0] ?? null;
 
     const enrichedSuggestions = await Promise.all(
       suggestions.map(async (suggestion) => {
