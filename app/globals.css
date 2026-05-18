@@ -373,18 +373,33 @@ body {
 }
 
 .dark .bg-blue-50,
-.dark .bg-blue-100,
+.dark .bg-blue-100 {
+  background-color: rgb(30 64 175 / 0.28) !important;
+}
+
 .dark .bg-orange-50,
-.dark .bg-orange-100,
+.dark .bg-orange-100 {
+  background-color: rgb(154 52 18 / 0.28) !important;
+}
+
 .dark .bg-purple-50,
-.dark .bg-purple-100,
+.dark .bg-purple-100 {
+  background-color: rgb(107 33 168 / 0.28) !important;
+}
+
 .dark .bg-teal-50,
-.dark .bg-teal-100,
+.dark .bg-teal-100 {
+  background-color: rgb(17 94 89 / 0.34) !important;
+}
+
 .dark .bg-indigo-50,
-.dark .bg-indigo-100,
+.dark .bg-indigo-100 {
+  background-color: rgb(67 56 202 / 0.32) !important;
+}
+
 .dark .bg-pink-50,
 .dark .bg-pink-100 {
-  background-color: #171717 !important;
+  background-color: rgb(157 23 77 / 0.28) !important;
 }
 
 .dark .bg-amber-50,
@@ -394,18 +409,33 @@ body {
 }
 
 .dark .text-red-600,
-.dark .text-red-700,
+.dark .text-red-700 {
+  color: #fca5a5 !important;
+}
+
 .dark .text-orange-600,
-.dark .text-orange-700,
+.dark .text-orange-700 {
+  color: #fdba74 !important;
+}
+
 .dark .text-purple-600,
-.dark .text-purple-700,
+.dark .text-purple-700 {
+  color: #d8b4fe !important;
+}
+
 .dark .text-teal-600,
-.dark .text-teal-700,
+.dark .text-teal-700 {
+  color: #5eead4 !important;
+}
+
 .dark .text-indigo-600,
-.dark .text-indigo-700,
+.dark .text-indigo-700 {
+  color: #a5b4fc !important;
+}
+
 .dark .text-pink-600,
 .dark .text-pink-700 {
-  color: #d4d4d4 !important;
+  color: #f9a8d4 !important;
 }
 
 .dark .text-slate-900,
