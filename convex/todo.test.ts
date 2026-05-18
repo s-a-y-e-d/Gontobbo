@@ -703,6 +703,49 @@ describe("todo", () => {
     });
   });
 
+  test("schedules short non-preset todos without changing duration", async () => {
+    const { t, date, conceptId } =
+      await createConceptTodoFixture("todo-update-short-non-preset");
+
+    await t.mutation(api.mutations.addConceptStudyItemsToTodayTodo, {
+      conceptId,
+    });
+
+    const unscheduledAgenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+    const shortTasks = unscheduledAgenda.days[0]!.tasks;
+
+    expect(shortTasks.map((task) => task.durationMinutes).sort((a, b) => a - b))
+      .toEqual([20, 25, 35]);
+
+    for (const [index, task] of shortTasks.entries()) {
+      await t.mutation(api.mutations.updateTodoTaskSchedule, {
+        todoTaskId: task.id as Id<"todoTasks">,
+        startTimeMinutes: 8 * 60 + index * 60,
+        durationMinutes: task.durationMinutes,
+      });
+    }
+
+    const scheduledAgenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+
+    expect(scheduledAgenda.days[0]?.tasks).toEqual(
+      expect.arrayContaining(
+        shortTasks.map((task, index) =>
+          expect.objectContaining({
+            id: task.id,
+            startTimeMinutes: 8 * 60 + index * 60,
+            durationMinutes: task.durationMinutes,
+          }),
+        ),
+      ),
+    );
+  });
+
   test("moves a todo to another day and time", async () => {
     const { t, date, studyItemId } = await createStudyItemFixture("todo-move-day");
     const nextDate = date + 86400000;

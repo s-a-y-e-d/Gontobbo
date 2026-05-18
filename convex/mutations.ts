@@ -645,8 +645,19 @@ async function getNextTodoSortOrder(
 function validateTodoSchedule(args: {
   startTimeMinutes?: number;
   durationMinutes: number;
-}) {
-  if (!TODO_DURATION_MINUTES.includes(args.durationMinutes)) {
+}, options: { requirePresetDuration?: boolean } = {}) {
+  if (
+    !Number.isInteger(args.durationMinutes) ||
+    args.durationMinutes < 1 ||
+    args.durationMinutes > 1440
+  ) {
+    throw new Error("Duration must be a positive whole number within the day");
+  }
+
+  if (
+    options.requirePresetDuration !== false &&
+    !TODO_DURATION_MINUTES.includes(args.durationMinutes)
+  ) {
     throw new Error("Duration must be one of the preset values");
   }
 
@@ -1945,7 +1956,7 @@ export const updateTodoTaskSchedule = mutation({
       args.todoTaskId,
     );
 
-    validateTodoSchedule(args);
+    validateTodoSchedule(args, { requirePresetDuration: false });
     const date = args.date ?? todoTask.date;
     validateTodoDate(date);
     await ensureNoDuplicateStudyItemTodoOnDate(ctx, currentUser, {
@@ -1989,7 +2000,7 @@ export const updateCustomTodoTask = mutation({
       throw new Error("Only custom todo tasks can update their title");
     }
 
-    validateTodoSchedule(args);
+    validateTodoSchedule(args, { requirePresetDuration: false });
     const date = args.date ?? todoTask.date;
     validateTodoDate(date);
     const customTitle = normalizeCustomTodoTitle(args.title);
