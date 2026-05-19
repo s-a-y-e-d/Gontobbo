@@ -482,4 +482,23 @@ export default defineSchema({
     .index("by_key", ["key"])
     .index("by_userId", ["userId"])
     .index("by_userId_and_key", ["userId", "key"]),
+
+  trackerDefaults: defineTable({
+    userId: v.id("users"),
+    chapterTrackers: v.array(
+      v.object({
+        key: v.string(),
+        label: v.string(),
+        avgMinutes: v.number(),
+      })
+    ),
+    conceptTrackers: v.array(
+      v.object({
+        key: v.string(),
+        label: v.string(),
+        avgMinutes: v.number(),
+      })
+    ),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
 });

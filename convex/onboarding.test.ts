@@ -6,6 +6,16 @@ import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+const TERM_START = Date.UTC(2026, 0, 1) - 6 * 60 * 60 * 1000;
+const EXAM_DATE = Date.UTC(2026, 4, 1) - 6 * 60 * 60 * 1000;
+const CUSTOM_CHAPTER_TRACKERS = [
+  { key: "mcq", label: "MCQ", avgMinutes: 30 },
+  { key: "model-test", label: "Model Test", avgMinutes: 60 },
+];
+const CUSTOM_CONCEPT_TRACKERS = [
+  { key: "notes", label: "Notes", avgMinutes: 20 },
+  { key: "revision", label: "Revision", avgMinutes: 15 },
+];
 
 function createIdentity(subject: string) {
   return {
@@ -30,6 +40,119 @@ describe("HSC onboarding", () => {
       hasSubjects: false,
       requiresOnboarding: true,
     });
+  });
+
+  test("complete setup stores dates, tracker defaults, HSC subjects, and planner priorities", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-01T06:00:00.000Z"));
+
+    try {
+      const t = convexTest(schema, modules).withIdentity(createIdentity("complete-hsc-user"));
+
+      await t.mutation(api.auth.ensureCurrentUser, {});
+      const result = await t.mutation(api.onboarding.completeOnboardingSetup, {
+        classLevel: "hsc",
+        termStartDate: TERM_START,
+        nextTermExamDate: EXAM_DATE,
+        chapterTrackers: CUSTOM_CHAPTER_TRACKERS,
+        conceptTrackers: CUSTOM_CONCEPT_TRACKERS,
+        importantSubjectSlugs: ["physics-1", "chemistry-1"],
+      });
+
+      const status = await t.query(api.onboarding.getOnboardingStatus, {});
+      const defaults = await t.query(api.onboarding.getSubjectCreationDefaults, {});
+      const records = await t.run(async (ctx) => {
+        const subjects = await ctx.db.query("subjects").collect();
+        const preferences = await ctx.db.query("plannerSubjectPreferences").collect();
+        const settings = await ctx.db.query("settings").collect();
+        const physics = subjects.find((subject) => subject.slug === "physics-1");
+        return {
+          subjects,
+          preferences,
+          settings,
+          physics,
+        };
+      });
+
+      expect(result).toMatchObject({
+        classLevel: "hsc",
+        seededSubjectCount: 8,
+        importantSubjectCount: 2,
+      });
+      expect(status).toMatchObject({
+        classLevel: "hsc",
+        onboardingCompletedAt: Date.now(),
+        requiresOnboarding: false,
+      });
+      expect(defaults).toEqual({
+        chapterTrackers: CUSTOM_CHAPTER_TRACKERS,
+        conceptTrackers: CUSTOM_CONCEPT_TRACKERS,
+      });
+      expect(records.physics?.chapterTrackers).toEqual(CUSTOM_CHAPTER_TRACKERS);
+      expect(records.physics?.conceptTrackers).toEqual(CUSTOM_CONCEPT_TRACKERS);
+      expect(records.settings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ key: "termStartDate", value: TERM_START }),
+          expect.objectContaining({ key: "nextTermExamDate", value: EXAM_DATE }),
+        ]),
+      );
+      expect(records.preferences).toHaveLength(2);
+      expect(records.preferences.every((preference) => preference.priority === "important")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("complete setup for other stores setup data without creating syllabus data", async () => {
+    const t = convexTest(schema, modules).withIdentity(createIdentity("complete-other-user"));
+
+    await t.mutation(api.auth.ensureCurrentUser, {});
+    await t.mutation(api.onboarding.completeOnboardingSetup, {
+      classLevel: "other",
+      termStartDate: TERM_START,
+      nextTermExamDate: EXAM_DATE,
+      chapterTrackers: CUSTOM_CHAPTER_TRACKERS,
+      conceptTrackers: CUSTOM_CONCEPT_TRACKERS,
+      importantSubjectSlugs: ["physics-1"],
+    });
+
+    const status = await t.query(api.onboarding.getOnboardingStatus, {});
+    const counts = await t.run(async (ctx) => ({
+      subjects: (await ctx.db.query("subjects").collect()).length,
+      chapters: (await ctx.db.query("chapters").collect()).length,
+      concepts: (await ctx.db.query("concepts").collect()).length,
+      preferences: (await ctx.db.query("plannerSubjectPreferences").collect()).length,
+      trackerDefaults: (await ctx.db.query("trackerDefaults").collect()).length,
+    }));
+
+    expect(status).toMatchObject({
+      classLevel: "other",
+      hasSubjects: false,
+      requiresOnboarding: false,
+    });
+    expect(counts).toEqual({
+      subjects: 0,
+      chapters: 0,
+      concepts: 0,
+      preferences: 0,
+      trackerDefaults: 1,
+    });
+  });
+
+  test("complete setup rejects invalid date ranges", async () => {
+    const t = convexTest(schema, modules).withIdentity(createIdentity("invalid-date-user"));
+
+    await t.mutation(api.auth.ensureCurrentUser, {});
+    await expect(
+      t.mutation(api.onboarding.completeOnboardingSetup, {
+        classLevel: "other",
+        termStartDate: EXAM_DATE,
+        nextTermExamDate: TERM_START,
+        chapterTrackers: CUSTOM_CHAPTER_TRACKERS,
+        conceptTrackers: CUSTOM_CONCEPT_TRACKERS,
+        importantSubjectSlugs: [],
+      }),
+    ).rejects.toThrow("Term start date must be before");
   });
 
   test("selecting HSC stores class and seeds ordered subjects and chapters", async () => {

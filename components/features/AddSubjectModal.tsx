@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { startTransition, useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import DurationPresetSelect, {
   roundToNearestPresetDuration,
 } from "./DurationPresetSelect";
+import { useSnapshotQuery } from "./useSnapshotQuery";
 
 type AddSubjectModalProps = {
   isOpen: boolean;
@@ -14,22 +15,25 @@ type AddSubjectModalProps = {
 };
 
 type TrackerEntry = {
+  key?: string;
   label: string;
   avgMinutes: number;
 };
 
-function toKey(label: string): string {
-  return label
+function toKey(label: string, fallbackIndex: number): string {
+  const key = label
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
-    .trim() || `tracker-${Date.now()}`;
+    .trim();
+
+  return key || `tracker-${fallbackIndex + 1}`;
 }
 
-function ensureUniqueKeys(trackers: { label: string; avgMinutes: number }[]) {
+function ensureUniqueKeys(trackers: TrackerEntry[]) {
   const keys = new Set<string>();
-  return trackers.map((t) => {
-    let key = toKey(t.label);
+  return trackers.map((t, index) => {
+    let key = t.key?.trim() || toKey(t.label, index);
     const originalKey = key;
     let counter = 2;
     while (keys.has(key)) {
@@ -70,6 +74,10 @@ export default function AddSubjectModal({
   onCreated,
 }: AddSubjectModalProps) {
   const createSubject = useMutation(api.mutations.createSubject);
+  const { data: subjectDefaults } = useSnapshotQuery(
+    api.onboarding.getSubjectCreationDefaults,
+    isOpen ? {} : "skip",
+  );
   
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("menu_book");
@@ -106,8 +114,6 @@ export default function AddSubjectModal({
       });
       setName("");
       setExamWeight("");
-      setChapterTrackers([]);
-      setConceptTrackers([]);
       await onCreated?.();
       onClose();
     } catch (error) {
@@ -155,6 +161,17 @@ export default function AddSubjectModal({
     }
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen || !subjectDefaults) {
+      return;
+    }
+
+    startTransition(() => {
+      setChapterTrackers(subjectDefaults.chapterTrackers);
+      setConceptTrackers(subjectDefaults.conceptTrackers);
+    });
+  }, [isOpen, subjectDefaults]);
 
   if (!isOpen) return null;
 

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import {
   filterOwnedDocuments,
   isLegacyWorkspaceOwner,
@@ -28,6 +29,13 @@ type HscChapterSeed = {
 };
 
 const classLevelValidator = v.union(v.literal("hsc"), v.literal("other"));
+const trackerConfigValidator = v.object({
+  key: v.string(),
+  label: v.string(),
+  avgMinutes: v.number(),
+});
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
+const MAX_TRACKERS_PER_SCOPE = 8;
 
 const HSC_NEXT_TERM_CHAPTER_ORDERS_BY_SUBJECT_SLUG: Record<string, ReadonlySet<number>> = {
   "physics-1": new Set([6, 7, 8, 9, 10]),
@@ -47,6 +55,20 @@ const HSC_CHAPTER_TRACKERS: TrackerConfig[] = [
 const HSC_CONCEPT_TRACKERS: TrackerConfig[] = [
   { key: "class", label: "ক্লাস", avgMinutes: 20 },
   { key: "book", label: "বই", avgMinutes: 25 },
+];
+
+const DEFAULT_CHAPTER_TRACKERS: TrackerConfig[] = [
+  { key: "mcq", label: "MCQ", avgMinutes: 30 },
+  { key: "board", label: "Board", avgMinutes: 45 },
+  { key: "cq", label: "CQ", avgMinutes: 45 },
+  { key: "model-test", label: "Model Test", avgMinutes: 60 },
+];
+
+const DEFAULT_CONCEPT_TRACKERS: TrackerConfig[] = [
+  { key: "class", label: "Class", avgMinutes: 20 },
+  { key: "book", label: "Book", avgMinutes: 25 },
+  { key: "notes", label: "Notes", avgMinutes: 20 },
+  { key: "revision", label: "Revision", avgMinutes: 15 },
 ];
 
 const PLACEHOLDER_CONCEPTS = [
@@ -510,7 +532,18 @@ async function getOwnedSubjectBySlug(
   return legacySubjects.find((subject) => subject.userId === undefined) ?? null;
 }
 
-async function ensureHscSubject(ctx: MutationCtx, currentUser: CurrentUser, seed: HscSubjectSeed) {
+async function ensureHscSubject(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  seed: HscSubjectSeed,
+  trackers: {
+    chapterTrackers: TrackerConfig[];
+    conceptTrackers: TrackerConfig[];
+  } = {
+    chapterTrackers: HSC_CHAPTER_TRACKERS,
+    conceptTrackers: HSC_CONCEPT_TRACKERS,
+  },
+) {
   const existingSubject = await getOwnedSubjectBySlug(ctx, currentUser, seed.slug);
   const subjectId =
     existingSubject?._id ??
@@ -521,8 +554,8 @@ async function ensureHscSubject(ctx: MutationCtx, currentUser: CurrentUser, seed
       icon: seed.icon,
       color: seed.color,
       order: seed.order,
-      chapterTrackers: HSC_CHAPTER_TRACKERS,
-      conceptTrackers: HSC_CONCEPT_TRACKERS,
+      chapterTrackers: trackers.chapterTrackers,
+      conceptTrackers: trackers.conceptTrackers,
     }));
 
   if (
@@ -530,13 +563,17 @@ async function ensureHscSubject(ctx: MutationCtx, currentUser: CurrentUser, seed
     (existingSubject.name !== seed.name ||
       existingSubject.icon !== seed.icon ||
       existingSubject.color !== seed.color ||
-      existingSubject.order !== seed.order)
+      existingSubject.order !== seed.order ||
+      !trackersMatch(existingSubject.chapterTrackers, trackers.chapterTrackers) ||
+      !trackersMatch(existingSubject.conceptTrackers, trackers.conceptTrackers))
   ) {
     await ctx.db.patch(existingSubject._id, {
       name: seed.name,
       icon: seed.icon,
       color: seed.color,
       order: seed.order,
+      chapterTrackers: trackers.chapterTrackers,
+      conceptTrackers: trackers.conceptTrackers,
     });
   }
 
@@ -628,6 +665,149 @@ async function ensureHscSubject(ctx: MutationCtx, currentUser: CurrentUser, seed
       nextOrder += 1;
     }
   }
+  return subjectId;
+}
+
+function trackersMatch(left: TrackerConfig[], right: TrackerConfig[]) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function getDhakaDayBucket(timestamp: number) {
+  const dhakaTime = new Date(timestamp + DHAKA_OFFSET_MS);
+  dhakaTime.setUTCHours(0, 0, 0, 0);
+  return dhakaTime.getTime() - DHAKA_OFFSET_MS;
+}
+
+function validateTermDates(termStartDate: number, nextTermExamDate: number) {
+  if (
+    !Number.isInteger(termStartDate) ||
+    getDhakaDayBucket(termStartDate) !== termStartDate
+  ) {
+    throw new Error("Term start date must be a valid Dhaka day bucket");
+  }
+
+  if (
+    !Number.isInteger(nextTermExamDate) ||
+    getDhakaDayBucket(nextTermExamDate) !== nextTermExamDate
+  ) {
+    throw new Error("Next-term exam date must be a valid Dhaka day bucket");
+  }
+
+  if (termStartDate >= nextTermExamDate) {
+    throw new Error("Term start date must be before the next-term exam date");
+  }
+}
+
+function normalizeTrackers(trackers: TrackerConfig[], label: string) {
+  if (trackers.length < 1 || trackers.length > MAX_TRACKERS_PER_SCOPE) {
+    throw new Error(`${label} must include 1-${MAX_TRACKERS_PER_SCOPE} trackers`);
+  }
+
+  const keys = new Set<string>();
+  return trackers.map((tracker) => {
+    const key = tracker.key.trim();
+    const trackerLabel = tracker.label.trim();
+    if (!/^[a-z0-9-]+$/.test(key)) {
+      throw new Error(`${label} tracker keys must use lowercase letters, numbers, and dashes`);
+    }
+    if (keys.has(key)) {
+      throw new Error(`${label} tracker keys must be unique`);
+    }
+    if (trackerLabel.length === 0 || trackerLabel.length > 40) {
+      throw new Error(`${label} tracker labels must be 1-40 characters`);
+    }
+    if (
+      !Number.isInteger(tracker.avgMinutes) ||
+      tracker.avgMinutes < 1 ||
+      tracker.avgMinutes > 600
+    ) {
+      throw new Error(`${label} tracker minutes must be 1-600`);
+    }
+    keys.add(key);
+    return { key, label: trackerLabel, avgMinutes: tracker.avgMinutes };
+  });
+}
+
+async function upsertNumberSetting(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  key: string,
+  value: number,
+) {
+  const existing = await ctx.db
+    .query("settings")
+    .withIndex("by_userId_and_key", (q) =>
+      q.eq("userId", currentUser._id).eq("key", key),
+    )
+    .unique();
+
+  if (existing) {
+    await ctx.db.patch(existing._id, { value });
+    return;
+  }
+
+  await ctx.db.insert("settings", {
+    userId: currentUser._id,
+    key,
+    value,
+  });
+}
+
+async function getTrackerDefaults(ctx: QueryCtx | MutationCtx, currentUser: CurrentUser) {
+  return await ctx.db
+    .query("trackerDefaults")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .unique();
+}
+
+async function upsertTrackerDefaults(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  chapterTrackers: TrackerConfig[],
+  conceptTrackers: TrackerConfig[],
+) {
+  const existing = await getTrackerDefaults(ctx, currentUser);
+  const payload = { chapterTrackers, conceptTrackers, updatedAt: Date.now() };
+
+  if (existing) {
+    await ctx.db.patch(existing._id, payload);
+    return;
+  }
+
+  await ctx.db.insert("trackerDefaults", {
+    userId: currentUser._id,
+    ...payload,
+  });
+}
+
+async function setImportantPlannerSubjects(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  subjectIds: Set<Id<"subjects">>,
+) {
+  const existingPreferences = await ctx.db
+    .query("plannerSubjectPreferences")
+    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
+    .collect();
+  const existingBySubjectId = new Map(
+    existingPreferences.map((preference) => [preference.subjectId, preference]),
+  );
+
+  for (const subjectId of subjectIds) {
+    const existing = existingBySubjectId.get(subjectId);
+    if (existing) {
+      if (existing.priority !== "important") {
+        await ctx.db.patch(existing._id, { priority: "important" });
+      }
+      continue;
+    }
+
+    await ctx.db.insert("plannerSubjectPreferences", {
+      userId: currentUser._id,
+      subjectId,
+      priority: "important",
+    });
+  }
 }
 
 export const getOnboardingStatus = query({
@@ -636,12 +816,97 @@ export const getOnboardingStatus = query({
     const currentUser = await requireCurrentUser(ctx);
     const hasSubjects = await userHasAnySubjects(ctx, currentUser);
     const isCompleted = currentUser.onboardingCompletedAt !== undefined;
+    const trackerDefaults = await getTrackerDefaults(ctx, currentUser);
 
     return {
       classLevel: currentUser.classLevel ?? null,
       onboardingCompletedAt: currentUser.onboardingCompletedAt ?? null,
       hasSubjects,
       requiresOnboarding: !hasSubjects && !isCompleted,
+      trackerDefaults: trackerDefaults
+        ? {
+            chapterTrackers: trackerDefaults.chapterTrackers,
+            conceptTrackers: trackerDefaults.conceptTrackers,
+          }
+        : {
+            chapterTrackers: DEFAULT_CHAPTER_TRACKERS,
+            conceptTrackers: DEFAULT_CONCEPT_TRACKERS,
+          },
+      hscSubjects: HSC_SUBJECTS.map((subject) => ({
+        name: subject.name,
+        slug: subject.slug,
+        icon: subject.icon,
+        color: subject.color,
+      })),
+    };
+  },
+});
+
+export const getSubjectCreationDefaults = query({
+  args: {},
+  handler: async (ctx) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const trackerDefaults = await getTrackerDefaults(ctx, currentUser);
+
+    return {
+      chapterTrackers: trackerDefaults?.chapterTrackers ?? DEFAULT_CHAPTER_TRACKERS,
+      conceptTrackers: trackerDefaults?.conceptTrackers ?? DEFAULT_CONCEPT_TRACKERS,
+    };
+  },
+});
+
+export const completeOnboardingSetup = mutation({
+  args: {
+    classLevel: classLevelValidator,
+    termStartDate: v.number(),
+    nextTermExamDate: v.number(),
+    chapterTrackers: v.array(trackerConfigValidator),
+    conceptTrackers: v.array(trackerConfigValidator),
+    importantSubjectSlugs: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    validateTermDates(args.termStartDate, args.nextTermExamDate);
+
+    const chapterTrackers = normalizeTrackers(args.chapterTrackers, "Chapter");
+    const conceptTrackers = normalizeTrackers(args.conceptTrackers, "Concept");
+    const selectedSlugs = new Set(args.importantSubjectSlugs);
+    const validHscSlugs = new Set(HSC_SUBJECTS.map((subject) => subject.slug));
+    for (const slug of selectedSlugs) {
+      if (!validHscSlugs.has(slug)) {
+        throw new Error("Important subject slug is invalid");
+      }
+    }
+
+    await upsertNumberSetting(ctx, currentUser, "termStartDate", args.termStartDate);
+    await upsertNumberSetting(ctx, currentUser, "nextTermExamDate", args.nextTermExamDate);
+    await upsertTrackerDefaults(ctx, currentUser, chapterTrackers, conceptTrackers);
+
+    const importantSubjectIds = new Set<Id<"subjects">>();
+    if (args.classLevel === "hsc") {
+      for (const subject of HSC_SUBJECTS) {
+        const subjectId = await ensureHscSubject(ctx, currentUser, subject, {
+          chapterTrackers,
+          conceptTrackers,
+        });
+        if (selectedSlugs.has(subject.slug)) {
+          importantSubjectIds.add(subjectId);
+        }
+      }
+      await setImportantPlannerSubjects(ctx, currentUser, importantSubjectIds);
+    }
+
+    const completedAt = currentUser.onboardingCompletedAt ?? Date.now();
+    await ctx.db.patch(currentUser._id, {
+      classLevel: args.classLevel,
+      onboardingCompletedAt: completedAt,
+    });
+
+    return {
+      classLevel: args.classLevel,
+      onboardingCompletedAt: completedAt,
+      seededSubjectCount: args.classLevel === "hsc" ? HSC_SUBJECTS.length : 0,
+      importantSubjectCount: importantSubjectIds.size,
     };
   },
 });
@@ -687,8 +952,14 @@ export const importHscSyllabusForCurrentUser = mutation({
       throw new Error("HSC syllabus can only be imported before adding custom subjects.");
     }
 
+    const trackerDefaults = await getTrackerDefaults(ctx, currentUser);
+    const trackers = {
+      chapterTrackers: trackerDefaults?.chapterTrackers ?? HSC_CHAPTER_TRACKERS,
+      conceptTrackers: trackerDefaults?.conceptTrackers ?? HSC_CONCEPT_TRACKERS,
+    };
+
     for (const subject of HSC_SUBJECTS) {
-      await ensureHscSubject(ctx, currentUser, subject);
+      await ensureHscSubject(ctx, currentUser, subject, trackers);
     }
 
     const completedAt = currentUser.onboardingCompletedAt ?? Date.now();
