@@ -501,13 +501,13 @@ function DashboardTodoCard({
 
   return (
       <article
-        className={`rounded-[22px] border px-4 py-4 transition-colors ${
+        className={`min-w-0 rounded-[22px] border px-3 py-4 transition-colors sm:px-4 ${
           task.isCompleted
             ? "border-border-subtle bg-white"
             : "border-border-subtle bg-white hover:border-border-medium"
         }`}
       >
-        <div className="flex items-start gap-3">
+        <div className="flex min-w-0 items-start gap-3">
           <div className="checkbox-wrapper-46 mt-0.5 shrink-0">
             <input
               className="inp-cbx"
@@ -526,9 +526,9 @@ function DashboardTodoCard({
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <p
-                className={`truncate text-sm font-semibold ${
+                className={`max-w-full break-words text-sm font-semibold leading-5 sm:truncate ${
                   task.isCompleted
                     ? "text-on-surface/55 line-through"
                     : "text-on-surface"
@@ -548,9 +548,11 @@ function DashboardTodoCard({
                   : formatClockTime(task.startTimeMinutes)}
               </span>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs md:text-sm">
+            <div className="mt-2 flex min-w-0 flex-col items-start gap-1 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 md:text-sm">
               <span
-                className={task.isCompleted ? "font-medium opacity-55" : "font-medium"}
+                className={`max-w-full break-words ${
+                  task.isCompleted ? "font-medium opacity-55" : "font-medium"
+                }`}
                 style={{ color: theme.accentHex }}
               >
                 {task.subjectName} · {task.chapterName}

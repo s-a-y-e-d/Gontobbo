@@ -143,7 +143,7 @@ export default function DateRangeStrip<TViewMode extends string>({
               onClick={() => onSelectDate(day.date)}
               className={`group min-w-14 rounded-[22px] border px-2 py-3 text-center transition-all sm:min-w-0 ${
                 day.isSelected
-                  ? "border-brand-green/40 bg-brand-green/10 text-on-surface shadow-[0_8px_24px_rgba(24,226,153,0.12)]"
+                  ? "border-brand-green/40 bg-brand-green/10 text-on-surface"
                   : day.isToday
                     ? "border-brand-green/30 bg-pure-white text-on-surface hover:bg-brand-green/5"
                     : "border-border-subtle bg-pure-white text-gray-500 hover:border-border-medium hover:bg-gray-100"
