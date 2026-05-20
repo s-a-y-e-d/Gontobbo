@@ -7,6 +7,7 @@ import AuthGate from "@/components/features/AuthGate";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ToastProvider } from "@/components/ui/Toast";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -77,6 +78,7 @@ export default function RootLayout({
           </ThemeProvider>
         </ClerkProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
