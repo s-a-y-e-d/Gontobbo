@@ -444,8 +444,21 @@ body {
 .dark .text-gray-700,
 .dark .text-on-surface,
 .dark .text-foreground,
+.dark .text-near-black,
 .dark .text-black {
   color: #f5f5f5 !important;
+}
+
+.dark .bg-near-black {
+  background-color: #f5f5f5 !important;
+}
+
+.dark .hover\:text-near-black:hover {
+  color: #101010 !important;
+}
+
+.dark .hover\:bg-near-black:hover {
+  background-color: #e5e5e5 !important;
 }
 
 .dark .text-on-surface\/55 {
