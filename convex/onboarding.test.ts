@@ -42,7 +42,7 @@ describe("HSC onboarding", () => {
     });
   });
 
-  test("complete setup stores dates, tracker defaults, HSC subjects, and planner priorities", async () => {
+  test("complete setup stores dates, tracker defaults, HSC subjects, and selected next-term chapters", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-01T06:00:00.000Z"));
 
@@ -56,7 +56,10 @@ describe("HSC onboarding", () => {
         nextTermExamDate: EXAM_DATE,
         chapterTrackers: CUSTOM_CHAPTER_TRACKERS,
         conceptTrackers: CUSTOM_CONCEPT_TRACKERS,
-        importantSubjectSlugs: ["physics-1", "chemistry-1"],
+        selectedNextTermChapters: [
+          { subjectSlug: "physics-1", chapterSlug: "chapter-2" },
+          { subjectSlug: "chemistry-1", chapterSlug: "chapter-4" },
+        ],
       });
 
       const status = await t.query(api.onboarding.getOnboardingStatus, {});
@@ -65,19 +68,23 @@ describe("HSC onboarding", () => {
         const subjects = await ctx.db.query("subjects").collect();
         const preferences = await ctx.db.query("plannerSubjectPreferences").collect();
         const settings = await ctx.db.query("settings").collect();
+        const chapters = await ctx.db.query("chapters").collect();
         const physics = subjects.find((subject) => subject.slug === "physics-1");
+        const chemistry = subjects.find((subject) => subject.slug === "chemistry-1");
         return {
           subjects,
           preferences,
           settings,
+          chapters,
           physics,
+          chemistry,
         };
       });
 
       expect(result).toMatchObject({
         classLevel: "hsc",
         seededSubjectCount: 8,
-        importantSubjectCount: 2,
+        selectedNextTermChapterCount: 2,
       });
       expect(status).toMatchObject({
         classLevel: "hsc",
@@ -96,8 +103,20 @@ describe("HSC onboarding", () => {
           expect.objectContaining({ key: "nextTermExamDate", value: EXAM_DATE }),
         ]),
       );
-      expect(records.preferences).toHaveLength(2);
-      expect(records.preferences.every((preference) => preference.priority === "important")).toBe(true);
+      expect(records.preferences).toHaveLength(0);
+      const selectedChapters = records.chapters
+        .filter((chapter) => chapter.inNextTerm)
+        .map((chapter) => ({
+          subjectId: chapter.subjectId,
+          slug: chapter.slug,
+        }));
+      expect(selectedChapters).toEqual(
+        expect.arrayContaining([
+          { subjectId: records.physics?._id, slug: "chapter-2" },
+          { subjectId: records.chemistry?._id, slug: "chapter-4" },
+        ]),
+      );
+      expect(selectedChapters).toHaveLength(2);
     } finally {
       vi.useRealTimers();
     }
@@ -113,7 +132,9 @@ describe("HSC onboarding", () => {
       nextTermExamDate: EXAM_DATE,
       chapterTrackers: CUSTOM_CHAPTER_TRACKERS,
       conceptTrackers: CUSTOM_CONCEPT_TRACKERS,
-      importantSubjectSlugs: ["physics-1"],
+      selectedNextTermChapters: [
+        { subjectSlug: "physics-1", chapterSlug: "chapter-2" },
+      ],
     });
 
     const status = await t.query(api.onboarding.getOnboardingStatus, {});
@@ -150,9 +171,25 @@ describe("HSC onboarding", () => {
         nextTermExamDate: TERM_START,
         chapterTrackers: CUSTOM_CHAPTER_TRACKERS,
         conceptTrackers: CUSTOM_CONCEPT_TRACKERS,
-        importantSubjectSlugs: [],
+        selectedNextTermChapters: [],
       }),
     ).rejects.toThrow("Term start date must be before");
+  });
+
+  test("complete setup rejects empty HSC next-term chapter selection", async () => {
+    const t = convexTest(schema, modules).withIdentity(createIdentity("empty-hsc-chapters-user"));
+
+    await t.mutation(api.auth.ensureCurrentUser, {});
+    await expect(
+      t.mutation(api.onboarding.completeOnboardingSetup, {
+        classLevel: "hsc",
+        termStartDate: TERM_START,
+        nextTermExamDate: EXAM_DATE,
+        chapterTrackers: CUSTOM_CHAPTER_TRACKERS,
+        conceptTrackers: CUSTOM_CONCEPT_TRACKERS,
+        selectedNextTermChapters: [],
+      }),
+    ).rejects.toThrow("Select at least one next-term chapter");
   });
 
   test("selecting HSC stores class and seeds ordered subjects and chapters", async () => {

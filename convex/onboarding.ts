@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
 import {
   filterOwnedDocuments,
   isLegacyWorkspaceOwner,
@@ -539,6 +538,7 @@ async function ensureHscSubject(
   trackers: {
     chapterTrackers: TrackerConfig[];
     conceptTrackers: TrackerConfig[];
+    nextTermChapterSlugsBySubjectSlug?: ReadonlyMap<string, ReadonlySet<string>>;
   } = {
     chapterTrackers: HSC_CHAPTER_TRACKERS,
     conceptTrackers: HSC_CONCEPT_TRACKERS,
@@ -591,7 +591,12 @@ async function ensureHscSubject(
   for (const [index, chapterSeed] of seed.chapters.entries()) {
     const slug = `chapter-${index + 1}`;
     const chapterOrder = index + 1;
-    const inNextTerm = isHscChapterInNextTerm(seed.slug, chapterOrder);
+    const selectedChapterSlugs =
+      trackers.nextTermChapterSlugsBySubjectSlug?.get(seed.slug);
+    const inNextTerm =
+      selectedChapterSlugs !== undefined
+        ? selectedChapterSlugs.has(slug)
+        : isHscChapterInNextTerm(seed.slug, chapterOrder);
     const existingChapter = existingChaptersBySlug.get(slug);
     if (existingChapter) {
       if (
@@ -780,36 +785,6 @@ async function upsertTrackerDefaults(
   });
 }
 
-async function setImportantPlannerSubjects(
-  ctx: MutationCtx,
-  currentUser: CurrentUser,
-  subjectIds: Set<Id<"subjects">>,
-) {
-  const existingPreferences = await ctx.db
-    .query("plannerSubjectPreferences")
-    .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
-    .collect();
-  const existingBySubjectId = new Map(
-    existingPreferences.map((preference) => [preference.subjectId, preference]),
-  );
-
-  for (const subjectId of subjectIds) {
-    const existing = existingBySubjectId.get(subjectId);
-    if (existing) {
-      if (existing.priority !== "important") {
-        await ctx.db.patch(existing._id, { priority: "important" });
-      }
-      continue;
-    }
-
-    await ctx.db.insert("plannerSubjectPreferences", {
-      userId: currentUser._id,
-      subjectId,
-      priority: "important",
-    });
-  }
-}
-
 export const getOnboardingStatus = query({
   args: {},
   handler: async (ctx) => {
@@ -837,6 +812,11 @@ export const getOnboardingStatus = query({
         slug: subject.slug,
         icon: subject.icon,
         color: subject.color,
+        chapters: subject.chapters.map((chapter, index) => ({
+          name: chapter.name,
+          slug: `chapter-${index + 1}`,
+          order: index + 1,
+        })),
       })),
     };
   },
@@ -862,7 +842,12 @@ export const completeOnboardingSetup = mutation({
     nextTermExamDate: v.number(),
     chapterTrackers: v.array(trackerConfigValidator),
     conceptTrackers: v.array(trackerConfigValidator),
-    importantSubjectSlugs: v.array(v.string()),
+    selectedNextTermChapters: v.array(
+      v.object({
+        subjectSlug: v.string(),
+        chapterSlug: v.string(),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
@@ -870,30 +855,50 @@ export const completeOnboardingSetup = mutation({
 
     const chapterTrackers = normalizeTrackers(args.chapterTrackers, "Chapter");
     const conceptTrackers = normalizeTrackers(args.conceptTrackers, "Concept");
-    const selectedSlugs = new Set(args.importantSubjectSlugs);
-    const validHscSlugs = new Set(HSC_SUBJECTS.map((subject) => subject.slug));
-    for (const slug of selectedSlugs) {
-      if (!validHscSlugs.has(slug)) {
-        throw new Error("Important subject slug is invalid");
+    const hscChapterSlugsBySubjectSlug = new Map(
+      HSC_SUBJECTS.map((subject) => [
+        subject.slug,
+        new Set(subject.chapters.map((_, index) => `chapter-${index + 1}`)),
+      ]),
+    );
+    const selectedNextTermChapterSlugsBySubjectSlug = new Map(
+      HSC_SUBJECTS.map((subject) => [subject.slug, new Set<string>()]),
+    );
+
+    for (const selection of args.selectedNextTermChapters) {
+      const validChapterSlugs = hscChapterSlugsBySubjectSlug.get(selection.subjectSlug);
+      if (!validChapterSlugs?.has(selection.chapterSlug)) {
+        throw new Error("Next-term chapter selection is invalid");
       }
+      const selectedChapterSlugs =
+        selectedNextTermChapterSlugsBySubjectSlug.get(selection.subjectSlug);
+      if (!selectedChapterSlugs) {
+        throw new Error("Next-term chapter selection is invalid");
+      }
+      selectedChapterSlugs.add(selection.chapterSlug);
+    }
+
+    const selectedNextTermChapterCount = Array.from(
+      selectedNextTermChapterSlugsBySubjectSlug.values(),
+    ).reduce((total, chapterSlugs) => total + chapterSlugs.size, 0);
+
+    if (args.classLevel === "hsc" && selectedNextTermChapterCount === 0) {
+      throw new Error("Select at least one next-term chapter");
     }
 
     await upsertNumberSetting(ctx, currentUser, "termStartDate", args.termStartDate);
     await upsertNumberSetting(ctx, currentUser, "nextTermExamDate", args.nextTermExamDate);
     await upsertTrackerDefaults(ctx, currentUser, chapterTrackers, conceptTrackers);
 
-    const importantSubjectIds = new Set<Id<"subjects">>();
     if (args.classLevel === "hsc") {
       for (const subject of HSC_SUBJECTS) {
-        const subjectId = await ensureHscSubject(ctx, currentUser, subject, {
+        await ensureHscSubject(ctx, currentUser, subject, {
           chapterTrackers,
           conceptTrackers,
+          nextTermChapterSlugsBySubjectSlug:
+            selectedNextTermChapterSlugsBySubjectSlug,
         });
-        if (selectedSlugs.has(subject.slug)) {
-          importantSubjectIds.add(subjectId);
-        }
       }
-      await setImportantPlannerSubjects(ctx, currentUser, importantSubjectIds);
     }
 
     const completedAt = currentUser.onboardingCompletedAt ?? Date.now();
@@ -906,7 +911,8 @@ export const completeOnboardingSetup = mutation({
       classLevel: args.classLevel,
       onboardingCompletedAt: completedAt,
       seededSubjectCount: args.classLevel === "hsc" ? HSC_SUBJECTS.length : 0,
-      importantSubjectCount: importantSubjectIds.size,
+      selectedNextTermChapterCount:
+        args.classLevel === "hsc" ? selectedNextTermChapterCount : 0,
     };
   },
 });
