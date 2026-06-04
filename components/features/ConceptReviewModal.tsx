@@ -9,6 +9,7 @@ type ConceptReviewModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onCompleted?: () => Promise<unknown> | void;
+  todoTaskId?: Id<"todoTasks">;
   concept: {
     _id: Id<"concepts">;
     name: string;
@@ -21,6 +22,7 @@ export default function ConceptReviewModal({
   isOpen,
   onClose,
   onCompleted,
+  todoTaskId,
   concept,
 }: ConceptReviewModalProps) {
   const [rating, setRating] = useState<"hard" | "medium" | "easy" | null>(null);
@@ -40,7 +42,7 @@ export default function ConceptReviewModal({
 
   const handleSubmit = async () => {
     if (!rating) return;
-    await review({ conceptId: concept._id, rating });
+    await review({ conceptId: concept._id, rating, todoTaskId });
     await onCompleted?.();
     onClose();
     setRating(null);

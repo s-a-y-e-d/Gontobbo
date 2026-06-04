@@ -913,6 +913,48 @@ describe("todo", () => {
     }
   });
 
+  test("marks a revision todo complete after reviewing from that todo", async () => {
+    const { t, date, conceptId } = await createRevisionFixture(
+      "todo-revision-complete",
+    );
+
+    const todoTaskId = await t.mutation(
+      api.mutations.createConceptReviewTodoTask,
+      {
+        date,
+        conceptId,
+        durationMinutes: 15,
+        source: "manual",
+      },
+    );
+
+    let agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+    expect(agenda.days[0]?.tasks[0]).toMatchObject({
+      id: todoTaskId,
+      kind: "concept_review",
+      isCompleted: false,
+    });
+
+    await t.mutation(api.mutations.reviewConcept, {
+      conceptId,
+      todoTaskId: todoTaskId as Id<"todoTasks">,
+      rating: "medium",
+    });
+
+    agenda = await t.query(api.todoQueries.getTodoAgenda, {
+      startDate: date,
+      days: 1,
+    });
+    expect(agenda.days[0]?.tasks[0]).toMatchObject({
+      id: todoTaskId,
+      kind: "concept_review",
+      isCompleted: true,
+    });
+  });
+
   test("searches study items with a two-character threshold", async () => {
     const { t, date, studyItemId } = await createStudyItemFixture(
       "todo-study-item-search",

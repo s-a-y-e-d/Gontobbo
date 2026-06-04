@@ -2991,11 +2991,24 @@ export const toggleStudyItemCompletion = mutation({
 export const reviewConcept = mutation({
   args: {
     conceptId: v.id("concepts"),
+    todoTaskId: v.optional(v.id("todoTasks")),
     rating: v.union(v.literal("hard"), v.literal("medium"), v.literal("easy")),
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     const concept = await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
+    const todoTask = args.todoTaskId
+      ? await getOwnedTodoTaskOrThrow(ctx, currentUser, args.todoTaskId)
+      : null;
+
+    if (
+      todoTask &&
+      ((todoTask.kind ?? PLANNER_SUGGESTION_KIND.studyItem) !==
+        PLANNER_SUGGESTION_KIND.conceptReview ||
+        todoTask.conceptId !== args.conceptId)
+    ) {
+      throw new Error("Todo task does not match this revision");
+    }
 
     let level = concept.repetitionLevel ?? 0;
     
@@ -3050,6 +3063,12 @@ export const reviewConcept = mutation({
       chapterNameSnapshot: chapter.name,
       conceptNameSnapshot: concept.name,
     });
+
+    if (todoTask) {
+      await ctx.db.patch(todoTask._id, {
+        isCompleted: true,
+      });
+    }
   },
 });
 

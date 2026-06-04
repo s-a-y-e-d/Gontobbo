@@ -132,8 +132,9 @@ export const getTodoAgenda = query({
                 conceptId: concept._id,
                 title: `${concept.name} - Revision`,
                 isCompleted:
-                  concept.lastReviewedAt !== undefined &&
-                  getDhakaDayBucket(concept.lastReviewedAt) === todoTask.date,
+                  todoTask.isCompleted ??
+                  (concept.lastReviewedAt !== undefined &&
+                    getDhakaDayBucket(concept.lastReviewedAt) === todoTask.date),
                 subjectName: subject.name,
                 chapterName: chapter.name,
                 conceptName: concept.name,

@@ -176,6 +176,7 @@ export default function TodoAgendaTaskRow({
         <ConceptReviewModal
           isOpen={isReviewModalOpen}
           onClose={() => setIsReviewModalOpen(false)}
+          todoTaskId={task.id as Id<"todoTasks">}
           concept={{
             _id: task.conceptId as Id<"concepts">,
             name: task.conceptName ?? task.title,
