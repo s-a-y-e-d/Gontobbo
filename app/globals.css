@@ -615,3 +615,93 @@ body {
 .dark [class*="text-[#1e40af]"] {
   color: #93c5fd !important;
 }
+
+/* ── Selection Mode Transitions ── */
+
+/* Toolbar slide-down / slide-up */
+.selection-toolbar {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease,
+    pointer-events 0ms 280ms;       /* flip pointer-events after collapse */
+}
+
+.selection-toolbar.is-active {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 240ms ease 40ms,
+    pointer-events 0ms 0ms;
+}
+
+.selection-toolbar > .selection-toolbar-inner {
+  overflow: hidden;
+}
+
+/*
+ * Checkbox column: the <th>/<td> stays padding-free and borderless.
+ * An inner <div class="select-col-inner"> handles the width + opacity
+ * transition because block-level elements honour width:0 + overflow:hidden
+ * whereas table cells do not.
+ */
+.select-col-cell {
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden;
+}
+
+.select-col-inner {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  transition:
+    width 260ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 160ms ease;
+}
+
+.select-col-inner.is-active {
+  width: 56px;       /* 3.5rem */
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    width 260ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 220ms ease 60ms;
+}
+
+/* Mobile checkbox bubble */
+.mobile-select-bubble {
+  transform: scale(0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 180ms ease;
+}
+
+.mobile-select-bubble.is-active {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 200ms ease 40ms;
+}
+
+/* Mobile card padding shift */
+.mobile-card-wrap {
+  padding-left: 0;
+  transition: padding-left 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-card-wrap.is-shifted {
+  padding-left: 2rem; /* pl-8 */
+}
+

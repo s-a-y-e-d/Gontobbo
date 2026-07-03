@@ -34,6 +34,12 @@ type ChapterTableProps = {
   trackerConfigs: TrackerConfig[];
   subjectSlug: string;
   subjectId?: Id<"subjects">;
+  selectionMode: boolean;
+  selectedChapterIds: Set<Id<"chapters">>;
+  onToggleChapterSelection: (chapterId: Id<"chapters">) => void;
+  onToggleVisibleChapters: (chapterIds: Id<"chapters">[], shouldSelect: boolean) => void;
+  onEnterSelectionMode: (chapterId: Id<"chapters">) => void;
+  onClearSelection: () => void;
 };
 
 type FloatingMenuPosition = {
@@ -190,6 +196,7 @@ function ActionMenu({
   chapterSlug,
   onEdit,
   onDelete,
+  onSelect,
 }: {
   chapterId: Id<"chapters">;
   inNextTerm: boolean;
@@ -197,6 +204,7 @@ function ActionMenu({
   chapterSlug: string;
   onEdit: () => void;
   onDelete: () => void;
+  onSelect: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -324,6 +332,18 @@ function ActionMenu({
           </button>
 
           <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+              setOpen(false);
+            }}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-on-surface hover:bg-gray-100 transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg text-gray-500">checklist</span>
+            Select
+          </button>
+
+          <button
             onClick={async (e) => {
               e.stopPropagation();
               await toggleExam({ chapterId });
@@ -432,6 +452,7 @@ function MobileChapterCard({
   subjectSlug,
   onEdit,
   onDelete,
+  onSelect,
   displayOrder,
 }: {
   chapter: ChapterRowData;
@@ -439,6 +460,7 @@ function MobileChapterCard({
   subjectSlug: string;
   onEdit: () => void;
   onDelete: () => void;
+  onSelect: () => void;
   displayOrder: string;
 }) {
   return (
@@ -465,6 +487,7 @@ function MobileChapterCard({
           chapterSlug={chapter.slug}
           onEdit={onEdit}
           onDelete={onDelete}
+          onSelect={onSelect}
         />
       </div>
 
@@ -502,11 +525,14 @@ export default function ChapterTable({
   trackerConfigs,
   subjectSlug,
   subjectId,
+  selectionMode,
+  selectedChapterIds,
+  onToggleChapterSelection,
+  onToggleVisibleChapters,
+  onEnterSelectionMode,
+  onClearSelection,
 }: ChapterTableProps) {
   const [editingChapter, setEditingChapter] = useState<ChapterRowData | null>(null);
-  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<Id<"chapters">>>(
-    () => new Set(),
-  );
   const [savingBulkStatus, setSavingBulkStatus] = useState(false);
   const deleteChapter = useMutation(api.mutations.deleteChapter);
   const setChaptersInNextTerm = useMutation(api.mutations.setChaptersInNextTerm);
@@ -527,31 +553,10 @@ export default function ChapterTable({
   const allVisibleSelected =
     chapters.length > 0 && chapters.every((chapter) => selectedChapterIds.has(chapter._id));
   const selectedIds = Array.from(selectedChapterIds);
-
-  const toggleChapterSelection = (chapterId: Id<"chapters">) => {
-    setSelectedChapterIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(chapterId)) {
-        next.delete(chapterId);
-      } else {
-        next.add(chapterId);
-      }
-      return next;
-    });
-  };
+  const visibleChapterIds = chapters.map((chapter) => chapter._id);
 
   const toggleAllVisible = () => {
-    setSelectedChapterIds((previous) => {
-      if (allVisibleSelected) {
-        return new Set();
-      }
-
-      const next = new Set(previous);
-      for (const chapter of chapters) {
-        next.add(chapter._id);
-      }
-      return next;
-    });
+    onToggleVisibleChapters(visibleChapterIds, !allVisibleSelected);
   };
 
   const applyBulkNextTermStatus = async (inNextTerm: boolean) => {
@@ -566,7 +571,7 @@ export default function ChapterTable({
         chapterIds: selectedIds,
         inNextTerm,
       });
-      setSelectedChapterIds(new Set());
+      onClearSelection();
     } finally {
       setSavingBulkStatus(false);
     }
@@ -576,56 +581,71 @@ export default function ChapterTable({
     <section className="mb-12">
       <div className="mb-4 flex flex-col gap-3 md:mb-6 md:flex-row md:items-center md:justify-between">
         <h2 className="font-sub-heading text-[22px] leading-tight text-on-surface md:text-sub-heading">{title}</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleAllVisible}
-            className="inline-flex h-9 items-center gap-2 rounded-full border border-border-subtle bg-pure-white px-4 font-mono-code text-mono-code uppercase text-gray-500 transition-colors hover:border-border-medium hover:text-on-surface md:hidden"
-          >
-            <span className="material-symbols-outlined text-base">
-              {allVisibleSelected ? "deselect" : "select_all"}
-            </span>
-            {allVisibleSelected ? "সব বাদ" : "সব সিলেক্ট"}
-          </button>
-          {selectedCount > 0 && (
-            <>
-              <span className="inline-flex h-9 items-center rounded-full bg-surface-container px-3 font-mono-code text-mono-code text-gray-500">
-                {selectedCount} selected
-              </span>
+        <div className={`selection-toolbar ${selectionMode ? "is-active" : ""}`}>
+          <div className="selection-toolbar-inner">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={savingBulkStatus}
-                onClick={() => void applyBulkNextTermStatus(true)}
-                className="inline-flex h-9 items-center gap-2 rounded-full bg-on-surface px-4 font-mono-code text-mono-code uppercase text-pure-white transition-colors hover:bg-brand-green hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={toggleAllVisible}
+                tabIndex={selectionMode ? 0 : -1}
+                className="inline-flex h-9 items-center gap-2 rounded-full border border-border-subtle bg-pure-white px-4 font-mono-code text-mono-code uppercase text-gray-500 transition-colors hover:border-border-medium hover:text-on-surface md:hidden"
               >
-                <span className="material-symbols-outlined text-base">event_available</span>
-                পরীক্ষায় যোগ
+                <span className="material-symbols-outlined text-base">
+                  {allVisibleSelected ? "deselect" : "select_all"}
+                </span>
+                {allVisibleSelected ? "সব বাদ" : "সব সিলেক্ট"}
               </button>
+              {selectedCount > 0 && (
+                <>
+                  <span className="inline-flex h-9 items-center rounded-full bg-surface-container px-3 font-mono-code text-mono-code text-gray-500">
+                    {selectedCount} selected
+                  </span>
+                  <button
+                    type="button"
+                    disabled={savingBulkStatus}
+                    onClick={() => void applyBulkNextTermStatus(true)}
+                    className="inline-flex h-9 items-center gap-2 rounded-full bg-on-surface px-4 font-mono-code text-mono-code uppercase text-pure-white transition-colors hover:bg-brand-green hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-base">event_available</span>
+                    পরীক্ষায় যোগ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingBulkStatus}
+                    onClick={() => void applyBulkNextTermStatus(false)}
+                    className="inline-flex h-9 items-center gap-2 rounded-full border border-border-subtle bg-pure-white px-4 font-mono-code text-mono-code uppercase text-gray-500 transition-colors hover:border-border-medium hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-base">event_busy</span>
+                    বাদ দিন
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 disabled={savingBulkStatus}
-                onClick={() => void applyBulkNextTermStatus(false)}
+                onClick={onClearSelection}
+                tabIndex={selectionMode ? 0 : -1}
                 className="inline-flex h-9 items-center gap-2 rounded-full border border-border-subtle bg-pure-white px-4 font-mono-code text-mono-code uppercase text-gray-500 transition-colors hover:border-border-medium hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="material-symbols-outlined text-base">event_busy</span>
-                বাদ দিন
+                <span className="material-symbols-outlined text-base">close</span>
+                বাতিল
               </button>
-            </>
-          )}
+            </div>
+          </div>
         </div>
       </div>
       <div className="space-y-3 md:hidden">
         {chapters.map((chapter, idx) => (
           <div key={chapter._id} className="relative">
-            <div className="absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-pure-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <div className={`absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-pure-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] mobile-select-bubble ${selectionMode ? "is-active" : ""}`}>
               <CustomCheckbox
                 checked={selectedChapterIds.has(chapter._id)}
-                onChange={() => toggleChapterSelection(chapter._id)}
+                onChange={() => onToggleChapterSelection(chapter._id)}
                 idPrefix={`mobile-sel-${chapter._id}`}
                 ariaLabel={`${chapter.name} select`}
               />
             </div>
-            <div className="pl-8">
+            <div className={`mobile-card-wrap ${selectionMode ? "is-shifted" : ""}`}>
               <MobileChapterCard
                 chapter={chapter}
                 trackerConfigs={trackerConfigs}
@@ -637,22 +657,25 @@ export default function ChapterTable({
                 }
                 onEdit={() => setEditingChapter(chapter)}
                 onDelete={() => deleteChapter({ chapterId: chapter._id })}
+                onSelect={() => onEnterSelectionMode(chapter._id)}
               />
             </div>
           </div>
         ))}
       </div>
       <div className="hidden overflow-x-auto bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] md:block">
-        <table className="w-full min-w-[840px] border-separate border-spacing-0">
+        <table className="w-full min-w-[760px] border-separate border-spacing-0">
           <thead>
             <tr className="border-b border-border-subtle">
-              <th className="w-14 py-3.5 pl-5 pr-2 text-left first:rounded-tl-2xl">
-                <CustomCheckbox
-                  checked={allVisibleSelected}
-                  onChange={toggleAllVisible}
-                  idPrefix="header-select-all"
-                  ariaLabel={`${title} select all`}
-                />
+              <th className="select-col-cell">
+                <div className={`select-col-inner flex items-center justify-center ${selectionMode ? "is-active" : ""}`}>
+                  <CustomCheckbox
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    idPrefix="header-select-all"
+                    ariaLabel={`${title} select all`}
+                  />
+                </div>
               </th>
               <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
                 অধ্যায়
@@ -684,15 +707,17 @@ export default function ChapterTable({
                   idx < chapters.length - 1 ? "[&>td]:border-b [&>td]:border-border-subtle" : ""
                 }`}
               >
-                <td className={`py-4 pl-5 pr-2 ${idx === chapters.length - 1 ? "rounded-bl-2xl" : ""}`}>
-                  <CustomCheckbox
-                    checked={selectedChapterIds.has(chapter._id)}
-                    onChange={() => toggleChapterSelection(chapter._id)}
-                    idPrefix={`row-sel-${chapter._id}`}
-                    ariaLabel={`${chapter.name} select`}
-                  />
+                <td className={`select-col-cell ${idx === chapters.length - 1 ? "rounded-bl-2xl" : ""}`}>
+                  <div className={`select-col-inner flex items-center justify-center ${selectionMode ? "is-active" : ""}`}>
+                    <CustomCheckbox
+                      checked={selectedChapterIds.has(chapter._id)}
+                      onChange={() => onToggleChapterSelection(chapter._id)}
+                      idPrefix={`row-sel-${chapter._id}`}
+                      ariaLabel={`${chapter.name} select`}
+                    />
+                  </div>
                 </td>
-                <td className="py-4 px-5">
+                <td className={`py-4 px-5 ${!selectionMode && idx === chapters.length - 1 ? "rounded-bl-2xl" : ""}`}>
                   <div className="flex items-center gap-3">
                     <span className="font-mono-code text-mono-code text-gray-400 bg-surface-container w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0">
                       {String(chapter.order).length > 2 ? String(idx + 1).padStart(2, "0") : String(chapter.order).padStart(2, "0")}
@@ -735,6 +760,7 @@ export default function ChapterTable({
                     chapterSlug={chapter.slug}
                     onEdit={() => setEditingChapter(chapter)}
                     onDelete={() => deleteChapter({ chapterId: chapter._id })}
+                    onSelect={() => onEnterSelectionMode(chapter._id)}
                   />
                 </td>
               </tr>
