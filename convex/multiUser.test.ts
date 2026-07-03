@@ -102,6 +102,52 @@ describe("multi-user workspaces", () => {
     ).rejects.toThrow("Unauthorized");
   });
 
+  test("bulk next-term updates only owned chapters in one subject", async () => {
+    const t = convexTest(schema, modules);
+    const owner = t.withIdentity(createIdentity("owner-bulk-term"));
+    const viewer = t.withIdentity(createIdentity("viewer-bulk-term"));
+
+    await owner.mutation(api.auth.ensureCurrentUser, {});
+    await viewer.mutation(api.auth.ensureCurrentUser, {});
+
+    const subjectId = await owner.mutation(api.mutations.createSubject, {
+      name: "Protected Physics",
+      slug: "physics",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [],
+    });
+    const firstChapterId = await owner.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: false,
+    });
+    const secondChapterId = await owner.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Force",
+      order: 2,
+      inNextTerm: false,
+    });
+
+    await owner.mutation(api.mutations.setChaptersInNextTerm, {
+      subjectId,
+      chapterIds: [firstChapterId, secondChapterId, firstChapterId],
+      inNextTerm: true,
+    });
+
+    const ownerPage = await owner.query(api.queries.getSubjectPageData, { slug: "physics" });
+    expect(ownerPage?.chapters.map((chapter) => chapter.inNextTerm)).toEqual([true, true]);
+
+    await expect(
+      viewer.mutation(api.mutations.setChaptersInNextTerm, {
+        subjectId,
+        chapterIds: [firstChapterId],
+        inNextTerm: false,
+      }),
+    ).rejects.toThrow("Unauthorized");
+  });
+
   test("legacy owner can see unmigrated rows and new users cannot", async () => {
     const t = convexTest(schema, modules);
     const ownerIdentity = createIdentity("legacy-owner");

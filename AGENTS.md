@@ -1,7 +1,7 @@
 # AGENTS.md - Gontobbo Coding Guidelines
 
 > Constitution for AI coding agents working on Gontobbo. Read before modifying the codebase.
-> Last updated: 2025-04-25
+> Last updated: 2026-07-03
 
 ---
 
@@ -154,6 +154,19 @@ See `DESIGN.md` for the full design system (colors, typography, components, spac
 - Full-pill radius (9999px) for buttons and inputs
 - Borders at 5% opacity for separation, minimal shadows
 
+### Dark Mode & Interaction States (CRITICAL)
+
+Dark mode is a first-class product surface, not an afterthought. Any UI change must look intentional in both light and dark themes.
+
+- When adding or editing visible UI, define both light and dark Tailwind classes for backgrounds, borders, text, muted text, icons, dividers, inputs, tables, cards, dialogs, menus, badges, and empty/loading/error states.
+- Every interactive element must include theme-aware `hover:`, `focus-visible:`, `active:`, `disabled:`, `aria-selected:`, `data-[state=...]`, and `group-hover:` styles where those states apply. Do not add a light-mode hover without the matching `dark:hover` treatment.
+- Avoid raw hardcoded colors unless they already exist in `DESIGN.md` or local design tokens. Prefer the project's existing semantic classes and patterns before introducing new color values.
+- Preserve contrast in dark mode: text must stay readable, borders must be visible but quiet, and hover/focus states must be noticeable without becoming harsh.
+- Tables and dense operational views need special care: row hover, selected rows, sticky headers, zebra/section backgrounds, and inline action buttons must all have dark-mode states.
+- If a component uses custom shadows, gradients, charts, status colors, or translucent backgrounds, verify those choices against dark surfaces too.
+- Before finishing any UI work, inspect the changed screen in both light and dark mode and mention that verification. If browser verification is not possible, state that clearly and explain what was checked from the code.
+- Do not mark a UI task complete if dark mode has missing hover/focus/selected states or unreadable contrast.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
@@ -161,9 +174,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 <!-- END:nextjs-agent-rules -->
 
 <!-- convex-ai-start -->
+
 This project uses [Convex](https://convex.dev) as its backend.
 
-When working on Convex code, **always read `convex/_generated/ai/guidelines.md` first** for important guidelines on how to correctly use Convex APIs and patterns. The file contains rules that override what you may have learned about Convex from training data.
+When working on Convex code, **always read
+`convex/_generated/ai/guidelines.md` first** for important guidelines on
+how to correctly use Convex APIs and patterns. The file contains rules that
+override what you may have learned about Convex from training data.
 
-Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
+Convex agent skills for common tasks can be installed by running
+`npx convex ai-files install`.
+
 <!-- convex-ai-end -->

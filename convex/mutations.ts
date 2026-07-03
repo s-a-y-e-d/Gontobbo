@@ -1253,7 +1253,45 @@ export const toggleChapterInNextTerm = mutation({
   },
 });
 
-// ── Create a chapter ─────────────────────────────────────────────
+// Bulk update chapter inNextTerm
+export const setChaptersInNextTerm = mutation({
+  args: {
+    subjectId: v.id("subjects"),
+    chapterIds: v.array(v.id("chapters")),
+    inNextTerm: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
+
+    if (args.chapterIds.length === 0) {
+      return { updatedCount: 0 };
+    }
+
+    if (args.chapterIds.length > 200) {
+      throw new Error("Select 200 chapters or fewer at a time");
+    }
+
+    const uniqueChapterIds = Array.from(new Set(args.chapterIds));
+    let updatedCount = 0;
+
+    for (const chapterId of uniqueChapterIds) {
+      const chapter = await getOwnedChapterOrThrow(ctx, currentUser, chapterId);
+      if (chapter.subjectId !== args.subjectId) {
+        throw new Error("Chapter does not belong to this subject");
+      }
+
+      if (chapter.inNextTerm !== args.inNextTerm) {
+        await ctx.db.patch(chapterId, { inNextTerm: args.inNextTerm });
+        updatedCount += 1;
+      }
+    }
+
+    return { updatedCount };
+  },
+});
+
+// Create a chapter
 export const createChapter = mutation({
   args: {
     subjectId: v.id("subjects"),

@@ -125,26 +125,35 @@ function ConceptBar({ completed, total }: { completed: number; total: number }) 
   );
 }
 
-function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; studyItemId?: string }) {
-  const toggle = useMutation(api.mutations.toggleStudyItemCompletion);
+function CustomCheckbox({
+  checked,
+  onChange,
+  ariaLabel,
+  idPrefix,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  ariaLabel?: string;
+  idPrefix: string;
+  disabled?: boolean;
+}) {
   const generatedId = React.useId();
-  const id = `cbx-${studyItemId || generatedId}`;
+  const id = `cbx-${idPrefix}-${generatedId}`;
 
   return (
-    <div 
-      className={`checkbox-wrapper-46 flex justify-center items-center ${!studyItemId ? "opacity-50 pointer-events-none" : ""}`}
+    <div
+      className={`checkbox-wrapper-46 flex justify-center items-center ${disabled ? "opacity-50 pointer-events-none" : ""}`}
+      onClick={(e) => e.stopPropagation()}
     >
-      <input 
-        className="inp-cbx" 
-        id={id} 
-        type="checkbox" 
-        checked={isCompleted}
-        disabled={!studyItemId}
-        onChange={() => {
-          if (studyItemId) {
-            toggle({ studyItemId: studyItemId as Id<"studyItems"> });
-          }
-        }}
+      <input
+        className="inp-cbx"
+        id={id}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        aria-label={ariaLabel}
       />
       <label className="cbx" htmlFor={id}>
         <span>
@@ -154,6 +163,23 @@ function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; study
         </span>
       </label>
     </div>
+  );
+}
+
+function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; studyItemId?: string }) {
+  const toggle = useMutation(api.mutations.toggleStudyItemCompletion);
+
+  return (
+    <CustomCheckbox
+      checked={isCompleted}
+      disabled={!studyItemId}
+      onChange={() => {
+        if (studyItemId) {
+          toggle({ studyItemId: studyItemId as Id<"studyItems"> });
+        }
+      }}
+      idPrefix={`tracker-${studyItemId || "empty"}`}
+    />
   );
 }
 
@@ -478,7 +504,12 @@ export default function ChapterTable({
   subjectId,
 }: ChapterTableProps) {
   const [editingChapter, setEditingChapter] = useState<ChapterRowData | null>(null);
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<Id<"chapters">>>(
+    () => new Set(),
+  );
+  const [savingBulkStatus, setSavingBulkStatus] = useState(false);
   const deleteChapter = useMutation(api.mutations.deleteChapter);
+  const setChaptersInNextTerm = useMutation(api.mutations.setChaptersInNextTerm);
 
   if (chapters.length === 0) {
     return (
@@ -492,31 +523,137 @@ export default function ChapterTable({
   }
 
   const finalSubjectId = subjectId || chapters[0]?.subjectId;
+  const selectedCount = selectedChapterIds.size;
+  const allVisibleSelected =
+    chapters.length > 0 && chapters.every((chapter) => selectedChapterIds.has(chapter._id));
+  const selectedIds = Array.from(selectedChapterIds);
+
+  const toggleChapterSelection = (chapterId: Id<"chapters">) => {
+    setSelectedChapterIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(chapterId)) {
+        next.delete(chapterId);
+      } else {
+        next.add(chapterId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedChapterIds((previous) => {
+      if (allVisibleSelected) {
+        return new Set();
+      }
+
+      const next = new Set(previous);
+      for (const chapter of chapters) {
+        next.add(chapter._id);
+      }
+      return next;
+    });
+  };
+
+  const applyBulkNextTermStatus = async (inNextTerm: boolean) => {
+    if (!finalSubjectId || selectedIds.length === 0) {
+      return;
+    }
+
+    setSavingBulkStatus(true);
+    try {
+      await setChaptersInNextTerm({
+        subjectId: finalSubjectId,
+        chapterIds: selectedIds,
+        inNextTerm,
+      });
+      setSelectedChapterIds(new Set());
+    } finally {
+      setSavingBulkStatus(false);
+    }
+  };
 
   return (
     <section className="mb-12">
-      <h2 className="font-sub-heading text-[22px] leading-tight text-on-surface mb-4 md:mb-6 md:text-sub-heading">{title}</h2>
+      <div className="mb-4 flex flex-col gap-3 md:mb-6 md:flex-row md:items-center md:justify-between">
+        <h2 className="font-sub-heading text-[22px] leading-tight text-on-surface md:text-sub-heading">{title}</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleAllVisible}
+            className="inline-flex h-9 items-center gap-2 rounded-full border border-border-subtle bg-pure-white px-4 font-mono-code text-mono-code uppercase text-gray-500 transition-colors hover:border-border-medium hover:text-on-surface md:hidden"
+          >
+            <span className="material-symbols-outlined text-base">
+              {allVisibleSelected ? "deselect" : "select_all"}
+            </span>
+            {allVisibleSelected ? "সব বাদ" : "সব সিলেক্ট"}
+          </button>
+          {selectedCount > 0 && (
+            <>
+              <span className="inline-flex h-9 items-center rounded-full bg-surface-container px-3 font-mono-code text-mono-code text-gray-500">
+                {selectedCount} selected
+              </span>
+              <button
+                type="button"
+                disabled={savingBulkStatus}
+                onClick={() => void applyBulkNextTermStatus(true)}
+                className="inline-flex h-9 items-center gap-2 rounded-full bg-on-surface px-4 font-mono-code text-mono-code uppercase text-pure-white transition-colors hover:bg-brand-green hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-base">event_available</span>
+                পরীক্ষায় যোগ
+              </button>
+              <button
+                type="button"
+                disabled={savingBulkStatus}
+                onClick={() => void applyBulkNextTermStatus(false)}
+                className="inline-flex h-9 items-center gap-2 rounded-full border border-border-subtle bg-pure-white px-4 font-mono-code text-mono-code uppercase text-gray-500 transition-colors hover:border-border-medium hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-base">event_busy</span>
+                বাদ দিন
+              </button>
+            </>
+          )}
+        </div>
+      </div>
       <div className="space-y-3 md:hidden">
         {chapters.map((chapter, idx) => (
-          <MobileChapterCard
-            key={chapter._id}
-            chapter={chapter}
-            trackerConfigs={trackerConfigs}
-            subjectSlug={subjectSlug}
-            displayOrder={
-              String(chapter.order).length > 2
-                ? String(idx + 1).padStart(2, "0")
-                : String(chapter.order).padStart(2, "0")
-            }
-            onEdit={() => setEditingChapter(chapter)}
-            onDelete={() => deleteChapter({ chapterId: chapter._id })}
-          />
+          <div key={chapter._id} className="relative">
+            <div className="absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-pure-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <CustomCheckbox
+                checked={selectedChapterIds.has(chapter._id)}
+                onChange={() => toggleChapterSelection(chapter._id)}
+                idPrefix={`mobile-sel-${chapter._id}`}
+                ariaLabel={`${chapter.name} select`}
+              />
+            </div>
+            <div className="pl-8">
+              <MobileChapterCard
+                chapter={chapter}
+                trackerConfigs={trackerConfigs}
+                subjectSlug={subjectSlug}
+                displayOrder={
+                  String(chapter.order).length > 2
+                    ? String(idx + 1).padStart(2, "0")
+                    : String(chapter.order).padStart(2, "0")
+                }
+                onEdit={() => setEditingChapter(chapter)}
+                onDelete={() => deleteChapter({ chapterId: chapter._id })}
+              />
+            </div>
+          </div>
         ))}
       </div>
       <div className="hidden overflow-x-auto bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] md:block">
-        <table className="w-full min-w-[760px] border-separate border-spacing-0">
+        <table className="w-full min-w-[840px] border-separate border-spacing-0">
           <thead>
             <tr className="border-b border-border-subtle">
+              <th className="w-14 py-3.5 pl-5 pr-2 text-left first:rounded-tl-2xl">
+                <CustomCheckbox
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisible}
+                  idPrefix="header-select-all"
+                  ariaLabel={`${title} select all`}
+                />
+              </th>
               <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
                 অধ্যায়
               </th>
@@ -543,11 +680,19 @@ export default function ChapterTable({
             {chapters.map((chapter, idx) => (
               <tr
                 key={chapter._id}
-                className={`transition-colors hover:bg-surface-container/20 group ${
-                  idx < chapters.length - 1 ? "border-b border-border-subtle" : ""
+                className={`transition-colors hover:bg-gray-50 group ${
+                  idx < chapters.length - 1 ? "[&>td]:border-b [&>td]:border-border-subtle" : ""
                 }`}
               >
-                <td className={`py-4 px-5 ${idx === chapters.length - 1 ? "rounded-bl-2xl" : ""}`}>
+                <td className={`py-4 pl-5 pr-2 ${idx === chapters.length - 1 ? "rounded-bl-2xl" : ""}`}>
+                  <CustomCheckbox
+                    checked={selectedChapterIds.has(chapter._id)}
+                    onChange={() => toggleChapterSelection(chapter._id)}
+                    idPrefix={`row-sel-${chapter._id}`}
+                    ariaLabel={`${chapter.name} select`}
+                  />
+                </td>
+                <td className="py-4 px-5">
                   <div className="flex items-center gap-3">
                     <span className="font-mono-code text-mono-code text-gray-400 bg-surface-container w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0">
                       {String(chapter.order).length > 2 ? String(idx + 1).padStart(2, "0") : String(chapter.order).padStart(2, "0")}
