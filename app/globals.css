@@ -616,7 +616,7 @@ body {
   color: #93c5fd !important;
 }
 
-/* ── Selection Mode Transitions ── */
+/* Selection Mode Transitions */
 
 /* Toolbar slide-down / slide-up */
 .selection-toolbar {
@@ -704,4 +704,3 @@ body {
 .mobile-card-wrap.is-shifted {
   padding-left: 2rem; /* pl-8 */
 }
-

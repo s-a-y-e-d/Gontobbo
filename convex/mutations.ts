@@ -1477,7 +1477,7 @@ export const createChapter = mutation({
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
-    const { slug, order: _ignoredOrder, ...rest } = args;
+    const { slug } = args;
     const siblingChapters = await getAccessibleChaptersForSubject(
       ctx,
       currentUser,
@@ -1499,7 +1499,10 @@ export const createChapter = mutation({
       : undefined;
     const chapterId = await ctx.db.insert("chapters", {
       userId: currentUser._id,
-      ...rest,
+      subjectId: args.subjectId,
+      name: args.name,
+      inNextTerm: args.inNextTerm,
+      priorityBoost: args.priorityBoost,
       order: nextOrder,
       nextTermOrder,
       slug: slug || "", // Placeholder
@@ -1729,10 +1732,11 @@ export const createConcept = mutation({
       currentUser,
       args.chapterId,
     );
-    const { order: _ignoredOrder, ...insertData } = args;
     const conceptId = await ctx.db.insert("concepts", {
       userId: currentUser._id,
-      ...insertData,
+      chapterId: args.chapterId,
+      name: args.name,
+      difficulty: args.difficulty,
       order: Math.max(0, ...siblingConcepts.map((concept) => concept.order)) + 1,
     });
     await invalidateChapterStudyItemEnsureStatus(
