@@ -415,7 +415,10 @@ export const getSubjectPageData = query({
 
     const chapters = (
       await getOwnedChaptersForSubject(ctx, currentUser, subject._id)
-    ).sort((left, right) => left.order - right.order);
+    ).sort(
+      (left, right) =>
+        left.order - right.order || left._creationTime - right._creationTime,
+    );
 
     const summaryStatus = await getSyllabusSummaryMigrationStatus(
       ctx,
@@ -971,7 +974,10 @@ export const getChapterPageData = query({
 
     const concepts = (
       await getOwnedConceptsForChapter(ctx, currentUser, chapter._id)
-    ).sort((left, right) => left.order - right.order);
+    ).sort(
+      (left, right) =>
+        left.order - right.order || left._creationTime - right._creationTime,
+    );
 
     const summaryStatus = await getSyllabusSummaryMigrationStatus(
       ctx,

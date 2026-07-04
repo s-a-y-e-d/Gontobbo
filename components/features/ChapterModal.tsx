@@ -9,23 +9,22 @@ type ChapterModalProps = {
   isOpen: boolean;
   onClose: () => void;
   subjectId: Id<"subjects">;
-  suggestedOrder?: number;
   initialData?: {
     _id: Id<"chapters">;
     name: string;
     slug: string;
     order: number;
+    nextTermOrder?: number;
     inNextTerm: boolean;
     priorityBoost?: number;
   };
 };
 
-export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrder, initialData }: ChapterModalProps) {
+export default function ChapterModal({ isOpen, onClose, subjectId, initialData }: ChapterModalProps) {
   const createChapter = useMutation(api.mutations.createChapter);
   const updateChapter = useMutation(api.mutations.updateChapter);
   
   const [name, setName] = useState(initialData?.name || "");
-  const [order, setOrder] = useState(initialData?.order || suggestedOrder || 1);
   const [inNextTerm, setInNextTerm] = useState(initialData?.inNextTerm ?? false);
   const [priorityBoost, setPriorityBoost] = useState(initialData?.priorityBoost || 0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,7 +49,6 @@ export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrde
         await updateChapter({
           chapterId: initialData._id,
           name,
-          order,
           inNextTerm,
           priorityBoost: priorityBoost || undefined,
         });
@@ -58,7 +56,6 @@ export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrde
         await createChapter({
           subjectId,
           name,
-          order,
           inNextTerm,
           priorityBoost: priorityBoost || undefined,
         });
@@ -105,18 +102,7 @@ export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrde
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block font-label-uppercase text-label-uppercase text-gray-500 mb-2">ক্রম (Order)</label>
-              <input 
-                type="number" 
-                required
-                value={order}
-                onChange={(e) => setOrder(Number(e.target.value))}
-                className="w-full px-4 py-2.5 border border-border-medium rounded-full focus:outline-none focus:border-brand-green bg-gray-50/50 transition-all font-mono-code text-mono-code"
-              />
-            </div>
-            <div>
+          <div>
               <label className="block font-label-uppercase text-label-uppercase text-gray-500 mb-2">বুস্ট (Priority)</label>
               <input 
                 type="number" 
@@ -125,7 +111,6 @@ export default function ChapterModal({ isOpen, onClose, subjectId, suggestedOrde
                 className="w-full px-4 py-2.5 border border-border-medium rounded-full focus:outline-none focus:border-brand-green bg-gray-50/50 transition-all font-mono-code text-mono-code"
                 placeholder="0"
               />
-            </div>
           </div>
 
           <div className="flex items-center gap-3 py-1">

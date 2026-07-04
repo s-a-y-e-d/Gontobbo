@@ -1084,7 +1084,6 @@ describe("todo", () => {
       chapterId,
       name: "Kinematics",
       slug: "kinematics",
-      order: 1,
       inNextTerm: true,
     });
 
@@ -1123,7 +1122,6 @@ describe("todo", () => {
     await t.mutation(api.mutations.updateConcept, {
       conceptId,
       name: "Speed",
-      order: 1,
     });
 
     let digests = await t.run(async (ctx) => {

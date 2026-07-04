@@ -9,7 +9,6 @@ type ConceptModalProps = {
   isOpen: boolean;
   onClose: () => void;
   chapterId: Id<"chapters">;
-  suggestedOrder?: number;
   initialData?: {
     _id: Id<"concepts">;
     name: string;
@@ -18,12 +17,11 @@ type ConceptModalProps = {
   };
 };
 
-export default function ConceptModal({ isOpen, onClose, chapterId, suggestedOrder, initialData }: ConceptModalProps) {
+export default function ConceptModal({ isOpen, onClose, chapterId, initialData }: ConceptModalProps) {
   const createConcept = useMutation(api.mutations.createConcept);
   const updateConcept = useMutation(api.mutations.updateConcept);
   
   const [name, setName] = useState(initialData?.name || "");
-  const [order, setOrder] = useState(initialData?.order || suggestedOrder || 1);
   const [difficulty, setDifficulty] = useState(initialData?.difficulty || 1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -47,14 +45,12 @@ export default function ConceptModal({ isOpen, onClose, chapterId, suggestedOrde
         await updateConcept({
           conceptId: initialData._id,
           name,
-          order,
           difficulty: difficulty || undefined,
         });
       } else {
         await createConcept({
           chapterId,
           name,
-          order,
           difficulty: difficulty || undefined,
         });
       }
@@ -100,18 +96,7 @@ export default function ConceptModal({ isOpen, onClose, chapterId, suggestedOrde
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block font-label-uppercase text-label-uppercase text-gray-500 mb-2">ক্রম (Order)</label>
-              <input 
-                type="number" 
-                required
-                value={order}
-                onChange={(e) => setOrder(Number(e.target.value))}
-                className="w-full px-4 py-2.5 border border-border-medium rounded-full focus:outline-none focus:border-brand-green bg-gray-50/50 transition-all font-mono-code text-mono-code"
-              />
-            </div>
-            <div>
+          <div>
               <label className="block font-label-uppercase text-label-uppercase text-gray-500 mb-2">কঠিন্য (Difficulty)</label>
               <select
                 value={difficulty}
@@ -122,9 +107,8 @@ export default function ConceptModal({ isOpen, onClose, chapterId, suggestedOrde
                 <option value={2}>২ - সাধারণ</option>
                 <option value={3}>৩ - মাঝারি</option>
                 <option value={4}>৪ - কঠিন</option>
-                <option value={5}>৫ - খুব কঠিন</option>
-              </select>
-            </div>
+                  <option value={5}>৫ - খুব কঠিন</option>
+                </select>
           </div>
 
           <div className="flex justify-end gap-3 mt-4">

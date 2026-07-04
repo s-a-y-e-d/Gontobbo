@@ -53,9 +53,14 @@ export default function SubjectPage() {
 
   const { subject, chapters, progressPercentage } = data;
 
-  const nextTermChapters = chapters.filter((ch) => ch.inNextTerm);
+  const nextTermChapters = chapters
+    .filter((ch) => ch.inNextTerm)
+    .sort(
+      (left, right) =>
+        (left.nextTermOrder ?? left.order) - (right.nextTermOrder ?? right.order) ||
+        left.order - right.order,
+    );
   const allChapters = chapters;
-  const nextOrder = chapters.length > 0 ? Math.max(...chapters.map((c) => c.order)) + 1 : 1;
 
   const enterSelectionMode = (chapterId: Id<"chapters">) => {
     setSelectionMode(true);
@@ -121,6 +126,7 @@ export default function SubjectPage() {
         trackerConfigs={subject.chapterTrackers}
         subjectSlug={subject.slug}
         subjectId={subject._id}
+        orderMode="nextTerm"
         selectionMode={selectionMode}
         selectedChapterIds={selectedChapterIds}
         onToggleChapterSelection={toggleChapterSelection}
@@ -136,6 +142,7 @@ export default function SubjectPage() {
         trackerConfigs={subject.chapterTrackers}
         subjectSlug={subject.slug}
         subjectId={subject._id}
+        orderMode="full"
         selectionMode={selectionMode}
         selectedChapterIds={selectedChapterIds}
         onToggleChapterSelection={toggleChapterSelection}
@@ -148,7 +155,6 @@ export default function SubjectPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         subjectId={subject._id}
-        suggestedOrder={nextOrder}
       />
     </div>
   );

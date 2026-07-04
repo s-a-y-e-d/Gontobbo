@@ -61,6 +61,7 @@ export default defineSchema({
     slug: v.string(),
     order: v.number(),
     inNextTerm: v.boolean(),
+    nextTermOrder: v.optional(v.number()),
     priorityBoost: v.optional(v.number()),
   })
     .index("by_subject", ["subjectId"])

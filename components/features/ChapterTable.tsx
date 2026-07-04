@@ -6,6 +6,23 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import Link from "next/link";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type TrackerConfig = {
   key: string;
@@ -19,6 +36,7 @@ type ChapterRowData = {
   name: string;
   slug: string;
   order: number;
+  nextTermOrder?: number;
   inNextTerm: boolean;
   totalConcepts: number;
   completedConcepts: number;
@@ -34,6 +52,7 @@ type ChapterTableProps = {
   trackerConfigs: TrackerConfig[];
   subjectSlug: string;
   subjectId?: Id<"subjects">;
+  orderMode: "full" | "nextTerm";
   selectionMode: boolean;
   selectedChapterIds: Set<Id<"chapters">>;
   onToggleChapterSelection: (chapterId: Id<"chapters">) => void;
@@ -46,6 +65,13 @@ type FloatingMenuPosition = {
   top: number;
   left: number;
   visibility: "hidden" | "visible";
+};
+
+type DragHandleProps = {
+  attributes: React.HTMLAttributes<HTMLElement>;
+  listeners?: React.HTMLAttributes<HTMLElement>;
+  disabled?: boolean;
+  revealOnHover?: boolean;
 };
 
 function getFloatingMenuPosition(
@@ -168,6 +194,54 @@ function CustomCheckbox({
           </svg>
         </span>
       </label>
+    </div>
+  );
+}
+
+function DragHandle({ attributes, listeners, disabled, revealOnHover = false }: DragHandleProps) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label="Drag row"
+      title={disabled ? "Selection mode disables reordering" : "Drag to reorder"}
+      {...attributes}
+      {...listeners}
+      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border text-gray-400 opacity-100 transition-all focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40 dark:text-neutral-500 ${
+        revealOnHover ? "md:absolute md:inset-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" : ""
+      } ${
+        disabled
+          ? "cursor-not-allowed border-transparent bg-transparent md:group-hover:opacity-40 md:group-focus-within:opacity-40"
+          : "cursor-grab border-border-subtle bg-pure-white hover:border-brand-green/30 hover:bg-brand-green-light/60 hover:text-on-surface active:cursor-grabbing dark:border-white/10 dark:bg-white/[0.05] dark:hover:border-brand-green/30 dark:hover:bg-brand-green/10 dark:hover:text-neutral-100"
+      }`}
+    >
+      <span className="material-symbols-outlined text-[19px]">drag_indicator</span>
+    </button>
+  );
+}
+
+function OrderDragSlot({
+  order,
+  attributes,
+  listeners,
+  disabled,
+}: {
+  order: string;
+  attributes: React.HTMLAttributes<HTMLElement>;
+  listeners?: React.HTMLAttributes<HTMLElement>;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="relative h-8 w-8 flex-shrink-0">
+      <span className="hidden h-8 w-8 items-center justify-center rounded-lg bg-surface-container font-mono-code text-mono-code text-gray-400 transition-opacity md:flex md:group-hover:opacity-0 md:group-focus-within:opacity-0 dark:bg-white/[0.07] dark:text-neutral-400">
+        {order}
+      </span>
+      <DragHandle
+        attributes={attributes}
+        listeners={listeners}
+        disabled={disabled}
+        revealOnHover
+      />
     </div>
   );
 }
@@ -454,6 +528,8 @@ function MobileChapterCard({
   onDelete,
   onSelect,
   displayOrder,
+  dragHandle,
+  isDragging,
 }: {
   chapter: ChapterRowData;
   trackerConfigs: TrackerConfig[];
@@ -462,13 +538,22 @@ function MobileChapterCard({
   onDelete: () => void;
   onSelect: () => void;
   displayOrder: string;
+  dragHandle: React.ReactNode;
+  isDragging: boolean;
 }) {
   return (
-    <article className="rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+    <article
+      className={`rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-shadow dark:border-white/10 dark:bg-slate-900 ${
+        isDragging ? "shadow-[0_18px_50px_rgba(0,0,0,0.16)] ring-2 ring-brand-green/30" : ""
+      }`}
+    >
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container font-mono-code text-mono-code text-gray-500">
-          {displayOrder}
-        </span>
+        <div className="relative h-8 w-8 flex-shrink-0">
+          <span className="hidden h-8 w-8 items-center justify-center rounded-lg bg-surface-container font-mono-code text-mono-code text-gray-400 transition-opacity md:flex md:group-hover:opacity-0 md:group-focus-within:opacity-0 dark:bg-white/[0.07] dark:text-neutral-400">
+            {displayOrder}
+          </span>
+          {dragHandle}
+        </div>
         <div className="min-w-0 flex-1">
           <Link
             href={`/subjects/${subjectSlug}/${chapter.slug}`}
@@ -519,12 +604,198 @@ function MobileChapterCard({
   );
 }
 
+function SortableMobileChapter({
+  chapter,
+  trackerConfigs,
+  subjectSlug,
+  displayOrder,
+  selectionMode,
+  selected,
+  onToggleSelection,
+  onEdit,
+  onDelete,
+  onSelect,
+}: {
+  chapter: ChapterRowData;
+  trackerConfigs: TrackerConfig[];
+  subjectSlug: string;
+  displayOrder: string;
+  selectionMode: boolean;
+  selected: boolean;
+  onToggleSelection: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onSelect: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: chapter._id,
+    disabled: selectionMode,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="group relative"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 30 : undefined,
+      }}
+    >
+      <div className={`absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-pure-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] mobile-select-bubble ${selectionMode ? "is-active" : ""}`}>
+        <CustomCheckbox
+          checked={selected}
+          onChange={onToggleSelection}
+          idPrefix={`mobile-sel-${chapter._id}`}
+          ariaLabel={`${chapter.name} select`}
+        />
+      </div>
+      <div className={`mobile-card-wrap ${selectionMode ? "is-shifted" : ""}`}>
+        <MobileChapterCard
+          chapter={chapter}
+          trackerConfigs={trackerConfigs}
+          subjectSlug={subjectSlug}
+          displayOrder={displayOrder}
+          dragHandle={
+            <DragHandle
+              attributes={attributes}
+              listeners={listeners}
+              disabled={selectionMode}
+              revealOnHover={false}
+            />
+          }
+          isDragging={isDragging}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onSelect={onSelect}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SortableChapterRow({
+  chapter,
+  trackerConfigs,
+  subjectSlug,
+  displayOrder,
+  selectionMode,
+  selected,
+  isLast,
+  onToggleSelection,
+  onEdit,
+  onDelete,
+  onSelect,
+}: {
+  chapter: ChapterRowData;
+  trackerConfigs: TrackerConfig[];
+  subjectSlug: string;
+  displayOrder: string;
+  selectionMode: boolean;
+  selected: boolean;
+  isLast: boolean;
+  onToggleSelection: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onSelect: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: chapter._id,
+    disabled: selectionMode,
+  });
+
+  return (
+    <tr
+      ref={setNodeRef}
+      className={`group transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.04] ${
+        isDragging ? "relative z-30 bg-brand-green-light/70 shadow-lg dark:bg-brand-green/10" : ""
+      } ${!isLast ? "[&>td]:border-b [&>td]:border-border-subtle dark:[&>td]:border-white/10" : ""}`}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+    >
+      <td className={`select-col-cell ${isLast ? "rounded-bl-2xl" : ""}`}>
+        <div className={`select-col-inner flex items-center justify-center ${selectionMode ? "is-active" : ""}`}>
+          <CustomCheckbox
+            checked={selected}
+            onChange={onToggleSelection}
+            idPrefix={`row-sel-${chapter._id}`}
+            ariaLabel={`${chapter.name} select`}
+          />
+        </div>
+      </td>
+      <td className={`py-4 px-5 ${!selectionMode && isLast ? "rounded-bl-2xl" : ""}`}>
+        <div className="flex items-center gap-3">
+          <OrderDragSlot
+            order={displayOrder}
+            attributes={attributes}
+            listeners={listeners}
+            disabled={selectionMode}
+          />
+          <Link
+            href={`/subjects/${subjectSlug}/${chapter.slug}`}
+            className="text-left font-body text-body leading-tight text-on-surface transition-colors hover:text-brand-green dark:text-neutral-100"
+          >
+            {chapter.name}
+          </Link>
+        </div>
+      </td>
+      <td className="py-4 px-5">
+        <div className="flex justify-center">
+          <ConceptBar completed={chapter.completedConcepts} total={chapter.totalConcepts} />
+        </div>
+      </td>
+      {trackerConfigs.map((trackerConfig) => {
+        const tracker = chapter.trackerData.find((data) => data.key === trackerConfig.key);
+        return (
+          <td key={trackerConfig.key} className="py-4 px-5 text-center">
+            <TrackerCell
+              isCompleted={tracker?.isCompleted ?? false}
+              studyItemId={tracker?.studyItemId}
+            />
+          </td>
+        );
+      })}
+      <td className="py-4 px-5 text-center">
+        <StatusBadge status={chapter.status} />
+      </td>
+      <td className={`py-4 px-5 text-right ${isLast ? "rounded-br-2xl" : ""}`}>
+        <ActionMenu
+          chapterId={chapter._id}
+          inNextTerm={chapter.inNextTerm}
+          subjectSlug={subjectSlug}
+          chapterSlug={chapter.slug}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onSelect={onSelect}
+        />
+      </td>
+    </tr>
+  );
+}
+
 export default function ChapterTable({
   title,
   chapters,
   trackerConfigs,
   subjectSlug,
   subjectId,
+  orderMode,
   selectionMode,
   selectedChapterIds,
   onToggleChapterSelection,
@@ -536,6 +807,16 @@ export default function ChapterTable({
   const [savingBulkStatus, setSavingBulkStatus] = useState(false);
   const deleteChapter = useMutation(api.mutations.deleteChapter);
   const setChaptersInNextTerm = useMutation(api.mutations.setChaptersInNextTerm);
+  const reorderChapters = useMutation(api.mutations.reorderChapters);
+  const reorderNextTermChapters = useMutation(api.mutations.reorderNextTermChapters);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   if (chapters.length === 0) {
     return (
@@ -554,9 +835,43 @@ export default function ChapterTable({
     chapters.length > 0 && chapters.every((chapter) => selectedChapterIds.has(chapter._id));
   const selectedIds = Array.from(selectedChapterIds);
   const visibleChapterIds = chapters.map((chapter) => chapter._id);
+  const sortableChapterIds = chapters.map((chapter) => chapter._id);
+  const getDisplayOrder = (chapter: ChapterRowData, index: number) =>
+    String(orderMode === "nextTerm" ? chapter.order : index + 1).padStart(2, "0");
 
   const toggleAllVisible = () => {
     onToggleVisibleChapters(visibleChapterIds, !allVisibleSelected);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    if (selectionMode || !finalSubjectId) {
+      return;
+    }
+
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = sortableChapterIds.indexOf(active.id as Id<"chapters">);
+    const newIndex = sortableChapterIds.indexOf(over.id as Id<"chapters">);
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    const nextChapterIds = arrayMove(sortableChapterIds, oldIndex, newIndex);
+    if (orderMode === "nextTerm") {
+      await reorderNextTermChapters({
+        subjectId: finalSubjectId,
+        chapterIds: nextChapterIds,
+      });
+      return;
+    }
+
+    await reorderChapters({
+      subjectId: finalSubjectId,
+      chapterIds: nextChapterIds,
+    });
   };
 
   const applyBulkNextTermStatus = async (inNextTerm: boolean) => {
@@ -634,140 +949,87 @@ export default function ChapterTable({
           </div>
         </div>
       </div>
-      <div className="space-y-3 md:hidden">
-        {chapters.map((chapter, idx) => (
-          <div key={chapter._id} className="relative">
-            <div className={`absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-pure-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] mobile-select-bubble ${selectionMode ? "is-active" : ""}`}>
-              <CustomCheckbox
-                checked={selectedChapterIds.has(chapter._id)}
-                onChange={() => onToggleChapterSelection(chapter._id)}
-                idPrefix={`mobile-sel-${chapter._id}`}
-                ariaLabel={`${chapter.name} select`}
-              />
-            </div>
-            <div className={`mobile-card-wrap ${selectionMode ? "is-shifted" : ""}`}>
-              <MobileChapterCard
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={sortableChapterIds} strategy={verticalListSortingStrategy}>
+          <div className="space-y-3 md:hidden">
+            {chapters.map((chapter, idx) => (
+              <SortableMobileChapter
+                key={chapter._id}
                 chapter={chapter}
                 trackerConfigs={trackerConfigs}
                 subjectSlug={subjectSlug}
-                displayOrder={
-                  String(chapter.order).length > 2
-                    ? String(idx + 1).padStart(2, "0")
-                    : String(chapter.order).padStart(2, "0")
-                }
+                displayOrder={getDisplayOrder(chapter, idx)}
+                selectionMode={selectionMode}
+                selected={selectedChapterIds.has(chapter._id)}
+                onToggleSelection={() => onToggleChapterSelection(chapter._id)}
                 onEdit={() => setEditingChapter(chapter)}
                 onDelete={() => deleteChapter({ chapterId: chapter._id })}
                 onSelect={() => onEnterSelectionMode(chapter._id)}
               />
-            </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="hidden overflow-x-auto bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] md:block">
-        <table className="w-full min-w-[760px] border-separate border-spacing-0">
-          <thead>
-            <tr className="border-b border-border-subtle">
-              <th className="select-col-cell">
-                <div className={`select-col-inner flex items-center justify-center ${selectionMode ? "is-active" : ""}`}>
-                  <CustomCheckbox
-                    checked={allVisibleSelected}
-                    onChange={toggleAllVisible}
-                    idPrefix="header-select-all"
-                    ariaLabel={`${title} select all`}
-                  />
-                </div>
-              </th>
-              <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
-                অধ্যায়
-              </th>
-              <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
-                কনসেপ্ট
-              </th>
-              {trackerConfigs.map((t) => (
-                <th
-                  key={t.key}
-                  className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
-                >
-                  {t.label}
-                </th>
-              ))}
-              <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
-                স্ট্যাটাস
-              </th>
-              <th className="text-right py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase last:rounded-tr-2xl">
-                অ্যাকশন
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {chapters.map((chapter, idx) => (
-              <tr
-                key={chapter._id}
-                className={`transition-colors hover:bg-gray-50 group ${
-                  idx < chapters.length - 1 ? "[&>td]:border-b [&>td]:border-border-subtle" : ""
-                }`}
-              >
-                <td className={`select-col-cell ${idx === chapters.length - 1 ? "rounded-bl-2xl" : ""}`}>
-                  <div className={`select-col-inner flex items-center justify-center ${selectionMode ? "is-active" : ""}`}>
-                    <CustomCheckbox
-                      checked={selectedChapterIds.has(chapter._id)}
-                      onChange={() => onToggleChapterSelection(chapter._id)}
-                      idPrefix={`row-sel-${chapter._id}`}
-                      ariaLabel={`${chapter.name} select`}
-                    />
-                  </div>
-                </td>
-                <td className={`py-4 px-5 ${!selectionMode && idx === chapters.length - 1 ? "rounded-bl-2xl" : ""}`}>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono-code text-mono-code text-gray-400 bg-surface-container w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0">
-                      {String(chapter.order).length > 2 ? String(idx + 1).padStart(2, "0") : String(chapter.order).padStart(2, "0")}
-                    </span>
-                    <Link
-                      href={`/subjects/${subjectSlug}/${chapter.slug}`}
-                      className="font-body text-body text-on-surface leading-tight hover:text-brand-green transition-colors text-left"
-                    >
-                      {chapter.name}
-                    </Link>
-                  </div>
-                </td>
-                <td className="py-4 px-5">
-                  <div className="flex justify-center">
-                    <ConceptBar
-                      completed={chapter.completedConcepts}
-                      total={chapter.totalConcepts}
-                    />
-                  </div>
-                </td>
-                {trackerConfigs.map((t) => {
-                  const tracker = chapter.trackerData.find((d) => d.key === t.key);
-                  return (
-                    <td key={t.key} className="py-4 px-5 text-center">
-                      <TrackerCell
-                        isCompleted={tracker?.isCompleted ?? false}
-                        studyItemId={tracker?.studyItemId}
+        </SortableContext>
+      </DndContext>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={sortableChapterIds} strategy={verticalListSortingStrategy}>
+          <div className="hidden overflow-x-auto bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] md:block">
+            <table className="w-full min-w-[760px] border-separate border-spacing-0">
+              <thead>
+                <tr className="border-b border-border-subtle">
+                  <th className="select-col-cell">
+                    <div className={`select-col-inner flex items-center justify-center ${selectionMode ? "is-active" : ""}`}>
+                      <CustomCheckbox
+                        checked={allVisibleSelected}
+                        onChange={toggleAllVisible}
+                        idPrefix="header-select-all"
+                        ariaLabel={`${title} select all`}
                       />
-                    </td>
-                  );
-                })}
-                <td className="py-4 px-5 text-center">
-                  <StatusBadge status={chapter.status} />
-                </td>
-                <td className={`py-4 px-5 text-right ${idx === chapters.length - 1 ? "rounded-br-2xl" : ""}`}>
-                  <ActionMenu
-                    chapterId={chapter._id}
-                    inNextTerm={chapter.inNextTerm}
+                    </div>
+                  </th>
+                  <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
+                    অধ্যায়
+                  </th>
+                  <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+                    কনসেপ্ট
+                  </th>
+                  {trackerConfigs.map((t) => (
+                    <th
+                      key={t.key}
+                      className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
+                    >
+                      {t.label}
+                    </th>
+                  ))}
+                  <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+                    স্ট্যাটাস
+                  </th>
+                  <th className="text-right py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase last:rounded-tr-2xl">
+                    অ্যাকশন
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {chapters.map((chapter, idx) => (
+                  <SortableChapterRow
+                    key={chapter._id}
+                    chapter={chapter}
+                    trackerConfigs={trackerConfigs}
                     subjectSlug={subjectSlug}
-                    chapterSlug={chapter.slug}
+                    displayOrder={getDisplayOrder(chapter, idx)}
+                    selectionMode={selectionMode}
+                    selected={selectedChapterIds.has(chapter._id)}
+                    isLast={idx === chapters.length - 1}
+                    onToggleSelection={() => onToggleChapterSelection(chapter._id)}
                     onEdit={() => setEditingChapter(chapter)}
                     onDelete={() => deleteChapter({ chapterId: chapter._id })}
                     onSelect={() => onEnterSelectionMode(chapter._id)}
                   />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {editingChapter && (
         <ChapterModal

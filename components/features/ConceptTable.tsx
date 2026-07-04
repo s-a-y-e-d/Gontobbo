@@ -8,6 +8,23 @@ import { Id } from "@/convex/_generated/dataModel";
 import { useToast } from "@/components/ui/Toast";
 import ConceptModal from "./ConceptModal";
 import ConceptReviewModal from "./ConceptReviewModal";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type TrackerConfig = {
   key: string;
@@ -39,6 +56,13 @@ type FloatingMenuPosition = {
   top: number;
   left: number;
   visibility: "hidden" | "visible";
+};
+
+type DragHandleProps = {
+  attributes: React.HTMLAttributes<HTMLElement>;
+  listeners?: React.HTMLAttributes<HTMLElement>;
+  disabled?: boolean;
+  revealOnHover?: boolean;
 };
 
 function getFloatingMenuPosition(
@@ -327,6 +351,43 @@ function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; study
   );
 }
 
+function DragHandle({ attributes, listeners, disabled, revealOnHover = false }: DragHandleProps) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label="Drag row"
+      title="Drag to reorder"
+      {...attributes}
+      {...listeners}
+      className={`flex h-8 w-8 flex-shrink-0 cursor-grab items-center justify-center rounded-lg border border-border-subtle bg-pure-white text-gray-400 opacity-100 transition-all hover:border-brand-green/30 hover:bg-brand-green-light/60 hover:text-on-surface active:cursor-grabbing focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.05] dark:text-neutral-500 dark:hover:border-brand-green/30 dark:hover:bg-brand-green/10 dark:hover:text-neutral-100 ${
+        revealOnHover ? "md:absolute md:inset-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" : ""
+      }`}
+    >
+      <span className="material-symbols-outlined text-[19px]">drag_indicator</span>
+    </button>
+  );
+}
+
+function OrderDragSlot({
+  order,
+  attributes,
+  listeners,
+}: {
+  order: string;
+  attributes: React.HTMLAttributes<HTMLElement>;
+  listeners?: React.HTMLAttributes<HTMLElement>;
+}) {
+  return (
+    <div className="relative h-8 w-8 flex-shrink-0">
+      <span className="hidden h-8 w-8 items-center justify-center rounded-lg bg-surface-container font-mono-code text-mono-code text-gray-400 transition-opacity md:flex md:group-hover:opacity-0 md:group-focus-within:opacity-0 dark:bg-white/[0.07] dark:text-neutral-400">
+        {order}
+      </span>
+      <DragHandle attributes={attributes} listeners={listeners} revealOnHover />
+    </div>
+  );
+}
+
 function RevisionButton({
   isUnlocked,
   isDue,
@@ -357,6 +418,9 @@ function RevisionButton({
 function MobileConceptCard({
   concept,
   trackerConfigs,
+  displayOrder,
+  dragHandle,
+  isDragging,
   isUnlocked,
   isDue,
   onEdit,
@@ -368,6 +432,9 @@ function MobileConceptCard({
 }: {
   concept: ConceptRowData;
   trackerConfigs: TrackerConfig[];
+  displayOrder: string;
+  dragHandle: React.ReactNode;
+  isDragging: boolean;
   isUnlocked: boolean;
   isDue: boolean;
   onEdit: () => void;
@@ -378,11 +445,18 @@ function MobileConceptCard({
   isAddingToTodo: boolean;
 }) {
   return (
-    <article className="rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+    <article
+      className={`rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-shadow dark:border-white/10 dark:bg-slate-900 ${
+        isDragging ? "shadow-[0_18px_50px_rgba(0,0,0,0.16)] ring-2 ring-brand-green/30" : ""
+      }`}
+    >
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-surface-container font-mono-code text-mono-code text-gray-500">
-          {String(concept.order).padStart(2, "0")}
-        </span>
+        <div className="relative h-8 w-8 flex-shrink-0">
+          <span className="hidden h-8 w-8 items-center justify-center rounded-lg bg-surface-container font-mono-code text-mono-code text-gray-400 transition-opacity md:flex md:group-hover:opacity-0 md:group-focus-within:opacity-0 dark:bg-white/[0.07] dark:text-neutral-400">
+            {displayOrder}
+          </span>
+          {dragHandle}
+        </div>
         <div className="min-w-0 flex-1">
           <h3 className="font-body text-[17px] font-semibold leading-snug text-on-surface break-words">
             {concept.name}
@@ -434,6 +508,173 @@ function MobileConceptCard({
   );
 }
 
+function SortableMobileConcept({
+  concept,
+  trackerConfigs,
+  displayOrder,
+  isUnlocked,
+  isDue,
+  onEdit,
+  onAddToTodo,
+  onDelete,
+  onReset,
+  onReview,
+  isAddingToTodo,
+}: {
+  concept: ConceptRowData;
+  trackerConfigs: TrackerConfig[];
+  displayOrder: string;
+  isUnlocked: boolean;
+  isDue: boolean;
+  onEdit: () => void;
+  onAddToTodo: () => Promise<void>;
+  onDelete: () => void;
+  onReset: () => void;
+  onReview: () => void;
+  isAddingToTodo: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: concept._id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="group"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 30 : undefined,
+      }}
+    >
+      <MobileConceptCard
+        concept={concept}
+        trackerConfigs={trackerConfigs}
+        displayOrder={displayOrder}
+        dragHandle={<DragHandle attributes={attributes} listeners={listeners} />}
+        isDragging={isDragging}
+        isUnlocked={isUnlocked}
+        isDue={isDue}
+        onEdit={onEdit}
+        onAddToTodo={onAddToTodo}
+        onDelete={onDelete}
+        onReset={onReset}
+        onReview={onReview}
+        isAddingToTodo={isAddingToTodo}
+      />
+    </div>
+  );
+}
+
+function SortableConceptRow({
+  concept,
+  trackerConfigs,
+  displayOrder,
+  isUnlocked,
+  isDue,
+  isLast,
+  onEdit,
+  onAddToTodo,
+  onDelete,
+  onReset,
+  onReview,
+  isAddingToTodo,
+}: {
+  concept: ConceptRowData;
+  trackerConfigs: TrackerConfig[];
+  displayOrder: string;
+  isUnlocked: boolean;
+  isDue: boolean;
+  isLast: boolean;
+  onEdit: () => void;
+  onAddToTodo: () => Promise<void>;
+  onDelete: () => void;
+  onReset: () => void;
+  onReview: () => void;
+  isAddingToTodo: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: concept._id });
+
+  return (
+    <tr
+      ref={setNodeRef}
+      className={`group transition-colors hover:bg-surface-container/20 dark:hover:bg-white/[0.04] ${
+        isDragging ? "relative z-30 bg-brand-green-light/70 shadow-lg dark:bg-brand-green/10" : ""
+      } ${!isLast ? "border-b border-border-subtle dark:border-white/10" : ""}`}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+    >
+      <td className={`py-4 px-5 ${isLast ? "rounded-bl-2xl" : ""}`}>
+        <div className="flex items-center gap-3">
+          <OrderDragSlot
+            order={displayOrder}
+            attributes={attributes}
+            listeners={listeners}
+          />
+          <span className="font-body text-body leading-tight text-on-surface dark:text-neutral-100">
+            {concept.name}
+          </span>
+        </div>
+      </td>
+      {trackerConfigs.map((trackerConfig) => {
+        const tracker = concept.trackerData.find((data) => data.key === trackerConfig.key);
+        return (
+          <td key={trackerConfig.key} className="py-4 px-5 text-center">
+            <TrackerCell
+              isCompleted={tracker?.isCompleted ?? false}
+              studyItemId={tracker?.studyItemId}
+            />
+          </td>
+        );
+      })}
+      <td className="py-4 px-5 text-center">
+        <div className="flex justify-center">
+          <button
+            disabled={!isUnlocked}
+            onClick={onReview}
+            title={!isUnlocked ? "সবগুলো ট্র্যাকার শেষ করুন" : ""}
+            className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+              !isUnlocked
+                ? "cursor-not-allowed bg-gray-100 text-gray-300 dark:bg-white/[0.06] dark:text-neutral-600"
+                : isDue
+                  ? "bg-brand-green text-pure-white shadow-md hover:shadow-lg active:scale-95"
+                  : "bg-surface-container text-gray-400 hover:bg-gray-200 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
+            }`}
+          >
+            <span className="material-symbols-outlined text-xl">refresh</span>
+          </button>
+        </div>
+      </td>
+      <td className="py-4 px-5 text-center">
+        <StatusBadge status={concept.status} />
+      </td>
+      <td className={`py-4 px-5 text-right ${isLast ? "rounded-br-2xl" : ""}`}>
+        <ActionMenu
+          onEdit={onEdit}
+          onAddToTodo={onAddToTodo}
+          onDelete={onDelete}
+          onReset={onReset}
+          isAddingToTodo={isAddingToTodo}
+        />
+      </td>
+    </tr>
+  );
+}
+
 export default function ConceptTable({
   title,
   concepts,
@@ -452,8 +693,17 @@ export default function ConceptTable({
   const addConceptStudyItemsToTodayTodo = useMutation(
     api.mutations.addConceptStudyItemsToTodayTodo,
   );
+  const reorderConcepts = useMutation(api.mutations.reorderConcepts);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
-  const nextOrder = concepts.length > 0 ? Math.max(...concepts.map((c) => c.order)) + 1 : 1;
+  const sortableConceptIds = concepts.map((concept) => concept._id);
   const numberFormatter = React.useMemo(() => new Intl.NumberFormat("bn-BD"), []);
 
   const handleEdit = (concept: ConceptRowData) => {
@@ -497,6 +747,24 @@ export default function ConceptTable({
     }
   };
 
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = sortableConceptIds.indexOf(active.id as Id<"concepts">);
+    const newIndex = sortableConceptIds.indexOf(over.id as Id<"concepts">);
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    await reorderConcepts({
+      chapterId,
+      conceptIds: arrayMove(sortableConceptIds, oldIndex, newIndex),
+    });
+  };
+
   if (concepts.length === 0) {
     return (
       <section className="mb-12">
@@ -522,7 +790,6 @@ export default function ConceptTable({
             setEditingConcept(null);
           }}
           chapterId={chapterId}
-          suggestedOrder={nextOrder}
           initialData={editingConcept || undefined}
         />
       </section>
@@ -541,123 +808,89 @@ export default function ConceptTable({
           নতুন কনসেপ্ট
         </button>
       </div>
-      <div className="space-y-3 md:hidden">
-        {concepts.map((concept) => {
-          const isUnlocked = concept.completedItems === concept.totalItems && concept.totalItems > 0;
-          const isDue = concept.nextReviewAt ? concept.nextReviewAt <= now : false;
-
-          return (
-            <MobileConceptCard
-              key={concept._id}
-              concept={concept}
-              trackerConfigs={trackerConfigs}
-              isUnlocked={isUnlocked}
-              isDue={isDue}
-              onEdit={() => handleEdit(concept)}
-              onAddToTodo={() => handleAddConceptToTodayTodo(concept)}
-              onDelete={() => deleteConcept({ conceptId: concept._id })}
-              onReset={() => resetConcept({ conceptId: concept._id })}
-              onReview={() => handleReview(concept)}
-              isAddingToTodo={addingTodoConceptId === concept._id}
-            />
-          );
-        })}
-      </div>
-      <div className="hidden overflow-x-auto bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] md:block">
-        <table className="w-full min-w-[720px] border-separate border-spacing-0">
-          <thead>
-            <tr className="border-b border-border-subtle">
-              <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
-                কনসেপ্ট
-              </th>
-              {trackerConfigs.map((t) => (
-                <th
-                  key={t.key}
-                  className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
-                >
-                  {t.label}
-                </th>
-              ))}
-              <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
-                রিভিশন
-              </th>
-              <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
-                স্ট্যাটাস
-              </th>
-              <th className="text-right py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase last:rounded-tr-2xl">
-                অ্যাকশন
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={sortableConceptIds} strategy={verticalListSortingStrategy}>
+          <div className="space-y-3 md:hidden">
             {concepts.map((concept, idx) => {
               const isUnlocked = concept.completedItems === concept.totalItems && concept.totalItems > 0;
               const isDue = concept.nextReviewAt ? concept.nextReviewAt <= now : false;
 
               return (
-                <tr
+                <SortableMobileConcept
                   key={concept._id}
-                  className={`transition-colors hover:bg-surface-container/20 ${
-                    idx < concepts.length - 1 ? "border-b border-border-subtle" : ""
-                  }`}
-                >
-                  <td className={`py-4 px-5 ${idx === concepts.length - 1 ? "rounded-bl-2xl" : ""}`}>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono-code text-mono-code text-gray-400 bg-surface-container w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0">
-                        {String(concept.order).padStart(2, "0")}
-                      </span>
-                      <span className="font-body text-body text-on-surface leading-tight">
-                        {concept.name}
-                      </span>
-                    </div>
-                  </td>
-                  {trackerConfigs.map((t) => {
-                    const tracker = concept.trackerData.find((d) => d.key === t.key);
-                    return (
-                      <td key={t.key} className="py-4 px-5 text-center">
-                        <TrackerCell
-                          isCompleted={tracker?.isCompleted ?? false}
-                          studyItemId={tracker?.studyItemId}
-                        />
-                      </td>
-                    );
-                  })}
-                  <td className="py-4 px-5 text-center">
-                    <div className="flex justify-center">
-                      <button
-                        disabled={!isUnlocked}
-                        onClick={() => handleReview(concept)}
-                        title={!isUnlocked ? "সবগুলো ট্র্যাকার শেষ করুন" : ""}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                          !isUnlocked
-                            ? "bg-gray-100 text-gray-300 cursor-not-allowed"
-                            : isDue
-                              ? "bg-brand-green text-pure-white shadow-md hover:shadow-lg active:scale-95"
-                              : "bg-surface-container text-gray-400 hover:bg-gray-200"
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-xl">refresh</span>
-                      </button>
-                    </div>
-                  </td>
-                  <td className="py-4 px-5 text-center">
-                    <StatusBadge status={concept.status} />
-                  </td>
-                  <td className={`py-4 px-5 text-right ${idx === concepts.length - 1 ? "rounded-br-2xl" : ""}`}>
-                    <ActionMenu 
+                  concept={concept}
+                  trackerConfigs={trackerConfigs}
+                  displayOrder={String(idx + 1).padStart(2, "0")}
+                  isUnlocked={isUnlocked}
+                  isDue={isDue}
+                  onEdit={() => handleEdit(concept)}
+                  onAddToTodo={() => handleAddConceptToTodayTodo(concept)}
+                  onDelete={() => deleteConcept({ conceptId: concept._id })}
+                  onReset={() => resetConcept({ conceptId: concept._id })}
+                  onReview={() => handleReview(concept)}
+                  isAddingToTodo={addingTodoConceptId === concept._id}
+                />
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={sortableConceptIds} strategy={verticalListSortingStrategy}>
+          <div className="hidden overflow-x-auto bg-pure-white border border-border-subtle rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] md:block">
+            <table className="w-full min-w-[720px] border-separate border-spacing-0">
+              <thead>
+                <tr className="border-b border-border-subtle">
+                  <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
+                    কনসেপ্ট
+                  </th>
+                  {trackerConfigs.map((t) => (
+                    <th
+                      key={t.key}
+                      className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
+                    >
+                      {t.label}
+                    </th>
+                  ))}
+                  <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+                    রিভিশন
+                  </th>
+                  <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">
+                    স্ট্যাটাস
+                  </th>
+                  <th className="text-right py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase last:rounded-tr-2xl">
+                    অ্যাকশন
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {concepts.map((concept, idx) => {
+                  const isUnlocked = concept.completedItems === concept.totalItems && concept.totalItems > 0;
+                  const isDue = concept.nextReviewAt ? concept.nextReviewAt <= now : false;
+
+                  return (
+                    <SortableConceptRow
+                      key={concept._id}
+                      concept={concept}
+                      trackerConfigs={trackerConfigs}
+                      displayOrder={String(idx + 1).padStart(2, "0")}
+                      isUnlocked={isUnlocked}
+                      isDue={isDue}
+                      isLast={idx === concepts.length - 1}
                       onEdit={() => handleEdit(concept)}
                       onAddToTodo={() => handleAddConceptToTodayTodo(concept)}
                       onDelete={() => deleteConcept({ conceptId: concept._id })}
                       onReset={() => resetConcept({ conceptId: concept._id })}
+                      onReview={() => handleReview(concept)}
                       isAddingToTodo={addingTodoConceptId === concept._id}
                     />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </SortableContext>
+      </DndContext>
 
       <ConceptModal 
         key={editingConcept?._id || "new"}
@@ -667,7 +900,6 @@ export default function ConceptTable({
           setEditingConcept(null);
         }}
         chapterId={chapterId}
-        suggestedOrder={nextOrder}
         initialData={editingConcept || undefined}
       />
 

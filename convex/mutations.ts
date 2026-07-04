@@ -219,6 +219,114 @@ async function getAccessibleChapters(ctx: MutationCtx, currentUser: CurrentUser)
   return [...ownedChapters, ...legacyChapters];
 }
 
+async function getAccessibleChaptersForSubject(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  subjectId: Id<"subjects">,
+) {
+  if (isLegacyWorkspaceOwner(currentUser)) {
+    return filterOwnedDocuments(
+      currentUser,
+      await ctx.db
+        .query("chapters")
+        .withIndex("by_subject", (q) => q.eq("subjectId", subjectId))
+        .collect(),
+    );
+  }
+
+  return await ctx.db
+    .query("chapters")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subjectId),
+    )
+    .collect();
+}
+
+function compareStructuralChapterOrder(
+  left: Doc<"chapters">,
+  right: Doc<"chapters">,
+) {
+  return left.order - right.order || left._creationTime - right._creationTime;
+}
+
+function compareNextTermChapterOrder(
+  left: Doc<"chapters">,
+  right: Doc<"chapters">,
+) {
+  return (
+    (left.nextTermOrder ?? left.order) - (right.nextTermOrder ?? right.order) ||
+    compareStructuralChapterOrder(left, right)
+  );
+}
+
+function compareConceptOrder(left: Doc<"concepts">, right: Doc<"concepts">) {
+  return left.order - right.order || left._creationTime - right._creationTime;
+}
+
+async function renumberChapters(
+  ctx: MutationCtx,
+  chapters: Doc<"chapters">[],
+) {
+  const orderedChapters = [...chapters].sort(compareStructuralChapterOrder);
+  for (const [index, chapter] of orderedChapters.entries()) {
+    const order = index + 1;
+    if (chapter.order !== order) {
+      await ctx.db.patch(chapter._id, { order });
+    }
+  }
+}
+
+async function renumberNextTermChapters(
+  ctx: MutationCtx,
+  chapters: Doc<"chapters">[],
+) {
+  const orderedChapters = chapters
+    .filter((chapter) => chapter.inNextTerm)
+    .sort(compareNextTermChapterOrder);
+
+  for (const [index, chapter] of orderedChapters.entries()) {
+    const nextTermOrder = index + 1;
+    if (chapter.nextTermOrder !== nextTermOrder) {
+      await ctx.db.patch(chapter._id, { nextTermOrder });
+    }
+  }
+}
+
+async function renumberConcepts(
+  ctx: MutationCtx,
+  concepts: Doc<"concepts">[],
+) {
+  const orderedConcepts = [...concepts].sort(compareConceptOrder);
+  for (const [index, concept] of orderedConcepts.entries()) {
+    const order = index + 1;
+    if (concept.order !== order) {
+      await ctx.db.patch(concept._id, { order });
+    }
+  }
+}
+
+function assertSameIdSet<T extends string>(
+  expectedIds: T[],
+  receivedIds: T[],
+  message: string,
+) {
+  if (expectedIds.length !== receivedIds.length) {
+    throw new Error(message);
+  }
+
+  const expected = new Set(expectedIds);
+  const received = new Set(receivedIds);
+  if (expected.size !== received.size) {
+    throw new Error(message);
+  }
+
+  for (const id of expected) {
+    if (!received.has(id)) {
+      throw new Error(message);
+    }
+  }
+}
+
 async function getAccessibleSubjects(ctx: MutationCtx, currentUser: CurrentUser) {
   const ownedSubjects = await ctx.db
     .query("subjects")
@@ -1247,9 +1355,36 @@ export const toggleChapterInNextTerm = mutation({
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+    const siblingChapters = await getAccessibleChaptersForSubject(
+      ctx,
+      currentUser,
+      chapter.subjectId,
+    );
+
+    if (!chapter.inNextTerm) {
+      const nextTermOrder =
+        Math.max(
+          0,
+          ...siblingChapters
+            .filter((sibling) => sibling.inNextTerm)
+            .map((sibling) => sibling.nextTermOrder ?? sibling.order),
+        ) + 1;
+
+      await ctx.db.patch(args.chapterId, {
+        inNextTerm: true,
+        nextTermOrder,
+      });
+      return;
+    }
+
     await ctx.db.patch(args.chapterId, {
-      inNextTerm: !chapter.inNextTerm,
+      inNextTerm: false,
+      nextTermOrder: undefined,
     });
+    await renumberNextTermChapters(
+      ctx,
+      siblingChapters.filter((sibling) => sibling._id !== args.chapterId),
+    );
   },
 });
 
@@ -1273,18 +1408,56 @@ export const setChaptersInNextTerm = mutation({
     }
 
     const uniqueChapterIds = Array.from(new Set(args.chapterIds));
+    const siblingChapters = await getAccessibleChaptersForSubject(
+      ctx,
+      currentUser,
+      args.subjectId,
+    );
+    const siblingById = new Map(
+      siblingChapters.map((chapter) => [chapter._id, chapter]),
+    );
+    let nextTermOrder =
+      Math.max(
+        0,
+        ...siblingChapters
+          .filter((chapter) => chapter.inNextTerm)
+          .map((chapter) => chapter.nextTermOrder ?? chapter.order),
+      ) + 1;
     let updatedCount = 0;
 
-    for (const chapterId of uniqueChapterIds) {
-      const chapter = await getOwnedChapterOrThrow(ctx, currentUser, chapterId);
+    const selectedChapters = uniqueChapterIds
+      .map((chapterId) => {
+        const chapter = siblingById.get(chapterId);
+        if (!chapter) {
+          throw new Error("Chapter does not belong to this subject");
+        }
+        return chapter;
+      })
+      .sort(compareStructuralChapterOrder);
+
+    for (const chapter of selectedChapters) {
       if (chapter.subjectId !== args.subjectId) {
         throw new Error("Chapter does not belong to this subject");
       }
 
       if (chapter.inNextTerm !== args.inNextTerm) {
-        await ctx.db.patch(chapterId, { inNextTerm: args.inNextTerm });
+        await ctx.db.patch(chapter._id, {
+          inNextTerm: args.inNextTerm,
+          nextTermOrder: args.inNextTerm ? nextTermOrder : undefined,
+        });
+        if (args.inNextTerm) {
+          nextTermOrder += 1;
+        }
         updatedCount += 1;
       }
+    }
+
+    if (!args.inNextTerm && updatedCount > 0) {
+      const removedIds = new Set(uniqueChapterIds);
+      await renumberNextTermChapters(
+        ctx,
+        siblingChapters.filter((chapter) => !removedIds.has(chapter._id)),
+      );
     }
 
     return { updatedCount };
@@ -1297,29 +1470,38 @@ export const createChapter = mutation({
     subjectId: v.id("subjects"),
     name: v.string(),
     slug: v.optional(v.string()),
-    order: v.number(),
+    order: v.optional(v.number()),
     inNextTerm: v.boolean(),
     priorityBoost: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
-    const { slug, ...rest } = args;
+    const { slug, order: _ignoredOrder, ...rest } = args;
+    const siblingChapters = await getAccessibleChaptersForSubject(
+      ctx,
+      currentUser,
+      args.subjectId,
+    );
     if (slug) {
-      const siblingChapters = filterOwnedDocuments(
-        currentUser,
-        await ctx.db
-          .query("chapters")
-          .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
-          .collect(),
-      );
       if (siblingChapters.some((chapter) => chapter.slug === slug)) {
         throw new Error("A chapter with this slug already exists");
       }
     }
+    const nextOrder = Math.max(0, ...siblingChapters.map((chapter) => chapter.order)) + 1;
+    const nextTermOrder = args.inNextTerm
+      ? Math.max(
+          0,
+          ...siblingChapters
+            .filter((chapter) => chapter.inNextTerm)
+            .map((chapter) => chapter.nextTermOrder ?? chapter.order),
+        ) + 1
+      : undefined;
     const chapterId = await ctx.db.insert("chapters", {
       userId: currentUser._id,
       ...rest,
+      order: nextOrder,
+      nextTermOrder,
       slug: slug || "", // Placeholder
     });
 
@@ -1342,13 +1524,19 @@ export const updateChapter = mutation({
     chapterId: v.id("chapters"),
     name: v.string(),
     slug: v.optional(v.string()),
-    order: v.number(),
     inNextTerm: v.boolean(),
     priorityBoost: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    const { chapterId, ...updates } = args;
+    const { chapterId, ...input } = args;
+    const updates: {
+      name: string;
+      slug?: string;
+      inNextTerm: boolean;
+      priorityBoost?: number;
+      nextTermOrder?: number;
+    } = { ...input };
     const existingChapter = await getOwnedChapterOrThrow(ctx, currentUser, chapterId);
     if (updates.slug && updates.slug !== existingChapter.slug) {
       const siblingChapters = filterOwnedDocuments(
@@ -1366,7 +1554,50 @@ export const updateChapter = mutation({
         throw new Error("A chapter with this slug already exists");
       }
     }
+    if (updates.inNextTerm !== existingChapter.inNextTerm) {
+      const siblingChapters = await getAccessibleChaptersForSubject(
+        ctx,
+        currentUser,
+        existingChapter.subjectId,
+      );
+      if (updates.inNextTerm) {
+        updates.nextTermOrder =
+          Math.max(
+            0,
+            ...siblingChapters
+              .filter((chapter) => chapter.inNextTerm)
+              .map((chapter) => chapter.nextTermOrder ?? chapter.order),
+          ) + 1;
+      } else {
+        updates.nextTermOrder = undefined;
+      }
+    } else if (updates.inNextTerm && existingChapter.nextTermOrder === undefined) {
+      const siblingChapters = await getAccessibleChaptersForSubject(
+        ctx,
+        currentUser,
+        existingChapter.subjectId,
+      );
+      updates.nextTermOrder =
+        Math.max(
+          0,
+          ...siblingChapters
+            .filter((chapter) => chapter.inNextTerm && chapter._id !== chapterId)
+            .map((chapter) => chapter.nextTermOrder ?? chapter.order),
+        ) + 1;
+    }
     await ctx.db.patch(chapterId, updates);
+    if (!updates.inNextTerm && existingChapter.inNextTerm) {
+      await renumberNextTermChapters(
+        ctx,
+        (
+          await getAccessibleChaptersForSubject(
+            ctx,
+            currentUser,
+            existingChapter.subjectId,
+          )
+        ).filter((chapter) => chapter._id !== chapterId),
+      );
+    }
     await syncStudyItemsByChapter(ctx, currentUser, chapterId);
     await rebuildSyllabusSummariesForChapter(ctx, currentUser, chapterId);
   },
@@ -1377,7 +1608,7 @@ export const deleteChapter = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
-    await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
     // Also delete associated concepts and studyItems
     const concepts = filterOwnedDocuments(currentUser, await ctx.db
       .query("concepts")
@@ -1472,6 +1703,13 @@ export const deleteChapter = mutation({
     await deleteStudyItemStatsForChapter(ctx, currentUser._id, args.chapterId);
     await deleteSyllabusSummariesForChapter(ctx, currentUser._id, args.chapterId);
     await ctx.db.delete(args.chapterId);
+    const remainingChapters = await getAccessibleChaptersForSubject(
+      ctx,
+      currentUser,
+      chapter.subjectId,
+    );
+    await renumberChapters(ctx, remainingChapters);
+    await renumberNextTermChapters(ctx, remainingChapters);
   },
 });
 
@@ -1480,15 +1718,22 @@ export const createConcept = mutation({
   args: {
     chapterId: v.id("chapters"),
     name: v.string(),
-    order: v.number(),
+    order: v.optional(v.number()),
     difficulty: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+    const siblingConcepts = await getAccessibleConceptsForChapter(
+      ctx,
+      currentUser,
+      args.chapterId,
+    );
+    const { order: _ignoredOrder, ...insertData } = args;
     const conceptId = await ctx.db.insert("concepts", {
       userId: currentUser._id,
-      ...args,
+      ...insertData,
+      order: Math.max(0, ...siblingConcepts.map((concept) => concept.order)) + 1,
     });
     await invalidateChapterStudyItemEnsureStatus(
       ctx,
@@ -1504,7 +1749,6 @@ export const updateConcept = mutation({
   args: {
     conceptId: v.id("concepts"),
     name: v.string(),
-    order: v.number(),
     difficulty: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -1585,6 +1829,98 @@ export const deleteConcept = mutation({
     await rebuildStudyItemStatsForChapter(ctx, currentUser, concept.chapterId);
     await deleteSyllabusSummariesForConcept(ctx, currentUser._id, args.conceptId);
     await rebuildSyllabusSummariesForChapter(ctx, currentUser, concept.chapterId);
+    await renumberConcepts(
+      ctx,
+      await getAccessibleConceptsForChapter(ctx, currentUser, concept.chapterId),
+    );
+  },
+});
+
+export const reorderChapters = mutation({
+  args: {
+    subjectId: v.id("subjects"),
+    chapterIds: v.array(v.id("chapters")),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
+    const chapters = await getAccessibleChaptersForSubject(
+      ctx,
+      currentUser,
+      args.subjectId,
+    );
+    assertSameIdSet(
+      chapters.map((chapter) => chapter._id),
+      args.chapterIds,
+      "Reorder list must include every chapter in this subject",
+    );
+
+    for (const [index, chapterId] of args.chapterIds.entries()) {
+      const order = index + 1;
+      const chapter = chapters.find((entry) => entry._id === chapterId);
+      if (chapter && chapter.order !== order) {
+        await ctx.db.patch(chapterId, { order });
+      }
+    }
+  },
+});
+
+export const reorderNextTermChapters = mutation({
+  args: {
+    subjectId: v.id("subjects"),
+    chapterIds: v.array(v.id("chapters")),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
+    const chapters = await getAccessibleChaptersForSubject(
+      ctx,
+      currentUser,
+      args.subjectId,
+    );
+    const nextTermChapters = chapters.filter((chapter) => chapter.inNextTerm);
+    assertSameIdSet(
+      nextTermChapters.map((chapter) => chapter._id),
+      args.chapterIds,
+      "Reorder list must include every Next Term chapter in this subject",
+    );
+
+    for (const [index, chapterId] of args.chapterIds.entries()) {
+      const nextTermOrder = index + 1;
+      const chapter = nextTermChapters.find((entry) => entry._id === chapterId);
+      if (chapter && chapter.nextTermOrder !== nextTermOrder) {
+        await ctx.db.patch(chapterId, { nextTermOrder });
+      }
+    }
+  },
+});
+
+export const reorderConcepts = mutation({
+  args: {
+    chapterId: v.id("chapters"),
+    conceptIds: v.array(v.id("concepts")),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+    const concepts = await getAccessibleConceptsForChapter(
+      ctx,
+      currentUser,
+      args.chapterId,
+    );
+    assertSameIdSet(
+      concepts.map((concept) => concept._id),
+      args.conceptIds,
+      "Reorder list must include every concept in this chapter",
+    );
+
+    for (const [index, conceptId] of args.conceptIds.entries()) {
+      const order = index + 1;
+      const concept = concepts.find((entry) => entry._id === conceptId);
+      if (concept && concept.order !== order) {
+        await ctx.db.patch(conceptId, { order });
+      }
+    }
   },
 });
 
