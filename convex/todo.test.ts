@@ -1268,6 +1268,17 @@ describe("todo", () => {
       name: "Far future",
       order: 4,
     });
+    const excludedChapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Excluded",
+      order: 2,
+      inNextTerm: false,
+    });
+    const excludedConceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId: excludedChapterId,
+      name: "Out of term",
+      order: 1,
+    });
 
     await t.mutation(api.mutations.rescheduleConceptReview, {
       conceptId: overdueId,
@@ -1284,6 +1295,10 @@ describe("todo", () => {
     await t.mutation(api.mutations.rescheduleConceptReview, {
       conceptId: farFutureId,
       newNextReviewAt: date + 12 * 86400000,
+    });
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId: excludedConceptId,
+      newNextReviewAt: date,
     });
 
     const dashboard = await t.query(api.queries.getReviewsDashboardData, {
@@ -1303,6 +1318,19 @@ describe("todo", () => {
         (concept) => concept._id === farFutureId,
       ),
     ).toBe(false);
+    expect(
+      [...dashboard.overdue, ...dashboard.dueToday, ...dashboard.upcoming].some(
+        (concept) => concept._id === excludedConceptId,
+      ),
+    ).toBe(false);
+
+    const subjectDashboard = await t.query(api.queries.getReviewsDashboardData, {
+      now,
+      subjectId,
+    });
+
+    expect(subjectDashboard.stats.dueTodayCount).toBe(1);
+    expect(subjectDashboard.dueToday.map((concept) => concept._id)).toEqual([todayId]);
   });
 
   test("hides already scheduled revision concepts from todo search", async () => {
@@ -1321,6 +1349,58 @@ describe("todo", () => {
     });
 
     expect(results.some((result) => result._id === conceptId)).toBe(false);
+  });
+
+  test("hides out-of-term revision concepts from todo search", async () => {
+    const t = await createAuthenticatedTestContext("todo-revision-out-of-term-search");
+    const date = getDhakaDayBucket(Date.now());
+
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-revision-out-of-term-search",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 30 }],
+    });
+    const includedChapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      order: 1,
+      inNextTerm: true,
+    });
+    const excludedChapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Waves",
+      order: 2,
+      inNextTerm: false,
+    });
+    const includedConceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId: includedChapterId,
+      name: "Velocity",
+      order: 1,
+    });
+    const excludedConceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId: excludedChapterId,
+      name: "Wave Velocity",
+      order: 1,
+    });
+
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId: includedConceptId,
+      newNextReviewAt: date,
+    });
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId: excludedConceptId,
+      newNextReviewAt: date,
+    });
+
+    const results = await t.query(api.todoQueries.searchConceptReviewsForTodo, {
+      date,
+      searchText: "Velocity",
+    });
+
+    expect(results.map((result) => result._id)).toContain(includedConceptId);
+    expect(results.map((result) => result._id)).not.toContain(excludedConceptId);
   });
 
   test("creates a manual revision todo", async () => {

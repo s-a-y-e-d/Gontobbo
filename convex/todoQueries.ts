@@ -534,7 +534,7 @@ export const searchConceptReviewsForTodo = query({
           const chapter = await ctx.db.get(concept.chapterId);
           const subject = chapter ? await ctx.db.get(chapter.subjectId) : null;
 
-          if (!chapter || !subject) {
+          if (!chapter?.inNextTerm || !subject) {
             return null;
           }
 

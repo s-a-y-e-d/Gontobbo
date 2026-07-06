@@ -804,7 +804,11 @@ export const getReviewsDashboardData = query({
         currentUser,
         subjectId,
       );
-      subjectChapterIds = new Set(chapters.map((chapter) => chapter._id));
+      subjectChapterIds = new Set(
+        chapters
+          .filter((chapter) => chapter.inNextTerm)
+          .map((chapter) => chapter._id),
+      );
     }
 
     const concepts = isLegacyWorkspaceOwner(currentUser)
@@ -872,6 +876,10 @@ export const getReviewsDashboardData = query({
         .filter((concept) => concept.nextReviewAt !== undefined)
         .map(async (concept) => {
           const chapter = await ctx.db.get(concept.chapterId);
+          if (!chapter?.inNextTerm) {
+            return null;
+          }
+
           const subject = chapter ? await ctx.db.get(chapter.subjectId) : null;
           return {
             ...concept,
@@ -882,18 +890,22 @@ export const getReviewsDashboardData = query({
           };
         }),
     );
+    const nextTermConcepts = enrichedConcepts.filter(
+      (concept): concept is NonNullable<(typeof enrichedConcepts)[number]> =>
+        concept !== null,
+    );
 
-    const overdue = enrichedConcepts
+    const overdue = nextTermConcepts
       .filter((concept) => concept.nextReviewAt! < startOfToday)
       .sort((left, right) => left.nextReviewAt! - right.nextReviewAt!);
-    const dueToday = enrichedConcepts
+    const dueToday = nextTermConcepts
       .filter(
         (concept) =>
           concept.nextReviewAt! >= startOfToday &&
           concept.nextReviewAt! <= endOfToday,
       )
       .sort((left, right) => left.nextReviewAt! - right.nextReviewAt!);
-    const upcoming = enrichedConcepts
+    const upcoming = nextTermConcepts
       .filter(
         (concept) =>
           concept.nextReviewAt! > endOfToday &&
