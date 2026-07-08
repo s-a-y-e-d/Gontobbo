@@ -60,6 +60,14 @@ const TODO_CUSTOM_COLORS = [
   "indigo",
   "pink",
 ] as const;
+const DEFAULT_BULK_SUBJECT_CHAPTER_TRACKERS = [
+  { key: "mcq", label: "MCQ", avgMinutes: 30 },
+  { key: "board", label: "বোর্ড", avgMinutes: 45 },
+];
+const DEFAULT_BULK_SUBJECT_CONCEPT_TRACKERS = [
+  { key: "class", label: "ক্লাস", avgMinutes: 15 },
+  { key: "book", label: "বই", avgMinutes: 30 },
+];
 const DASHBOARD_COMPONENT_KEY_VALIDATOR = v.union(
   v.literal("todayTodo"),
   v.literal("todoCompletion"),
@@ -263,6 +271,10 @@ function compareConceptOrder(left: Doc<"concepts">, right: Doc<"concepts">) {
   return left.order - right.order || left._creationTime - right._creationTime;
 }
 
+function compareSubjectOrder(left: Doc<"subjects">, right: Doc<"subjects">) {
+  return left.order - right.order || left._creationTime - right._creationTime;
+}
+
 async function renumberChapters(
   ctx: MutationCtx,
   chapters: Doc<"chapters">[],
@@ -451,6 +463,32 @@ async function getAccessibleStudyItemsForChapter(
     .query("studyItems")
     .withIndex("by_userId_and_chapterId", (q) =>
       q.eq("userId", undefined).eq("chapterId", chapterId),
+    )
+    .collect();
+
+  return [...ownedItems, ...legacyItems];
+}
+
+async function getAccessibleStudyItemsForSubject(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  subjectId: Id<"subjects">,
+) {
+  const ownedItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subjectId),
+    )
+    .collect();
+
+  if (!isLegacyWorkspaceOwner(currentUser)) {
+    return ownedItems;
+  }
+
+  const legacyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", undefined).eq("subjectId", subjectId),
     )
     .collect();
 
@@ -1321,6 +1359,258 @@ export const updateSubject = mutation({
 });
 
 // ── Update study log minutes ────────────────────────────────────
+async function deleteSubjectForUser(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  subject: Doc<"subjects">,
+) {
+  const chapters = await getAccessibleChaptersForSubject(
+    ctx,
+    currentUser,
+    subject._id,
+  );
+  for (const chapter of chapters) {
+    await deleteChapterForUser(ctx, currentUser, chapter);
+  }
+
+  const remainingStudyItems = await getAccessibleStudyItemsForSubject(
+    ctx,
+    currentUser,
+    subject._id,
+  );
+  for (const item of remainingStudyItems) {
+    const logs = await ctx.db
+      .query("studyLogs")
+      .withIndex("by_studyItemId_and_loggedAt", (q) =>
+        q.eq("studyItemId", item._id),
+      )
+      .collect();
+    for (const log of logs) await ctx.db.delete(log._id);
+    await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
+    await deleteTodoStudyItemSearchDigestForStudyItem(
+      ctx,
+      currentUser._id,
+      item._id,
+    );
+    await deleteSyllabusStudyItemCellForStudyItem(
+      ctx,
+      currentUser._id,
+      item._id,
+    );
+    await ctx.db.delete(item._id);
+  }
+
+  const studyLogs = await ctx.db
+    .query("studyLogs")
+    .withIndex("by_userId_and_subjectId_and_loggedAt", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subject._id),
+    )
+    .collect();
+  const legacyStudyLogs = isLegacyWorkspaceOwner(currentUser)
+    ? await ctx.db
+        .query("studyLogs")
+        .withIndex("by_userId_and_subjectId_and_loggedAt", (q) =>
+          q.eq("userId", undefined).eq("subjectId", subject._id),
+        )
+        .collect()
+    : [];
+  for (const log of [...studyLogs, ...legacyStudyLogs]) {
+    await ctx.db.delete(log._id);
+  }
+
+  const plannerPreferences = await ctx.db
+    .query("plannerSubjectPreferences")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subject._id),
+    )
+    .collect();
+  const legacyPlannerPreferences = isLegacyWorkspaceOwner(currentUser)
+    ? await ctx.db
+        .query("plannerSubjectPreferences")
+        .withIndex("by_userId_and_subjectId", (q) =>
+          q.eq("userId", undefined).eq("subjectId", subject._id),
+        )
+        .collect()
+    : [];
+  for (const preference of [...plannerPreferences, ...legacyPlannerPreferences]) {
+    await ctx.db.delete(preference._id);
+  }
+
+  const weeklyTargets = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subject._id),
+    )
+    .collect();
+  const legacyWeeklyTargets = isLegacyWorkspaceOwner(currentUser)
+    ? await ctx.db
+        .query("weeklyTargets")
+        .withIndex("by_userId_and_subjectId", (q) =>
+          q.eq("userId", undefined).eq("subjectId", subject._id),
+        )
+        .collect()
+    : [];
+  for (const target of [...weeklyTargets, ...legacyWeeklyTargets]) {
+    await ctx.db.delete(target._id);
+  }
+
+  const lazyStatuses = await ctx.db
+    .query("syllabusLazyCreationStatuses")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subject._id),
+    )
+    .collect();
+  for (const status of lazyStatuses) {
+    await ctx.db.delete(status._id);
+  }
+
+  const chapterStats = await ctx.db
+    .query("studyItemChapterStats")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subject._id),
+    )
+    .collect();
+  for (const stat of chapterStats) {
+    await ctx.db.delete(stat._id);
+  }
+
+  const conceptStats = await ctx.db
+    .query("studyItemConceptStats")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subject._id),
+    )
+    .collect();
+  for (const stat of conceptStats) {
+    await ctx.db.delete(stat._id);
+  }
+
+  const syllabusCells = await ctx.db
+    .query("syllabusStudyItemCells")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subject._id),
+    )
+    .collect();
+  for (const cell of syllabusCells) {
+    await ctx.db.delete(cell._id);
+  }
+
+  await ctx.db.delete(subject._id);
+}
+
+export const syncSubjectList = mutation({
+  args: {
+    names: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const names = args.names.map((name) => name.trim()).filter(Boolean);
+
+    if (names.length === 0) {
+      throw new Error("Subject list cannot be empty");
+    }
+    if (names.length > 100) {
+      throw new Error("Subject list is limited to 100 subjects at a time");
+    }
+
+    const subjects = (await getAccessibleSubjects(ctx, currentUser)).sort(
+      compareSubjectOrder,
+    );
+    const unusedSubjects = new Set(subjects.map((subject) => subject._id));
+    const subjectsByName = new Map<string, Doc<"subjects">[]>();
+    for (const subject of subjects) {
+      const matchingSubjects = subjectsByName.get(subject.name) ?? [];
+      matchingSubjects.push(subject);
+      subjectsByName.set(subject.name, matchingSubjects);
+    }
+
+    let createdCount = 0;
+    let deletedCount = 0;
+    let renamedCount = 0;
+    let reorderedCount = 0;
+    let reusableSubjectCursor = 0;
+
+    const takeNamedSubject = (name: string) => {
+      const matchingSubjects = subjectsByName.get(name) ?? [];
+      const subject = matchingSubjects.find((entry) =>
+        unusedSubjects.has(entry._id),
+      );
+      if (subject) {
+        unusedSubjects.delete(subject._id);
+      }
+      return subject;
+    };
+
+    const takeReusableSubject = (remainingNames: string[]) => {
+      while (reusableSubjectCursor < subjects.length) {
+        const subject = subjects[reusableSubjectCursor];
+        reusableSubjectCursor += 1;
+
+        if (!unusedSubjects.has(subject._id)) {
+          continue;
+        }
+
+        if (remainingNames.includes(subject.name)) {
+          continue;
+        }
+
+        unusedSubjects.delete(subject._id);
+        return subject;
+      }
+
+      return null;
+    };
+
+    for (const [index, name] of names.entries()) {
+      const order = index + 1;
+      const remainingNames = names.slice(index + 1);
+      const existingSubject =
+        takeNamedSubject(name) ?? takeReusableSubject(remainingNames);
+
+      if (!existingSubject) {
+        const subjectId = await ctx.db.insert("subjects", {
+          userId: currentUser._id,
+          name,
+          slug: "",
+          icon: "menu_book",
+          color: "green",
+          chapterTrackers: DEFAULT_BULK_SUBJECT_CHAPTER_TRACKERS,
+          conceptTrackers: DEFAULT_BULK_SUBJECT_CONCEPT_TRACKERS,
+          order,
+        });
+        await ctx.db.patch(subjectId, { slug: subjectId });
+        createdCount += 1;
+        continue;
+      }
+
+      const patch: { name?: string; order?: number } = {};
+      if (existingSubject.name !== name) {
+        patch.name = name;
+        renamedCount += 1;
+      }
+      if (existingSubject.order !== order) {
+        patch.order = order;
+        reorderedCount += 1;
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(existingSubject._id, patch);
+      }
+      if (patch.name) {
+        await syncStudyItemsBySubject(ctx, currentUser, existingSubject._id);
+      }
+    }
+
+    for (const subject of subjects) {
+      if (unusedSubjects.has(subject._id)) {
+        await deleteSubjectForUser(ctx, currentUser, subject);
+        deletedCount += 1;
+      }
+    }
+
+    return { createdCount, deletedCount, renamedCount, reorderedCount };
+  },
+});
+
 export const updateStudyLogMinutes = mutation({
   args: {
     logId: v.id("studyLogs"),
@@ -1522,6 +1812,145 @@ export const createChapter = mutation({
 });
 
 // ── Update a chapter ─────────────────────────────────────────────
+export const syncChapterList = mutation({
+  args: {
+    subjectId: v.id("subjects"),
+    names: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedSubjectOrThrow(ctx, currentUser, args.subjectId);
+    const names = args.names.map((name) => name.trim()).filter(Boolean);
+
+    if (names.length === 0) {
+      throw new Error("Chapter list cannot be empty");
+    }
+    if (names.length > 150) {
+      throw new Error("Chapter list is limited to 150 chapters at a time");
+    }
+
+    const chapters = (await getAccessibleChaptersForSubject(
+      ctx,
+      currentUser,
+      args.subjectId,
+    )).sort(compareStructuralChapterOrder);
+    const unusedChapters = new Set(chapters.map((chapter) => chapter._id));
+    const chaptersByName = new Map<string, Doc<"chapters">[]>();
+
+    for (const chapter of chapters) {
+      const matchingChapters = chaptersByName.get(chapter.name) ?? [];
+      matchingChapters.push(chapter);
+      chaptersByName.set(chapter.name, matchingChapters);
+    }
+
+    let createdCount = 0;
+    let deletedCount = 0;
+    let renamedCount = 0;
+    let reorderedCount = 0;
+    let reusableChapterCursor = 0;
+
+    const takeNamedChapter = (name: string) => {
+      const matchingChapters = chaptersByName.get(name) ?? [];
+      const chapter = matchingChapters.find((entry) =>
+        unusedChapters.has(entry._id),
+      );
+      if (chapter) {
+        unusedChapters.delete(chapter._id);
+      }
+      return chapter;
+    };
+
+    const takeReusableChapter = (remainingNames: string[]) => {
+      while (reusableChapterCursor < chapters.length) {
+        const chapter = chapters[reusableChapterCursor];
+        reusableChapterCursor += 1;
+
+        if (!unusedChapters.has(chapter._id)) {
+          continue;
+        }
+
+        if (remainingNames.includes(chapter.name)) {
+          continue;
+        }
+
+        unusedChapters.delete(chapter._id);
+        return chapter;
+      }
+
+      return null;
+    };
+
+    for (const [index, name] of names.entries()) {
+      const order = index + 1;
+      const remainingNames = names.slice(index + 1);
+      const existingChapter =
+        takeNamedChapter(name) ?? takeReusableChapter(remainingNames);
+
+      if (!existingChapter) {
+        const chapterId = await ctx.db.insert("chapters", {
+          userId: currentUser._id,
+          subjectId: args.subjectId,
+          name,
+          slug: "",
+          order,
+          inNextTerm: false,
+        });
+        await ctx.db.patch(chapterId, { slug: chapterId });
+        createdCount += 1;
+        continue;
+      }
+
+      const patch: { name?: string; order?: number } = {};
+      if (existingChapter.name !== name) {
+        patch.name = name;
+        renamedCount += 1;
+      }
+      if (existingChapter.order !== order) {
+        patch.order = order;
+        reorderedCount += 1;
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(existingChapter._id, patch);
+      }
+      if (patch.name) {
+        await syncStudyItemsByChapter(ctx, currentUser, existingChapter._id);
+        await rebuildSyllabusSummariesForChapter(
+          ctx,
+          currentUser,
+          existingChapter._id,
+        );
+      }
+    }
+
+    for (const chapter of chapters) {
+      if (unusedChapters.has(chapter._id)) {
+        await deleteChapterForUser(ctx, currentUser, chapter);
+        deletedCount += 1;
+      }
+    }
+
+    if (createdCount > 0 || deletedCount > 0) {
+      await invalidateSubjectStudyItemEnsureStatus(
+        ctx,
+        currentUser._id,
+        args.subjectId,
+      );
+    }
+
+    if (deletedCount > 0) {
+      const remainingChapters = await getAccessibleChaptersForSubject(
+        ctx,
+        currentUser,
+        args.subjectId,
+      );
+      await renumberNextTermChapters(ctx, remainingChapters);
+    }
+
+    return { createdCount, deletedCount, renamedCount, reorderedCount };
+  },
+});
+
 export const updateChapter = mutation({
   args: {
     chapterId: v.id("chapters"),
@@ -1607,105 +2036,80 @@ export const updateChapter = mutation({
 });
 
 // ── Delete a chapter ─────────────────────────────────────────────
+async function deleteChapterForUser(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  chapter: Doc<"chapters">,
+) {
+  const concepts = await getAccessibleConceptsForChapter(
+    ctx,
+    currentUser,
+    chapter._id,
+  );
+
+  for (const concept of concepts) {
+    await deleteConceptForUser(ctx, currentUser, concept);
+  }
+
+  const chapterWeeklyTargets = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_chapterId", (q) => q.eq("chapterId", chapter._id))
+    .collect();
+  for (const chapterWeeklyTarget of filterOwnedDocuments(
+    currentUser,
+    chapterWeeklyTargets,
+  )) {
+    await ctx.db.delete(chapterWeeklyTarget._id);
+  }
+
+  const coachingProgress = await ctx.db
+    .query("coachingProgress")
+    .withIndex("by_chapterId", (q) => q.eq("chapterId", chapter._id))
+    .unique();
+  if (coachingProgress) {
+    assertCanAccessOwnedDocument(currentUser, coachingProgress);
+    await ctx.db.delete(coachingProgress._id);
+  }
+
+  const chapterItems = await getAccessibleStudyItemsForChapter(
+    ctx,
+    currentUser,
+    chapter._id,
+  );
+  for (const item of chapterItems) {
+    const logs = await ctx.db
+      .query("studyLogs")
+      .withIndex("by_studyItemId_and_loggedAt", (q) =>
+        q.eq("studyItemId", item._id),
+      )
+      .collect();
+    for (const log of logs) await ctx.db.delete(log._id);
+
+    await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
+    await deleteTodoStudyItemSearchDigestForStudyItem(
+      ctx,
+      currentUser._id,
+      item._id,
+    );
+    await deleteSyllabusStudyItemCellForStudyItem(
+      ctx,
+      currentUser._id,
+      item._id,
+    );
+    await ctx.db.delete(item._id);
+  }
+
+  await deleteStudyItemStatsForChapter(ctx, currentUser._id, chapter._id);
+  await deleteSyllabusSummariesForChapter(ctx, currentUser._id, chapter._id);
+  await ctx.db.delete(chapter._id);
+}
+
 export const deleteChapter = mutation({
   args: { chapterId: v.id("chapters") },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
-    // Also delete associated concepts and studyItems
-    const concepts = filterOwnedDocuments(currentUser, await ctx.db
-      .query("concepts")
-      .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-      .collect());
-    
-    for (const concept of concepts) {
-      const studyItems = filterOwnedDocuments(currentUser, await ctx.db
-        .query("studyItems")
-        .withIndex("by_concept", (q) => q.eq("conceptId", concept._id))
-        .collect());
-      for (const item of studyItems) {
-        // Delete logs for this item
-        const logs = await ctx.db.query("studyLogs")
-          .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
-          .collect();
-        for (const log of logs) await ctx.db.delete(log._id);
-
-        await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
-        await deleteTodoStudyItemSearchDigestForStudyItem(
-          ctx,
-          currentUser._id,
-          item._id,
-        );
-        await deleteSyllabusStudyItemCellForStudyItem(
-          ctx,
-          currentUser._id,
-          item._id,
-        );
-        await ctx.db.delete(item._id);
-      }
-
-      // Delete revision logs for this concept
-      const revisionLogs = await ctx.db.query("studyLogs")
-        .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", concept._id))
-        .collect();
-      for (const log of revisionLogs) await ctx.db.delete(log._id);
-      await removeTodoTasksForConcept(ctx, currentUser, concept._id);
-
-      const conceptWeeklyTarget = await ctx.db
-        .query("weeklyTargets")
-        .withIndex("by_conceptId", (q) => q.eq("conceptId", concept._id))
-        .unique();
-      if (conceptWeeklyTarget) {
-        await ctx.db.delete(conceptWeeklyTarget._id);
-      }
-
-      await ctx.db.delete(concept._id);
-    }
-
-    const chapterWeeklyTargets = await ctx.db
-      .query("weeklyTargets")
-      .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
-      .collect();
-    for (const chapterWeeklyTarget of chapterWeeklyTargets) {
-      await ctx.db.delete(chapterWeeklyTarget._id);
-    }
-
-    const coachingProgress = await ctx.db
-      .query("coachingProgress")
-      .withIndex("by_chapterId", (q) => q.eq("chapterId", args.chapterId))
-      .unique();
-    if (coachingProgress) {
-      await ctx.db.delete(coachingProgress._id);
-    }
-
-    const chapterItems = filterOwnedDocuments(currentUser, await ctx.db
-      .query("studyItems")
-      .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
-      .collect());
-    for (const item of chapterItems) {
-      // Delete logs for this item
-      const logs = await ctx.db.query("studyLogs")
-        .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
-        .collect();
-      for (const log of logs) await ctx.db.delete(log._id);
-
-      await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
-      await deleteTodoStudyItemSearchDigestForStudyItem(
-        ctx,
-        currentUser._id,
-        item._id,
-      );
-      await deleteSyllabusStudyItemCellForStudyItem(
-        ctx,
-        currentUser._id,
-        item._id,
-      );
-      await ctx.db.delete(item._id);
-    }
-
-    await deleteStudyItemStatsForChapter(ctx, currentUser._id, args.chapterId);
-    await deleteSyllabusSummariesForChapter(ctx, currentUser._id, args.chapterId);
-    await ctx.db.delete(args.chapterId);
+    await deleteChapterForUser(ctx, currentUser, chapter);
     const remainingChapters = await getAccessibleChaptersForSubject(
       ctx,
       currentUser,
@@ -1783,55 +2187,284 @@ export const updateConcept = mutation({
   },
 });
 
+async function getAccessibleStudyItemsForConcept(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  conceptId: Id<"concepts">,
+) {
+  const ownedStudyItems = await ctx.db
+    .query("studyItems")
+    .withIndex("by_userId_and_conceptId", (q) =>
+      q.eq("userId", currentUser._id).eq("conceptId", conceptId),
+    )
+    .collect();
+  const legacyStudyItems = isLegacyWorkspaceOwner(currentUser)
+    ? await ctx.db
+        .query("studyItems")
+        .withIndex("by_userId_and_conceptId", (q) =>
+          q.eq("userId", undefined).eq("conceptId", conceptId),
+        )
+        .collect()
+    : [];
+
+  return [...ownedStudyItems, ...legacyStudyItems];
+}
+
+async function syncConceptPresentation(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  conceptId: Id<"concepts">,
+) {
+  const studyItems = await getAccessibleStudyItemsForConcept(
+    ctx,
+    currentUser,
+    conceptId,
+  );
+
+  for (const item of studyItems) {
+    await syncStudyItemPresentation(ctx, currentUser, item._id);
+  }
+  await rebuildSyllabusSummariesForConcept(ctx, currentUser, conceptId);
+}
+
+async function deleteConceptForUser(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  concept: Doc<"concepts">,
+) {
+  const studyItems = await getAccessibleStudyItemsForConcept(
+    ctx,
+    currentUser,
+    concept._id,
+  );
+
+  for (const item of studyItems) {
+    const logs = await ctx.db
+      .query("studyLogs")
+      .withIndex("by_studyItemId_and_loggedAt", (q) =>
+        q.eq("studyItemId", item._id),
+      )
+      .collect();
+    for (const log of logs) await ctx.db.delete(log._id);
+    await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
+    await deleteTodoStudyItemSearchDigestForStudyItem(
+      ctx,
+      currentUser._id,
+      item._id,
+    );
+    await deleteSyllabusStudyItemCellForStudyItem(
+      ctx,
+      currentUser._id,
+      item._id,
+    );
+    await ctx.db.delete(item._id);
+  }
+
+  const revisionLogs = await ctx.db
+    .query("studyLogs")
+    .withIndex("by_conceptId_and_loggedAt", (q) => q.eq("conceptId", concept._id))
+    .collect();
+  for (const log of revisionLogs) await ctx.db.delete(log._id);
+  await removeTodoTasksForConcept(ctx, currentUser, concept._id);
+
+  const weeklyTarget = await ctx.db
+    .query("weeklyTargets")
+    .withIndex("by_conceptId", (q) => q.eq("conceptId", concept._id))
+    .unique();
+  if (weeklyTarget) {
+    await ctx.db.delete(weeklyTarget._id);
+  }
+
+  await ctx.db.delete(concept._id);
+  await deleteSyllabusSummariesForConcept(ctx, currentUser._id, concept._id);
+}
+
+export const syncConceptList = mutation({
+  args: {
+    chapterId: v.id("chapters"),
+    names: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+
+    const names = args.names.map((name) => name.trim()).filter(Boolean);
+    if (names.length === 0) {
+      throw new Error("Concept list cannot be empty");
+    }
+    if (names.length > 100) {
+      throw new Error("Concept list is limited to 100 concepts at a time");
+    }
+
+    const concepts = (await getAccessibleConceptsForChapter(
+      ctx,
+      currentUser,
+      args.chapterId,
+    )).sort(compareConceptOrder);
+    const unusedConcepts = new Set(concepts.map((concept) => concept._id));
+    const conceptsByName = new Map<string, Doc<"concepts">[]>();
+
+    for (const concept of concepts) {
+      const matchingConcepts = conceptsByName.get(concept.name) ?? [];
+      matchingConcepts.push(concept);
+      conceptsByName.set(concept.name, matchingConcepts);
+    }
+
+    let createdCount = 0;
+    let deletedCount = 0;
+    let renamedCount = 0;
+    let reorderedCount = 0;
+    let reusedConceptCursor = 0;
+
+    const takeNamedConcept = (name: string) => {
+      const matchingConcepts = conceptsByName.get(name) ?? [];
+      const concept = matchingConcepts.find((entry) => unusedConcepts.has(entry._id));
+      if (concept) {
+        unusedConcepts.delete(concept._id);
+      }
+      return concept;
+    };
+
+    const takeReusableConcept = (remainingNames: string[]) => {
+      while (reusedConceptCursor < concepts.length) {
+        const concept = concepts[reusedConceptCursor];
+        reusedConceptCursor += 1;
+
+        if (!unusedConcepts.has(concept._id)) {
+          continue;
+        }
+
+        if (remainingNames.includes(concept.name)) {
+          continue;
+        }
+
+        unusedConcepts.delete(concept._id);
+        return concept;
+      }
+
+      return null;
+    };
+
+    for (const [index, name] of names.entries()) {
+      const order = index + 1;
+      const remainingNames = names.slice(index + 1);
+      const existingConcept =
+        takeNamedConcept(name) ?? takeReusableConcept(remainingNames);
+
+      if (!existingConcept) {
+        await ctx.db.insert("concepts", {
+          userId: currentUser._id,
+          chapterId: args.chapterId,
+          name,
+          difficulty: 1,
+          order,
+        });
+        createdCount += 1;
+        continue;
+      }
+
+      const patch: { name?: string; order?: number } = {};
+      if (existingConcept.name !== name) {
+        patch.name = name;
+        renamedCount += 1;
+      }
+      if (existingConcept.order !== order) {
+        patch.order = order;
+        reorderedCount += 1;
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(existingConcept._id, patch);
+      }
+      if (patch.name) {
+        await syncConceptPresentation(ctx, currentUser, existingConcept._id);
+      }
+    }
+
+    for (const concept of concepts) {
+      if (unusedConcepts.has(concept._id)) {
+        await deleteConceptForUser(ctx, currentUser, concept);
+        deletedCount += 1;
+      }
+    }
+
+    if (createdCount > 0) {
+      await invalidateChapterStudyItemEnsureStatus(
+        ctx,
+        currentUser._id,
+        args.chapterId,
+      );
+    }
+    if (createdCount > 0 || deletedCount > 0 || renamedCount > 0 || reorderedCount > 0) {
+      await rebuildStudyItemStatsForChapter(ctx, currentUser, args.chapterId);
+      await rebuildSyllabusSummariesForChapter(ctx, currentUser, args.chapterId);
+    }
+
+    return { createdCount, deletedCount, renamedCount, reorderedCount };
+  },
+});
+
+export const bulkRenameConcepts = mutation({
+  args: {
+    chapterId: v.id("chapters"),
+    updates: v.array(
+      v.object({
+        conceptId: v.id("concepts"),
+        name: v.string(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+
+    if (args.updates.length > 100) {
+      throw new Error("Bulk rename is limited to 100 concepts at a time");
+    }
+
+    const seenConceptIds = new Set<Id<"concepts">>();
+    let updatedCount = 0;
+
+    for (const update of args.updates) {
+      if (seenConceptIds.has(update.conceptId)) {
+        throw new Error("Bulk rename contains duplicate concepts");
+      }
+      seenConceptIds.add(update.conceptId);
+
+      const name = update.name.trim();
+      if (!name) {
+        throw new Error("Concept name cannot be empty");
+      }
+
+      const concept = await getOwnedConceptOrThrow(
+        ctx,
+        currentUser,
+        update.conceptId,
+      );
+      if (concept.chapterId !== args.chapterId) {
+        throw new Error("All renamed concepts must belong to this chapter");
+      }
+      if (concept.name === name) {
+        continue;
+      }
+
+      await ctx.db.patch(update.conceptId, { name });
+      await syncConceptPresentation(ctx, currentUser, update.conceptId);
+      updatedCount += 1;
+    }
+
+    return { updatedCount };
+  },
+});
+
 // ── Delete a concept ─────────────────────────────────────────────
 export const deleteConcept = mutation({
   args: { conceptId: v.id("concepts") },
   handler: async (ctx, args) => {
     const currentUser = await requireCurrentUser(ctx);
     const concept = await getOwnedConceptOrThrow(ctx, currentUser, args.conceptId);
-    // Delete associated studyItems first and their logs
-    const studyItems = filterOwnedDocuments(currentUser, await ctx.db
-      .query("studyItems")
-      .withIndex("by_concept", (q) => q.eq("conceptId", args.conceptId))
-      .collect());
-    
-    for (const item of studyItems) {
-      const logs = await ctx.db.query("studyLogs")
-        .withIndex("by_studyItemId_and_loggedAt", q => q.eq("studyItemId", item._id))
-        .collect();
-      for (const log of logs) await ctx.db.delete(log._id);
-      await removeTodoTasksForStudyItem(ctx, currentUser, item._id);
-      await deleteTodoStudyItemSearchDigestForStudyItem(
-        ctx,
-        currentUser._id,
-        item._id,
-      );
-      await deleteSyllabusStudyItemCellForStudyItem(
-        ctx,
-        currentUser._id,
-        item._id,
-      );
-      await ctx.db.delete(item._id);
-    }
-
-    // Delete revision logs for this concept
-    const revisionLogs = await ctx.db.query("studyLogs")
-      .withIndex("by_conceptId_and_loggedAt", q => q.eq("conceptId", args.conceptId))
-      .collect();
-    for (const log of revisionLogs) await ctx.db.delete(log._id);
-    await removeTodoTasksForConcept(ctx, currentUser, args.conceptId);
-
-    const weeklyTarget = await ctx.db
-      .query("weeklyTargets")
-      .withIndex("by_conceptId", (q) => q.eq("conceptId", args.conceptId))
-      .unique();
-    if (weeklyTarget) {
-      await ctx.db.delete(weeklyTarget._id);
-    }
-
-    await ctx.db.delete(args.conceptId);
+    await deleteConceptForUser(ctx, currentUser, concept);
     await rebuildStudyItemStatsForChapter(ctx, currentUser, concept.chapterId);
-    await deleteSyllabusSummariesForConcept(ctx, currentUser._id, args.conceptId);
     await rebuildSyllabusSummariesForChapter(ctx, currentUser, concept.chapterId);
     await renumberConcepts(
       ctx,

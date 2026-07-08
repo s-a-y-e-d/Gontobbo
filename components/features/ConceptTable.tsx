@@ -65,6 +65,178 @@ type DragHandleProps = {
   revealOnHover?: boolean;
 };
 
+type BulkRenameConceptModalProps = {
+  isOpen: boolean;
+  concepts: ConceptRowData[];
+  isSubmitting: boolean;
+  onClose: () => void;
+  onSubmit: (names: string[]) => Promise<void>;
+};
+
+function stripListMarker(line: string) {
+  return line
+    .trim()
+    .replace(/^[>*\-\s•]+/u, "")
+    .replace(/^[\d০-৯]+[.)।:\-\s]+/u, "")
+    .trim();
+}
+
+function BulkRenameConceptModal({
+  isOpen,
+  concepts,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: BulkRenameConceptModalProps) {
+  const [value, setValue] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    setValue(concepts.map((concept) => concept.name).join("\n"));
+    setError(null);
+  }, [concepts, isOpen]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSubmitting) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const parsedNames = value
+    .split(/\r?\n/)
+    .map(stripListMarker)
+    .filter(Boolean);
+  const existingNames = concepts.map((concept) => concept.name);
+  const hasChanges =
+    parsedNames.length !== existingNames.length ||
+    parsedNames.some((name, index) => name !== existingNames[index]);
+  const addedCount = Math.max(0, parsedNames.length - concepts.length);
+  const deletedCount = Math.max(0, concepts.length - parsedNames.length);
+  const matchedCount = Math.min(parsedNames.length, concepts.length);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+
+    if (parsedNames.length === 0) {
+      setError("কমপক্ষে একটি কনসেপ্টের নাম রাখুন।");
+      return;
+    }
+
+    if (!hasChanges) {
+      setError("লিস্টে কোনো পরিবর্তন হয়নি।");
+      return;
+    }
+
+    try {
+      await onSubmit(parsedNames);
+    } catch (submitError) {
+      console.error("Failed to update concept list:", submitError);
+      setError("কনসেপ্ট লিস্ট আপডেট করা যায়নি। আবার চেষ্টা করুন।");
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={() => {
+        if (!isSubmitting) {
+          onClose();
+        }
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="flex max-h-[min(86vh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border-subtle bg-pure-white shadow-xl animate-in zoom-in-95 duration-200 dark:border-white/10 dark:bg-neutral-950"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border-subtle p-6 dark:border-white/10">
+          <div>
+            <h2 className="font-card-title text-card-title text-on-surface dark:text-neutral-50">
+              কনসেপ্ট লিস্ট এডিট
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-gray-500 dark:text-neutral-400">
+              প্রতি লাইনে একটি কনসেপ্ট রাখুন। নতুন লাইন যোগ করলে নতুন কনসেপ্ট হবে, লাইন মুছলে কনসেপ্ট মুছে যাবে।
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-500 dark:hover:bg-white/[0.08] dark:hover:text-neutral-100"
+            aria-label="নাম এডিট বন্ধ করুন"
+          >
+            <span className="material-symbols-outlined text-xl">close</span>
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
+          <textarea
+            value={value}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setError(null);
+            }}
+            className="min-h-[320px] w-full flex-1 resize-none rounded-2xl border border-border-medium bg-gray-50/70 px-4 py-3 font-body text-sm leading-7 text-on-surface outline-none transition-colors placeholder:text-gray-400 focus:border-brand-green focus:bg-pure-white focus:ring-2 focus:ring-brand-green/20 disabled:cursor-wait disabled:opacity-70 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-100 dark:placeholder:text-neutral-600 dark:focus:border-brand-green dark:focus:bg-neutral-950"
+            placeholder="প্রতি লাইনে একটি কনসেপ্টের নাম লিখুন"
+            disabled={isSubmitting}
+            spellCheck={false}
+          />
+
+          <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-500 dark:text-neutral-400">
+              সেভের পর {parsedNames.length}টি কনসেপ্ট থাকবে
+            </p>
+            <p className="text-sm text-gray-500 dark:text-neutral-400">
+              {matchedCount}টি মিলবে, {addedCount}টি যোগ হবে, {deletedCount}টি মুছবে
+            </p>
+          </div>
+
+          {error && (
+            <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-error-red dark:border-red-400/20 dark:bg-red-950/30 dark:text-red-200">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col-reverse gap-3 border-t border-border-subtle p-6 sm:flex-row sm:justify-end dark:border-white/10">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="rounded-full px-6 py-2.5 font-label-uppercase text-label-uppercase text-gray-700 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-white/[0.08]"
+          >
+            বাতিল
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting || parsedNames.length === 0 || !hasChanges}
+            className="rounded-full bg-on-surface px-8 py-2.5 font-label-uppercase text-label-uppercase text-pure-white shadow-sm transition-all hover:bg-brand-green hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-brand-green dark:focus-visible:ring-offset-neutral-950"
+          >
+            {isSubmitting ? "আপডেট হচ্ছে..." : "লিস্ট আপডেট করুন"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function getFloatingMenuPosition(
   triggerRect: DOMRect,
   menuWidth: number,
@@ -325,13 +497,13 @@ function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; study
   const id = `cbx-${studyItemId || generatedId}`;
 
   return (
-    <div 
+    <div
       className={`checkbox-wrapper-46 flex justify-center items-center ${!studyItemId ? "opacity-50 pointer-events-none" : ""}`}
     >
-      <input 
-        className="inp-cbx" 
-        id={id} 
-        type="checkbox" 
+      <input
+        className="inp-cbx"
+        id={id}
+        type="checkbox"
         checked={isCompleted}
         disabled={!studyItemId}
         onChange={() => {
@@ -360,9 +532,8 @@ function DragHandle({ attributes, listeners, disabled, revealOnHover = false }: 
       title="Drag to reorder"
       {...attributes}
       {...listeners}
-      className={`flex h-8 w-8 flex-shrink-0 cursor-grab items-center justify-center rounded-lg border border-border-subtle bg-pure-white text-gray-400 opacity-100 transition-all hover:border-brand-green/30 hover:bg-brand-green-light/60 hover:text-on-surface active:cursor-grabbing focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.05] dark:text-neutral-500 dark:hover:border-brand-green/30 dark:hover:bg-brand-green/10 dark:hover:text-neutral-100 ${
-        revealOnHover ? "md:absolute md:inset-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" : ""
-      }`}
+      className={`flex h-8 w-8 flex-shrink-0 cursor-grab items-center justify-center rounded-lg border border-border-subtle bg-pure-white text-gray-400 opacity-100 transition-all hover:border-brand-green/30 hover:bg-brand-green-light/60 hover:text-on-surface active:cursor-grabbing focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.05] dark:text-neutral-500 dark:hover:border-brand-green/30 dark:hover:bg-brand-green/10 dark:hover:text-neutral-100 ${revealOnHover ? "md:absolute md:inset-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100" : ""
+        }`}
     >
       <span className="material-symbols-outlined text-[19px]">drag_indicator</span>
     </button>
@@ -402,13 +573,12 @@ function RevisionButton({
       disabled={!isUnlocked}
       onClick={onReview}
       title={!isUnlocked ? "Complete all trackers first" : ""}
-      className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-        !isUnlocked
+      className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${!isUnlocked
           ? "bg-gray-100 text-gray-300 cursor-not-allowed"
           : isDue
             ? "bg-brand-green text-near-black shadow-md shadow-brand-green/20 hover:shadow-lg active:scale-95"
             : "bg-brand-green-light text-brand-green-deep hover:bg-brand-green-light/80 dark:bg-brand-green/15 dark:text-brand-green"
-      }`}
+        }`}
     >
       <span className="material-symbols-outlined text-xl">refresh</span>
     </button>
@@ -446,9 +616,8 @@ function MobileConceptCard({
 }) {
   return (
     <article
-      className={`rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-shadow dark:border-white/10 dark:bg-slate-900 ${
-        isDragging ? "shadow-[0_18px_50px_rgba(0,0,0,0.16)] ring-2 ring-brand-green/30" : ""
-      }`}
+      className={`rounded-[24px] border border-border-subtle bg-pure-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-shadow dark:border-white/10 dark:bg-slate-900 ${isDragging ? "shadow-[0_18px_50px_rgba(0,0,0,0.16)] ring-2 ring-brand-green/30" : ""
+        }`}
     >
       <div className="flex items-start gap-3">
         <div className="relative h-8 w-8 flex-shrink-0">
@@ -610,9 +779,8 @@ function SortableConceptRow({
   return (
     <tr
       ref={setNodeRef}
-      className={`group transition-colors hover:bg-surface-container/20 dark:hover:bg-white/[0.04] ${
-        isDragging ? "relative z-30 bg-brand-green-light/70 shadow-lg dark:bg-brand-green/10" : ""
-      } ${!isLast ? "border-b border-border-subtle dark:border-white/10" : ""}`}
+      className={`group transition-colors hover:bg-surface-container/20 dark:hover:bg-white/[0.04] ${isDragging ? "relative z-30 bg-brand-green-light/70 shadow-lg dark:bg-brand-green/10" : ""
+        } ${!isLast ? "border-b border-border-subtle dark:border-white/10" : ""}`}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -647,13 +815,12 @@ function SortableConceptRow({
             disabled={!isUnlocked}
             onClick={onReview}
             title={!isUnlocked ? "সবগুলো ট্র্যাকার শেষ করুন" : ""}
-            className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
-              !isUnlocked
+            className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${!isUnlocked
                 ? "cursor-not-allowed bg-gray-100 text-gray-300 dark:bg-white/[0.06] dark:text-neutral-600"
                 : isDue
                   ? "bg-brand-green text-pure-white shadow-md hover:shadow-lg active:scale-95"
                   : "bg-surface-container text-gray-400 hover:bg-gray-200 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
-            }`}
+              }`}
           >
             <span className="material-symbols-outlined text-xl">refresh</span>
           </button>
@@ -682,18 +849,21 @@ export default function ConceptTable({
   chapterId,
 }: ConceptTableProps) {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [isBulkRenameOpen, setIsBulkRenameOpen] = React.useState(false);
+  const [isBulkRenameSubmitting, setIsBulkRenameSubmitting] = React.useState(false);
   const [editingConcept, setEditingConcept] = React.useState<ConceptRowData | null>(null);
   const [reviewingConcept, setReviewingConcept] = React.useState<ConceptRowData | null>(null);
   const [addingTodoConceptId, setAddingTodoConceptId] = React.useState<Id<"concepts"> | null>(null);
   const [now] = React.useState(() => Date.now());
   const toast = useToast();
-  
+
   const deleteConcept = useMutation(api.mutations.deleteConcept);
   const resetConcept = useMutation(api.mutations.resetConceptProgress);
   const addConceptStudyItemsToTodayTodo = useMutation(
     api.mutations.addConceptStudyItemsToTodayTodo,
   );
   const reorderConcepts = useMutation(api.mutations.reorderConcepts);
+  const syncConceptList = useMutation(api.mutations.syncConceptList);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -714,6 +884,25 @@ export default function ConceptTable({
   const handleAdd = () => {
     setEditingConcept(null);
     setIsModalOpen(true);
+  };
+
+  const handleBulkRename = async (names: string[]) => {
+    setIsBulkRenameSubmitting(true);
+    try {
+      const result = await syncConceptList({
+        chapterId,
+        names,
+      });
+      const totalChanges =
+        result.createdCount +
+        result.deletedCount +
+        result.renamedCount +
+        result.reorderedCount;
+      setIsBulkRenameOpen(false);
+      toast.success(`${numberFormatter.format(totalChanges)}টি পরিবর্তন সেভ হয়েছে।`);
+    } finally {
+      setIsBulkRenameSubmitting(false);
+    }
   };
 
   const handleReview = (concept: ConceptRowData) => {
@@ -770,7 +959,7 @@ export default function ConceptTable({
       <section className="mb-12">
         <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="font-sub-heading text-[22px] leading-tight text-on-surface md:text-sub-heading">{title}</h2>
-          <button 
+          <button
             onClick={handleAdd}
             className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-on-surface text-pure-white rounded-full font-label-uppercase text-xs hover:bg-brand-green transition-all shadow-sm sm:w-auto sm:py-2"
           >
@@ -782,7 +971,7 @@ export default function ConceptTable({
           কোনো কনসেপ্ট পাওয়া যায়নি
         </div>
 
-        <ConceptModal 
+        <ConceptModal
           key={editingConcept?._id || "new"}
           isOpen={isModalOpen}
           onClose={() => {
@@ -800,9 +989,18 @@ export default function ConceptTable({
     <section className="mb-12">
       <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-sub-heading text-[22px] leading-tight text-on-surface md:text-sub-heading">{title}</h2>
-        <button 
+        <button
+          onClick={() => setIsBulkRenameOpen(true)}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-full px-3 font-label-uppercase text-xs text-gray-600 transition-colors hover:bg-gray-100 hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green dark:text-neutral-300 dark:hover:bg-white/[0.08] dark:hover:text-neutral-50 sm:ml-auto sm:w-auto"
+          aria-label="কনসেপ্টের নাম এডিট করুন"
+          title="কনসেপ্টের নাম এডিট করুন"
+        >
+          <span className="material-symbols-outlined text-[19px]">edit_note</span>
+          এডিট
+        </button>
+        <button
           onClick={handleAdd}
-          className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-on-surface text-pure-white rounded-full font-label-uppercase text-xs hover:bg-brand-green transition-all shadow-sm sm:w-auto sm:py-2"
+          className="flex w-full items-center justify-center gap-2 px-4 py-3 bg-on-surface text-pure-white rounded-full font-label-uppercase text-xs hover:bg-brand-green focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green transition-all shadow-sm dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-brand-green sm:w-auto sm:py-2"
         >
           <span className="material-symbols-outlined text-base">add</span>
           নতুন কনসেপ্ট
@@ -892,7 +1090,7 @@ export default function ConceptTable({
         </SortableContext>
       </DndContext>
 
-      <ConceptModal 
+      <ConceptModal
         key={editingConcept?._id || "new"}
         isOpen={isModalOpen}
         onClose={() => {
@@ -901,6 +1099,18 @@ export default function ConceptTable({
         }}
         chapterId={chapterId}
         initialData={editingConcept || undefined}
+      />
+
+      <BulkRenameConceptModal
+        isOpen={isBulkRenameOpen}
+        concepts={concepts}
+        isSubmitting={isBulkRenameSubmitting}
+        onClose={() => {
+          if (!isBulkRenameSubmitting) {
+            setIsBulkRenameOpen(false);
+          }
+        }}
+        onSubmit={handleBulkRename}
       />
 
       {reviewingConcept && (

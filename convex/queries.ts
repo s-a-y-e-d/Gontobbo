@@ -77,13 +77,19 @@ function getDhakaDayBucket(timestamp: number) {
 }
 
 async function getOwnedSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
+  const sortSubjects = (subjects: Doc<"subjects">[]) =>
+    [...subjects].sort(
+      (left, right) =>
+        left.order - right.order || left._creationTime - right._creationTime,
+    );
+
   const ownedSubjects = await ctx.db
     .query("subjects")
     .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
     .collect();
 
   if (!isLegacyWorkspaceOwner(currentUser)) {
-    return ownedSubjects;
+    return sortSubjects(ownedSubjects);
   }
 
   const legacySubjects = await ctx.db
@@ -91,7 +97,7 @@ async function getOwnedSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
     .withIndex("by_userId", (q) => q.eq("userId", undefined))
     .collect();
 
-  return [...ownedSubjects, ...legacySubjects];
+  return sortSubjects([...ownedSubjects, ...legacySubjects]);
 }
 
 async function getOwnedChaptersForSubject(
