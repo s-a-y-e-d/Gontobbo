@@ -1279,6 +1279,11 @@ describe("todo", () => {
       name: "Out of term",
       order: 1,
     });
+    const completedInTermId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Completed in term",
+      order: 5,
+    });
 
     await t.mutation(api.mutations.rescheduleConceptReview, {
       conceptId: overdueId,
@@ -1300,6 +1305,18 @@ describe("todo", () => {
       conceptId: excludedConceptId,
       newNextReviewAt: date,
     });
+    await t.mutation(api.mutations.reviewConcept, {
+      conceptId: completedInTermId,
+      rating: "hard",
+    });
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId: completedInTermId,
+      newNextReviewAt: date + 12 * 86400000,
+    });
+    await t.mutation(api.mutations.reviewConcept, {
+      conceptId: excludedConceptId,
+      rating: "hard",
+    });
 
     const dashboard = await t.query(api.queries.getReviewsDashboardData, {
       now,
@@ -1309,6 +1326,7 @@ describe("todo", () => {
       overdueCount: 1,
       dueTodayCount: 1,
       upcomingCount: 1,
+      completedTodayCount: 1,
     });
     expect(dashboard.overdue.map((concept) => concept._id)).toEqual([overdueId]);
     expect(dashboard.dueToday.map((concept) => concept._id)).toEqual([todayId]);
@@ -1330,6 +1348,7 @@ describe("todo", () => {
     });
 
     expect(subjectDashboard.stats.dueTodayCount).toBe(1);
+    expect(subjectDashboard.stats.completedTodayCount).toBe(1);
     expect(subjectDashboard.dueToday.map((concept) => concept._id)).toEqual([todayId]);
   });
 

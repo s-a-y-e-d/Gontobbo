@@ -73,6 +73,98 @@ type BulkRenameConceptModalProps = {
   onSubmit: (names: string[]) => Promise<void>;
 };
 
+type BulkConceptAction = "delete" | "reset";
+
+type BulkConceptActionDialogProps = {
+  action: BulkConceptAction | null;
+  conceptCount: number;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+};
+
+function BulkConceptActionDialog({
+  action,
+  conceptCount,
+  isSubmitting,
+  onClose,
+  onConfirm,
+}: BulkConceptActionDialogProps) {
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSubmitting) {
+        onClose();
+      }
+    };
+
+    if (action) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [action, isSubmitting, onClose]);
+
+  if (!action) {
+    return null;
+  }
+
+  const isDelete = action === "delete";
+  const formattedCount = new Intl.NumberFormat("bn-BD").format(conceptCount);
+  const actionLabel = isDelete ? "মুছে ফেলুন" : "প্রগ্রেস রিসেট করুন";
+  const description = isDelete
+    ? "নির্বাচিত কনসেপ্ট, তাদের ট্র্যাকার প্রগ্রেস, রিভিশন ও সম্পর্কিত Todo স্থায়ীভাবে মুছে যাবে।"
+    : "নির্বাচিত কনসেপ্ট থাকবে, তবে তাদের ট্র্যাকার প্রগ্রেস, রিভিশন, স্টাডি লগ ও সম্পর্কিত Todo মুছে যাবে।";
+
+  return (
+    <div
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={() => {
+        if (!isSubmitting) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="bulk-concept-action-title"
+        className="w-full max-w-md rounded-2xl border border-border-subtle bg-pure-white p-6 shadow-xl dark:border-white/10 dark:bg-neutral-950"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <span className={`material-symbols-outlined flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${isDelete ? "bg-red-50 text-error-red dark:bg-red-950/40 dark:text-red-200" : "bg-amber-50 text-warm-amber dark:bg-amber-950/30 dark:text-amber-200"}`}>
+            {isDelete ? "delete_forever" : "restart_alt"}
+          </span>
+          <div>
+            <h2 id="bulk-concept-action-title" className="font-card-title text-card-title text-on-surface dark:text-neutral-50">
+              {formattedCount}টি কনসেপ্ট {actionLabel}?
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-neutral-400">{description}</p>
+          </div>
+        </div>
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={onClose}
+            className="rounded-full px-5 py-2.5 font-label-uppercase text-label-uppercase text-gray-700 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-white/[0.08]"
+          >
+            বাতিল
+          </button>
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={onConfirm}
+            className={`rounded-full px-5 py-2.5 font-label-uppercase text-label-uppercase text-pure-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 dark:focus-visible:ring-offset-neutral-950 ${isDelete ? "bg-error-red hover:bg-red-700" : "bg-warm-amber hover:bg-amber-600"}`}
+          >
+            {isSubmitting ? "কাজ হচ্ছে..." : actionLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function stripListMarker(line: string) {
   return line
     .trim()
@@ -266,12 +358,14 @@ function getFloatingMenuPosition(
 
 function ActionMenu({
   onEdit,
+  onSelect,
   onAddToTodo,
   onDelete,
   onReset,
   isAddingToTodo,
 }: {
   onEdit: () => void;
+  onSelect: () => void;
   onAddToTodo: () => Promise<void>;
   onDelete: () => void;
   onReset: () => void;
@@ -385,6 +479,18 @@ function ActionMenu({
           >
             <span className="material-symbols-outlined text-lg text-gray-500">edit</span>
             এডিট করুন
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+              setOpen(false);
+            }}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm text-on-surface hover:bg-gray-100 transition-colors dark:text-neutral-100 dark:hover:bg-white/[0.08]"
+          >
+            <span className="material-symbols-outlined text-lg text-gray-500">checklist</span>
+            Select
           </button>
 
           <button
@@ -523,6 +629,41 @@ function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; study
   );
 }
 
+function CustomCheckbox({
+  checked,
+  onChange,
+  ariaLabel,
+  idPrefix,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+  idPrefix: string;
+}) {
+  const generatedId = React.useId();
+  const id = `cbx-${idPrefix}-${generatedId}`;
+
+  return (
+    <div className="checkbox-wrapper-46 flex items-center justify-center" onClick={(event) => event.stopPropagation()}>
+      <input
+        className="inp-cbx"
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        aria-label={ariaLabel}
+      />
+      <label className="cbx" htmlFor={id}>
+        <span>
+          <svg width="12px" height="10px" viewBox="0 0 12 10">
+            <polyline points="1.5 6 4.5 9 10.5 1" />
+          </svg>
+        </span>
+      </label>
+    </div>
+  );
+}
+
 function DragHandle({ attributes, listeners, disabled, revealOnHover = false }: DragHandleProps) {
   return (
     <button
@@ -544,17 +685,19 @@ function OrderDragSlot({
   order,
   attributes,
   listeners,
+  disabled,
 }: {
   order: string;
   attributes: React.HTMLAttributes<HTMLElement>;
   listeners?: React.HTMLAttributes<HTMLElement>;
+  disabled?: boolean;
 }) {
   return (
     <div className="relative h-8 w-8 flex-shrink-0">
       <span className="hidden h-8 w-8 items-center justify-center rounded-lg bg-surface-container font-mono-code text-mono-code text-gray-400 transition-opacity md:flex md:group-hover:opacity-0 md:group-focus-within:opacity-0 dark:bg-white/[0.07] dark:text-neutral-400">
         {order}
       </span>
-      <DragHandle attributes={attributes} listeners={listeners} revealOnHover />
+      <DragHandle attributes={attributes} listeners={listeners} disabled={disabled} revealOnHover />
     </div>
   );
 }
@@ -594,6 +737,7 @@ function MobileConceptCard({
   isUnlocked,
   isDue,
   onEdit,
+  onSelect,
   onAddToTodo,
   onDelete,
   onReset,
@@ -608,6 +752,7 @@ function MobileConceptCard({
   isUnlocked: boolean;
   isDue: boolean;
   onEdit: () => void;
+  onSelect: () => void;
   onAddToTodo: () => Promise<void>;
   onDelete: () => void;
   onReset: () => void;
@@ -636,6 +781,7 @@ function MobileConceptCard({
         </div>
         <ActionMenu
           onEdit={onEdit}
+          onSelect={onSelect}
           onAddToTodo={onAddToTodo}
           onDelete={onDelete}
           onReset={onReset}
@@ -684,11 +830,15 @@ function SortableMobileConcept({
   isUnlocked,
   isDue,
   onEdit,
+  onSelect,
   onAddToTodo,
   onDelete,
   onReset,
   onReview,
   isAddingToTodo,
+  isSelectionMode,
+  isSelected,
+  onSelectionChange,
 }: {
   concept: ConceptRowData;
   trackerConfigs: TrackerConfig[];
@@ -696,11 +846,15 @@ function SortableMobileConcept({
   isUnlocked: boolean;
   isDue: boolean;
   onEdit: () => void;
+  onSelect: () => void;
   onAddToTodo: () => Promise<void>;
   onDelete: () => void;
   onReset: () => void;
   onReview: () => void;
   isAddingToTodo: boolean;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+  onSelectionChange: (selected: boolean) => void;
 }) {
   const {
     attributes,
@@ -709,33 +863,44 @@ function SortableMobileConcept({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: concept._id });
+  } = useSortable({ id: concept._id, disabled: isSelectionMode });
 
   return (
     <div
       ref={setNodeRef}
-      className="group"
+      className="group relative"
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
         zIndex: isDragging ? 30 : undefined,
       }}
     >
-      <MobileConceptCard
-        concept={concept}
-        trackerConfigs={trackerConfigs}
-        displayOrder={displayOrder}
-        dragHandle={<DragHandle attributes={attributes} listeners={listeners} />}
-        isDragging={isDragging}
-        isUnlocked={isUnlocked}
-        isDue={isDue}
-        onEdit={onEdit}
-        onAddToTodo={onAddToTodo}
-        onDelete={onDelete}
-        onReset={onReset}
-        onReview={onReview}
-        isAddingToTodo={isAddingToTodo}
-      />
+      <div className={`absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-pure-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] mobile-select-bubble dark:border-white/10 dark:bg-neutral-900 ${isSelectionMode ? "is-active" : ""}`}>
+        <CustomCheckbox
+          checked={isSelected}
+          onChange={() => onSelectionChange(!isSelected)}
+          idPrefix={`mobile-sel-${concept._id}`}
+          ariaLabel={`${concept.name} নির্বাচন করুন`}
+        />
+      </div>
+      <div className={`mobile-card-wrap ${isSelectionMode ? "is-shifted" : ""}`}>
+        <MobileConceptCard
+          concept={concept}
+          trackerConfigs={trackerConfigs}
+          displayOrder={displayOrder}
+          dragHandle={<DragHandle attributes={attributes} listeners={listeners} disabled={isSelectionMode} />}
+          isDragging={isDragging}
+          isUnlocked={isUnlocked}
+          isDue={isDue}
+          onEdit={onEdit}
+          onSelect={onSelect}
+          onAddToTodo={onAddToTodo}
+          onDelete={onDelete}
+          onReset={onReset}
+          onReview={onReview}
+          isAddingToTodo={isAddingToTodo}
+        />
+      </div>
     </div>
   );
 }
@@ -748,11 +913,15 @@ function SortableConceptRow({
   isDue,
   isLast,
   onEdit,
+  onSelect,
   onAddToTodo,
   onDelete,
   onReset,
   onReview,
   isAddingToTodo,
+  isSelectionMode,
+  isSelected,
+  onSelectionChange,
 }: {
   concept: ConceptRowData;
   trackerConfigs: TrackerConfig[];
@@ -761,11 +930,15 @@ function SortableConceptRow({
   isDue: boolean;
   isLast: boolean;
   onEdit: () => void;
+  onSelect: () => void;
   onAddToTodo: () => Promise<void>;
   onDelete: () => void;
   onReset: () => void;
   onReview: () => void;
   isAddingToTodo: boolean;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+  onSelectionChange: (selected: boolean) => void;
 }) {
   const {
     attributes,
@@ -774,7 +947,7 @@ function SortableConceptRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: concept._id });
+  } = useSortable({ id: concept._id, disabled: isSelectionMode });
 
   return (
     <tr
@@ -786,12 +959,23 @@ function SortableConceptRow({
         transition,
       }}
     >
-      <td className={`py-4 px-5 ${isLast ? "rounded-bl-2xl" : ""}`}>
+      <td className={`select-col-cell ${isLast ? "rounded-bl-2xl" : ""}`}>
+        <div className={`select-col-inner flex items-center justify-center ${isSelectionMode ? "is-active" : ""}`}>
+          <CustomCheckbox
+            checked={isSelected}
+            onChange={() => onSelectionChange(!isSelected)}
+            idPrefix={`row-sel-${concept._id}`}
+            ariaLabel={`${concept.name} নির্বাচন করুন`}
+          />
+        </div>
+      </td>
+      <td className={`py-4 px-5 ${!isSelectionMode && isLast ? "rounded-bl-2xl" : ""}`}>
         <div className="flex items-center gap-3">
           <OrderDragSlot
             order={displayOrder}
             attributes={attributes}
             listeners={listeners}
+            disabled={isSelectionMode}
           />
           <span className="font-body text-body leading-tight text-on-surface dark:text-neutral-100">
             {concept.name}
@@ -832,6 +1016,7 @@ function SortableConceptRow({
       <td className={`py-4 px-5 text-right ${isLast ? "rounded-br-2xl" : ""}`}>
         <ActionMenu
           onEdit={onEdit}
+          onSelect={onSelect}
           onAddToTodo={onAddToTodo}
           onDelete={onDelete}
           onReset={onReset}
@@ -854,6 +1039,12 @@ export default function ConceptTable({
   const [editingConcept, setEditingConcept] = React.useState<ConceptRowData | null>(null);
   const [reviewingConcept, setReviewingConcept] = React.useState<ConceptRowData | null>(null);
   const [addingTodoConceptId, setAddingTodoConceptId] = React.useState<Id<"concepts"> | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = React.useState(false);
+  const [selectedConceptIds, setSelectedConceptIds] = React.useState<Set<Id<"concepts">>>(
+    () => new Set(),
+  );
+  const [bulkAction, setBulkAction] = React.useState<BulkConceptAction | null>(null);
+  const [isBulkProcessing, setIsBulkProcessing] = React.useState(false);
   const [now] = React.useState(() => Date.now());
   const toast = useToast();
 
@@ -875,6 +1066,69 @@ export default function ConceptTable({
 
   const sortableConceptIds = concepts.map((concept) => concept._id);
   const numberFormatter = React.useMemo(() => new Intl.NumberFormat("bn-BD"), []);
+  const selectedConceptIdsInCurrentList = concepts
+    .filter((concept) => selectedConceptIds.has(concept._id))
+    .map((concept) => concept._id);
+  const selectedCount = selectedConceptIdsInCurrentList.length;
+  const areAllConceptsSelected = selectedCount === concepts.length;
+
+  const setConceptSelected = (conceptId: Id<"concepts">, selected: boolean) => {
+    setSelectedConceptIds((current) => {
+      const next = new Set(current);
+      if (selected) {
+        next.add(conceptId);
+      } else {
+        next.delete(conceptId);
+      }
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectedConceptIds(new Set());
+    setBulkAction(null);
+    setIsSelectionMode(false);
+  };
+
+  const enterSelectionMode = (conceptId: Id<"concepts">) => {
+    setSelectedConceptIds(new Set([conceptId]));
+    setIsSelectionMode(true);
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedConceptIds(
+      areAllConceptsSelected ? new Set() : new Set(concepts.map((concept) => concept._id)),
+    );
+  };
+
+  const handleBulkAction = async () => {
+    if (!bulkAction || selectedConceptIdsInCurrentList.length === 0) {
+      return;
+    }
+
+    const conceptIds = selectedConceptIdsInCurrentList;
+    setIsBulkProcessing(true);
+    try {
+      for (const conceptId of conceptIds) {
+        if (bulkAction === "delete") {
+          await deleteConcept({ conceptId });
+        } else {
+          await resetConcept({ conceptId });
+        }
+      }
+      toast.success(
+        bulkAction === "delete"
+          ? `${numberFormatter.format(conceptIds.length)}টি কনসেপ্ট মুছে ফেলা হয়েছে।`
+          : `${numberFormatter.format(conceptIds.length)}টি কনসেপ্টের প্রগ্রেস রিসেট হয়েছে।`,
+      );
+      exitSelectionMode();
+    } catch (error) {
+      console.error(`Failed to ${bulkAction} selected concepts:`, error);
+      toast.error("সব কনসেপ্টে কাজ শেষ করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।");
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
 
   const handleEdit = (concept: ConceptRowData) => {
     setEditingConcept(concept);
@@ -1006,6 +1260,54 @@ export default function ConceptTable({
           নতুন কনসেপ্ট
         </button>
       </div>
+      <div className={`selection-toolbar ${isSelectionMode ? "is-active" : ""}`}>
+        <div className="selection-toolbar-inner">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              tabIndex={isSelectionMode ? 0 : -1}
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-border-subtle bg-pure-white px-4 font-mono-code text-mono-code uppercase text-gray-500 transition-colors hover:border-border-medium hover:text-on-surface md:hidden dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100"
+            >
+              <span className="material-symbols-outlined text-base">{areAllConceptsSelected ? "deselect" : "select_all"}</span>
+              {areAllConceptsSelected ? "সব বাদ" : "সব সিলেক্ট"}
+            </button>
+            {selectedCount > 0 && (
+              <span className="inline-flex h-9 items-center rounded-full bg-surface-container px-3 font-mono-code text-mono-code text-gray-500 dark:bg-white/[0.07] dark:text-neutral-300">
+                {numberFormatter.format(selectedCount)} selected
+              </span>
+            )}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setBulkAction("reset")}
+            disabled={selectedCount === 0 || isBulkProcessing}
+            className="flex items-center gap-1.5 rounded-full px-3 py-2 font-label-uppercase text-xs text-warm-amber transition-colors hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-amber-950/30"
+          >
+            <span className="material-symbols-outlined text-[18px]">restart_alt</span>
+            রিসেট
+          </button>
+          <button
+            type="button"
+            onClick={() => setBulkAction("delete")}
+            disabled={selectedCount === 0 || isBulkProcessing}
+            className="flex items-center gap-1.5 rounded-full px-3 py-2 font-label-uppercase text-xs text-error-red transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/30"
+          >
+            <span className="material-symbols-outlined text-[18px]">delete</span>
+            মুছুন
+          </button>
+          <button
+            type="button"
+            onClick={exitSelectionMode}
+            disabled={isBulkProcessing}
+            className="rounded-full px-3 py-2 font-label-uppercase text-xs text-gray-700 transition-colors hover:bg-pure-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-white/[0.08]"
+          >
+            বাতিল
+          </button>
+            </div>
+          </div>
+        </div>
+      </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={sortableConceptIds} strategy={verticalListSortingStrategy}>
           <div className="space-y-3 md:hidden">
@@ -1022,11 +1324,15 @@ export default function ConceptTable({
                   isUnlocked={isUnlocked}
                   isDue={isDue}
                   onEdit={() => handleEdit(concept)}
+                  onSelect={() => enterSelectionMode(concept._id)}
                   onAddToTodo={() => handleAddConceptToTodayTodo(concept)}
                   onDelete={() => deleteConcept({ conceptId: concept._id })}
                   onReset={() => resetConcept({ conceptId: concept._id })}
                   onReview={() => handleReview(concept)}
                   isAddingToTodo={addingTodoConceptId === concept._id}
+                  isSelectionMode={isSelectionMode}
+                  isSelected={selectedConceptIds.has(concept._id)}
+                  onSelectionChange={(selected) => setConceptSelected(concept._id, selected)}
                 />
               );
             })}
@@ -1039,6 +1345,16 @@ export default function ConceptTable({
             <table className="w-full min-w-[720px] border-separate border-spacing-0">
               <thead>
                 <tr className="border-b border-border-subtle">
+                  <th className="select-col-cell">
+                    <div className={`select-col-inner flex items-center justify-center ${isSelectionMode ? "is-active" : ""}`}>
+                      <CustomCheckbox
+                        checked={areAllConceptsSelected}
+                        onChange={toggleSelectAll}
+                        idPrefix="header-select-all"
+                        ariaLabel={`${title} select all`}
+                      />
+                    </div>
+                  </th>
                   <th className="text-left py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase first:rounded-tl-2xl">
                     কনসেপ্ট
                   </th>
@@ -1076,11 +1392,15 @@ export default function ConceptTable({
                       isDue={isDue}
                       isLast={idx === concepts.length - 1}
                       onEdit={() => handleEdit(concept)}
+                      onSelect={() => enterSelectionMode(concept._id)}
                       onAddToTodo={() => handleAddConceptToTodayTodo(concept)}
                       onDelete={() => deleteConcept({ conceptId: concept._id })}
                       onReset={() => resetConcept({ conceptId: concept._id })}
                       onReview={() => handleReview(concept)}
                       isAddingToTodo={addingTodoConceptId === concept._id}
+                      isSelectionMode={isSelectionMode}
+                      isSelected={selectedConceptIds.has(concept._id)}
+                      onSelectionChange={(selected) => setConceptSelected(concept._id, selected)}
                     />
                   );
                 })}
@@ -1111,6 +1431,14 @@ export default function ConceptTable({
           }
         }}
         onSubmit={handleBulkRename}
+      />
+
+      <BulkConceptActionDialog
+        action={bulkAction}
+        conceptCount={selectedCount}
+        isSubmitting={isBulkProcessing}
+        onClose={() => setBulkAction(null)}
+        onConfirm={handleBulkAction}
       />
 
       {reviewingConcept && (

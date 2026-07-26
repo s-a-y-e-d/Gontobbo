@@ -877,6 +877,27 @@ export const getReviewsDashboardData = query({
             .collect()
     ).filter((log) => log.eventType === "concept_review");
 
+    let completedTodayNextTermLogs = subjectChapterIds
+      ? completedTodayLogs.filter((log) => subjectChapterIds.has(log.chapterId))
+      : [];
+
+    if (subjectChapterIds === null) {
+      const completedTodayChapterIds = [
+        ...new Set(completedTodayLogs.map((log) => log.chapterId)),
+      ];
+      const completedTodayChapters = await Promise.all(
+        completedTodayChapterIds.map((chapterId) => ctx.db.get(chapterId)),
+      );
+      const nextTermChapterIds = new Set(
+        completedTodayChapters.flatMap((chapter) =>
+          chapter?.inNextTerm ? [chapter._id] : [],
+        ),
+      );
+      completedTodayNextTermLogs = completedTodayLogs.filter((log) =>
+        nextTermChapterIds.has(log.chapterId),
+      );
+    }
+
     const enrichedConcepts = await Promise.all(
       filteredConcepts
         .filter((concept) => concept.nextReviewAt !== undefined)
@@ -924,7 +945,7 @@ export const getReviewsDashboardData = query({
         overdueCount: overdue.length,
         dueTodayCount: dueToday.length,
         upcomingCount: upcoming.length,
-        completedTodayCount: completedTodayLogs.length,
+        completedTodayCount: completedTodayNextTermLogs.length,
       },
       overdue,
       dueToday,
