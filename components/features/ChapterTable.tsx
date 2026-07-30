@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useToast } from "@/components/ui/Toast";
 import Link from "next/link";
 import {
   DndContext,
@@ -38,6 +39,7 @@ type ChapterRowData = {
   order: number;
   nextTermOrder?: number;
   inNextTerm: boolean;
+  revisionEnabled?: boolean;
   totalConcepts: number;
   completedConcepts: number;
   trackerData: Array<{ key: string; isCompleted: boolean; score?: number; studyItemId?: string }>;
@@ -266,6 +268,7 @@ function TrackerCell({ isCompleted, studyItemId }: { isCompleted: boolean; study
 function ActionMenu({
   chapterId,
   inNextTerm,
+  revisionEnabled,
   subjectSlug,
   chapterSlug,
   onEdit,
@@ -274,6 +277,7 @@ function ActionMenu({
 }: {
   chapterId: Id<"chapters">;
   inNextTerm: boolean;
+  revisionEnabled: boolean;
   subjectSlug: string;
   chapterSlug: string;
   onEdit: () => void;
@@ -291,7 +295,9 @@ function ActionMenu({
   });
 
   const toggleExam = useMutation(api.mutations.toggleChapterInNextTerm);
+  const toggleRevision = useMutation(api.mutations.toggleChapterRevision);
   const resetProgress = useMutation(api.mutations.resetChapterProgress);
+  const toast = useToast();
 
   useLayoutEffect(() => {
     if (!open) {
@@ -403,6 +409,29 @@ function ActionMenu({
           >
             <span className="material-symbols-outlined text-lg text-gray-500">edit</span>
             এডিট করুন
+          </button>
+
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                await toggleRevision({ chapterId });
+                toast.success(
+                  revisionEnabled
+                    ? "এই অধ্যায়ের রিভিশন বন্ধ করা হয়েছে।"
+                    : "এই অধ্যায়ের রিভিশন চালু করা হয়েছে।",
+                );
+                setOpen(false);
+              } catch {
+                toast.error("রিভিশন সেটিং আপডেট করা যায়নি। আবার চেষ্টা করুন।");
+              }
+            }}
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-on-surface transition-colors hover:bg-gray-100 dark:text-neutral-100 dark:hover:bg-white/[0.08]"
+          >
+            <span className="material-symbols-outlined text-lg text-gray-500 dark:text-neutral-400">
+              {revisionEnabled ? "pause_circle" : "play_circle"}
+            </span>
+            {revisionEnabled ? "রিভিশন বন্ধ করুন" : "রিভিশন চালু করুন"}
           </button>
 
           <button
@@ -568,6 +597,7 @@ function MobileChapterCard({
         <ActionMenu
           chapterId={chapter._id}
           inNextTerm={chapter.inNextTerm}
+          revisionEnabled={chapter.revisionEnabled !== false}
           subjectSlug={subjectSlug}
           chapterSlug={chapter.slug}
           onEdit={onEdit}
@@ -778,6 +808,7 @@ function SortableChapterRow({
         <ActionMenu
           chapterId={chapter._id}
           inNextTerm={chapter.inNextTerm}
+          revisionEnabled={chapter.revisionEnabled !== false}
           subjectSlug={subjectSlug}
           chapterSlug={chapter.slug}
           onEdit={onEdit}

@@ -2,6 +2,13 @@ import { query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import {
+  DEFAULT_REVISION_INTERVAL_DAYS,
+  DEFAULT_REVISION_RATING_LEVEL_CHANGES,
+  REVISION_INTERVAL_SETTING_KEYS,
+  REVISION_LEVEL_COUNT,
+  REVISION_RATING_SETTING_KEYS,
+} from "./revisionAlgorithm";
+import {
   filterOwnedDocuments,
   isLegacyWorkspaceOwner,
   requireCurrentUser,
@@ -535,13 +542,37 @@ export const getSettingsPageData = query({
       termStartDate,
       nextTermExamDate,
       dashboardComponentSettings,
+      revisionAlgorithmSettings,
     ] = await Promise.all([
       getPlannerSettingsSubjects(ctx, currentUser),
       getNumberSettingValue(ctx, currentUser, "defaultRevisionMinutes"),
       getNumberSettingValue(ctx, currentUser, "termStartDate"),
       getNumberSettingValue(ctx, currentUser, "nextTermExamDate"),
       getDashboardComponentSettings(ctx, currentUser),
+      Promise.all([
+        ...REVISION_INTERVAL_SETTING_KEYS.map((key) =>
+          getNumberSettingValue(ctx, currentUser, key),
+        ),
+        ...Object.values(REVISION_RATING_SETTING_KEYS).map((key) =>
+          getNumberSettingValue(ctx, currentUser, key),
+        ),
+      ]),
     ]);
+
+    const intervalDays = DEFAULT_REVISION_INTERVAL_DAYS.map(
+      (defaultDays, level) => revisionAlgorithmSettings[level] ?? defaultDays,
+    );
+    const ratingLevelChanges = {
+      hard:
+        revisionAlgorithmSettings[REVISION_LEVEL_COUNT] ??
+        DEFAULT_REVISION_RATING_LEVEL_CHANGES.hard,
+      medium:
+        revisionAlgorithmSettings[REVISION_LEVEL_COUNT + 1] ??
+        DEFAULT_REVISION_RATING_LEVEL_CHANGES.medium,
+      easy:
+        revisionAlgorithmSettings[REVISION_LEVEL_COUNT + 2] ??
+        DEFAULT_REVISION_RATING_LEVEL_CHANGES.easy,
+    };
 
     return {
       subjects,
@@ -552,6 +583,7 @@ export const getSettingsPageData = query({
       dashboardComponentVisibility: resolveDashboardComponentVisibility(
         dashboardComponentSettings,
       ),
+      revisionAlgorithm: { intervalDays, ratingLevelChanges },
     };
   },
 });

@@ -254,6 +254,46 @@ describe("planner", () => {
     expect(todo.days[0]?.tasks[0]).not.toHaveProperty("startTimeMinutes");
   });
 
+  test("does not create automatic revision suggestions for paused chapters", async () => {
+    const t = await createAuthenticatedTestContext("planner-paused-chapter-revision");
+    const date = getDhakaDayBucket(Date.now());
+    const { chapterId } = await createSubjectWithNextTermChapter({
+      t,
+      name: "Physics",
+      slug: "paused-physics",
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [{ key: "book", label: "Book", avgMinutes: 20 }],
+      chapterName: "Motion",
+    });
+    const conceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Velocity",
+      order: 1,
+    });
+    await t.mutation(api.mutations.ensureConceptStudyItems, { chapterId });
+    await t.mutation(api.mutations.rescheduleConceptReview, {
+      conceptId,
+      newNextReviewAt: date,
+    });
+    await t.mutation(api.mutations.toggleChapterRevision, { chapterId });
+    await t.mutation(api.mutations.generatePlannerSuggestions, {
+      date,
+      availableMinutes: 60,
+    });
+
+    const planner = await t.query(api.plannerQueries.getPlannerPageData, { date });
+    expect(
+      planner.suggestions.some(
+        (suggestion) => suggestion.kind === "concept_review",
+      ),
+    ).toBe(false);
+    expect(
+      planner.suggestions.some(
+        (suggestion) => suggestion.kind === "study_item",
+      ),
+    ).toBe(true);
+  });
+
   test("important subjects outrank slightly lower-completion normal subjects", async () => {
     const t = await createAuthenticatedTestContext("planner-priority");
     const date = getDhakaDayBucket(Date.now());

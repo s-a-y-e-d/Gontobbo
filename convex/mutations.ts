@@ -2,6 +2,17 @@ import { internalMutation, mutation, type MutationCtx } from "./_generated/serve
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import {
+  DEFAULT_REVISION_INTERVAL_DAYS,
+  DEFAULT_REVISION_RATING_LEVEL_CHANGES,
+  MAX_REVISION_INTERVAL_DAYS,
+  MAX_REVISION_RATING_LEVEL_CHANGE,
+  MIN_REVISION_INTERVAL_DAYS,
+  MIN_REVISION_RATING_LEVEL_CHANGE,
+  REVISION_INTERVAL_SETTING_KEYS,
+  REVISION_LEVEL_COUNT,
+  REVISION_RATING_SETTING_KEYS,
+} from "./revisionAlgorithm";
+import {
   buildStudyItemSearchArtifacts,
   STUDY_ITEM_SEARCH_TEXT_VERSION,
 } from "./studyItemSearch";
@@ -3246,6 +3257,86 @@ export const setDefaultRevisionMinutes = mutation({
   },
 });
 
+export const toggleChapterRevision = mutation({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+    await ctx.db.patch(args.chapterId, {
+      revisionEnabled: chapter.revisionEnabled === false,
+    });
+  },
+});
+
+export const setRevisionAlgorithm = mutation({
+  args: {
+    intervalDays: v.array(v.number()),
+    ratingLevelChanges: v.object({
+      hard: v.number(),
+      medium: v.number(),
+      easy: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    if (
+      args.intervalDays.length !== REVISION_LEVEL_COUNT ||
+      args.intervalDays.some(
+        (days) =>
+          !Number.isInteger(days) ||
+          days < MIN_REVISION_INTERVAL_DAYS ||
+          days > MAX_REVISION_INTERVAL_DAYS,
+      )
+    ) {
+      throw new Error("Revision intervals must be whole days from 1 to 3650");
+    }
+
+    if (
+      Object.values(args.ratingLevelChanges).some(
+        (change) =>
+          !Number.isInteger(change) ||
+          change < MIN_REVISION_RATING_LEVEL_CHANGE ||
+          change > MAX_REVISION_RATING_LEVEL_CHANGE,
+      )
+    ) {
+      throw new Error("Revision rating changes must be whole levels from -5 to 5");
+    }
+
+    const values = [
+      ...args.intervalDays,
+      args.ratingLevelChanges.hard,
+      args.ratingLevelChanges.medium,
+      args.ratingLevelChanges.easy,
+    ];
+    const keys = [
+      ...REVISION_INTERVAL_SETTING_KEYS,
+      REVISION_RATING_SETTING_KEYS.hard,
+      REVISION_RATING_SETTING_KEYS.medium,
+      REVISION_RATING_SETTING_KEYS.easy,
+    ];
+
+    await Promise.all(
+      keys.map(async (key, index) => {
+        const existingSetting = await ctx.db
+          .query("settings")
+          .withIndex("by_userId_and_key", (q) =>
+            q.eq("userId", currentUser._id).eq("key", key),
+          )
+          .unique();
+        if (existingSetting) {
+          await ctx.db.patch(existingSetting._id, { value: values[index]! });
+          return;
+        }
+        await ctx.db.insert("settings", {
+          userId: currentUser._id,
+          key,
+          value: values[index]!,
+        });
+      }),
+    );
+  },
+});
+
 export const setDashboardTermDates = mutation({
   args: {
     termStartDate: v.number(),
@@ -3376,6 +3467,11 @@ export const generatePlannerSuggestions = mutation({
     const defaultRevisionMinutes = (settings?.value as number) ?? 15;
     const nextTermChapters = chapters.filter((chapter) => chapter.inNextTerm);
     const nextTermChapterIds = new Set(nextTermChapters.map((chapter) => chapter._id));
+    const revisionEnabledChapterIds = new Set(
+      nextTermChapters
+        .filter((chapter) => chapter.revisionEnabled !== false)
+        .map((chapter) => chapter._id),
+    );
     const nextTermChapterData = await Promise.all(
       nextTermChapters.map(async (chapter) => ({
         chapterId: chapter._id,
@@ -3568,7 +3664,7 @@ export const generatePlannerSuggestions = mutation({
 
     for (const concept of concepts) {
       const chapter = chapterById.get(concept.chapterId);
-      if (!chapter || !nextTermChapterIds.has(chapter._id)) {
+      if (!chapter || !revisionEnabledChapterIds.has(chapter._id)) {
         continue;
       }
 
@@ -4021,21 +4117,40 @@ export const reviewConcept = mutation({
       throw new Error("Todo task does not match this revision");
     }
 
-    let level = concept.repetitionLevel ?? 0;
-    
-    if (args.rating === "hard") {
-      level = Math.max(0, level - 1);
-    } else if (args.rating === "medium") {
-      level += 1;
-    } else if (args.rating === "easy") {
-      level += 2;
-    }
-
-    // Bound level to [0, 5]
-    level = Math.min(Math.max(0, level), 5);
-    
-    const intervals = [1, 3, 7, 14, 30, 60]; // days
-    const daysToAdd = intervals[level];
+    const revisionSettings = await Promise.all([
+      ...REVISION_INTERVAL_SETTING_KEYS.map((key) =>
+        getOwnedSettingByKey(ctx, currentUser, key),
+      ),
+      ...Object.values(REVISION_RATING_SETTING_KEYS).map((key) =>
+        getOwnedSettingByKey(ctx, currentUser, key),
+      ),
+    ]);
+    const getRevisionSettingNumber = (index: number, defaultValue: number) => {
+      const setting = revisionSettings[index];
+      return typeof setting?.value === "number" ? setting.value : defaultValue;
+    };
+    const intervalDays = DEFAULT_REVISION_INTERVAL_DAYS.map(
+      (defaultDays, index) => getRevisionSettingNumber(index, defaultDays),
+    );
+    const ratingLevelChanges = {
+      hard: getRevisionSettingNumber(
+        REVISION_LEVEL_COUNT,
+        DEFAULT_REVISION_RATING_LEVEL_CHANGES.hard,
+      ),
+      medium: getRevisionSettingNumber(
+        REVISION_LEVEL_COUNT + 1,
+        DEFAULT_REVISION_RATING_LEVEL_CHANGES.medium,
+      ),
+      easy: getRevisionSettingNumber(
+        REVISION_LEVEL_COUNT + 2,
+        DEFAULT_REVISION_RATING_LEVEL_CHANGES.easy,
+      ),
+    };
+    const level = Math.min(
+      Math.max(0, (concept.repetitionLevel ?? 0) + ratingLevelChanges[args.rating]),
+      REVISION_LEVEL_COUNT - 1,
+    );
+    const daysToAdd = intervalDays[level]!;
     
     const now = Date.now();
     await ctx.db.patch(args.conceptId, {

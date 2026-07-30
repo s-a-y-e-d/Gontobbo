@@ -534,7 +534,11 @@ export const searchConceptReviewsForTodo = query({
           const chapter = await ctx.db.get(concept.chapterId);
           const subject = chapter ? await ctx.db.get(chapter.subjectId) : null;
 
-          if (!chapter?.inNextTerm || !subject) {
+          if (
+            !chapter?.inNextTerm ||
+            chapter.revisionEnabled === false ||
+            !subject
+          ) {
             return null;
           }
 

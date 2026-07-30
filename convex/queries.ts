@@ -812,7 +812,10 @@ export const getReviewsDashboardData = query({
       );
       subjectChapterIds = new Set(
         chapters
-          .filter((chapter) => chapter.inNextTerm)
+          .filter(
+            (chapter) =>
+              chapter.inNextTerm && chapter.revisionEnabled !== false,
+          )
           .map((chapter) => chapter._id),
       );
     }
@@ -890,7 +893,9 @@ export const getReviewsDashboardData = query({
       );
       const nextTermChapterIds = new Set(
         completedTodayChapters.flatMap((chapter) =>
-          chapter?.inNextTerm ? [chapter._id] : [],
+          chapter?.inNextTerm && chapter.revisionEnabled !== false
+            ? [chapter._id]
+            : [],
         ),
       );
       completedTodayNextTermLogs = completedTodayLogs.filter((log) =>
@@ -903,7 +908,7 @@ export const getReviewsDashboardData = query({
         .filter((concept) => concept.nextReviewAt !== undefined)
         .map(async (concept) => {
           const chapter = await ctx.db.get(concept.chapterId);
-          if (!chapter?.inNextTerm) {
+          if (!chapter?.inNextTerm || chapter.revisionEnabled === false) {
             return null;
           }
 

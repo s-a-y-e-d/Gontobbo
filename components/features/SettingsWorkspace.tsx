@@ -66,6 +66,10 @@ type SettingsPageData = {
   termStartDate?: number;
   nextTermExamDate?: number;
   dashboardComponentVisibility: DashboardComponentVisibility;
+  revisionAlgorithm: {
+    intervalDays: number[];
+    ratingLevelChanges: Record<"hard" | "medium" | "easy", number>;
+  };
 };
 
 type SectionId =
@@ -178,6 +182,11 @@ const themeOptions: { value: ThemeMode; label: string }[] = [
   { value: "system", label: "ডিভাইস অনুযায়ী" },
   { value: "dark", label: "ডার্ক" },
 ];
+
+const DEFAULT_REVISION_ALGORITHM: SettingsPageData["revisionAlgorithm"] = {
+  intervalDays: [1, 3, 7, 14, 30, 60],
+  ratingLevelChanges: { hard: -1, medium: 1, easy: 2 },
+};
 
 const dashboardComponentLabels: Record<
   DashboardComponentKey,
@@ -521,6 +530,7 @@ export default function SettingsWorkspace() {
   const setDefaultRevisionMinutes = useMutation(
     api.mutations.setDefaultRevisionMinutes,
   );
+  const setRevisionAlgorithm = useMutation(api.mutations.setRevisionAlgorithm);
   const importHscSyllabusForCurrentUser = useMutation(
     api.onboarding.importHscSyllabusForCurrentUser,
   );
@@ -531,6 +541,10 @@ export default function SettingsWorkspace() {
   const [revisionMinutesDraft, setRevisionMinutesDraft] = useState<string | null>(
     null,
   );
+  const [revisionAlgorithmDraft, setRevisionAlgorithmDraft] = useState<{
+    intervalDays: string[];
+    ratingLevelChanges: Record<"hard" | "medium" | "easy", string>;
+  } | null>(null);
   const [termStartDateDraft, setTermStartDateDraft] = useState<string | null>(
     null,
   );
@@ -577,6 +591,16 @@ export default function SettingsWorkspace() {
 
   const revisionMinutes =
     revisionMinutesDraft ?? String(data.defaultRevisionMinutes);
+  const savedRevisionAlgorithm =
+    data.revisionAlgorithm ?? DEFAULT_REVISION_ALGORITHM;
+  const revisionAlgorithm = revisionAlgorithmDraft ?? {
+    intervalDays: savedRevisionAlgorithm.intervalDays.map(String),
+    ratingLevelChanges: {
+      hard: String(savedRevisionAlgorithm.ratingLevelChanges.hard),
+      medium: String(savedRevisionAlgorithm.ratingLevelChanges.medium),
+      easy: String(savedRevisionAlgorithm.ratingLevelChanges.easy),
+    },
+  };
   const termStartDate =
     termStartDateDraft ?? formatDateInputValue(data.termStartDate);
   const nextTermExamDate =
@@ -660,6 +684,19 @@ export default function SettingsWorkspace() {
     const minutes = Number(revisionMinutes);
     void runMutation("revision-minutes", () =>
       setDefaultRevisionMinutes({ minutes }),
+    );
+  };
+
+  const handleSaveRevisionAlgorithm = () => {
+    void runMutation("revision-algorithm", () =>
+      setRevisionAlgorithm({
+        intervalDays: revisionAlgorithm.intervalDays.map(Number),
+        ratingLevelChanges: {
+          hard: Number(revisionAlgorithm.ratingLevelChanges.hard),
+          medium: Number(revisionAlgorithm.ratingLevelChanges.medium),
+          easy: Number(revisionAlgorithm.ratingLevelChanges.easy),
+        },
+      }),
     );
   };
 
@@ -783,6 +820,11 @@ export default function SettingsWorkspace() {
           saving={savingKey === "revision-minutes"}
           onMinutesChange={setRevisionMinutesDraft}
           onSave={handleSaveRevisionMinutes}
+          algorithm={revisionAlgorithm}
+          savedAlgorithm={savedRevisionAlgorithm}
+          savingAlgorithm={savingKey === "revision-algorithm"}
+          onAlgorithmChange={setRevisionAlgorithmDraft}
+          onSaveAlgorithm={handleSaveRevisionAlgorithm}
         />
       );
     }
@@ -854,6 +896,11 @@ export default function SettingsWorkspace() {
         saving={savingKey === "revision-minutes"}
         onMinutesChange={setRevisionMinutesDraft}
         onSave={handleSaveRevisionMinutes}
+        algorithm={revisionAlgorithm}
+        savedAlgorithm={savedRevisionAlgorithm}
+        savingAlgorithm={savingKey === "revision-algorithm"}
+        onAlgorithmChange={setRevisionAlgorithmDraft}
+        onSaveAlgorithm={handleSaveRevisionAlgorithm}
         sectionOptions={{ collapsible: true }}
       />
       <SubjectsSection
@@ -1368,6 +1415,11 @@ function RevisionSection({
   saving,
   onMinutesChange,
   onSave,
+  algorithm,
+  savedAlgorithm,
+  savingAlgorithm,
+  onAlgorithmChange,
+  onSaveAlgorithm,
   sectionOptions,
 }: {
   minutes: string;
@@ -1375,12 +1427,46 @@ function RevisionSection({
   saving: boolean;
   onMinutesChange: (value: string) => void;
   onSave: () => void;
+  algorithm: {
+    intervalDays: string[];
+    ratingLevelChanges: Record<"hard" | "medium" | "easy", string>;
+  };
+  savedAlgorithm: SettingsPageData["revisionAlgorithm"];
+  savingAlgorithm: boolean;
+  onAlgorithmChange: (value: {
+    intervalDays: string[];
+    ratingLevelChanges: Record<"hard" | "medium" | "easy", string>;
+  }) => void;
+  onSaveAlgorithm: () => void;
   sectionOptions?: SettingsSectionOptions;
 }) {
   const parsedMinutes = Number(minutes);
   const isValid =
     Number.isInteger(parsedMinutes) && parsedMinutes >= 1 && parsedMinutes <= 600;
   const hasChanges = isValid && parsedMinutes !== savedMinutes;
+  const parsedIntervals = algorithm.intervalDays.map(Number);
+  const parsedRatingChanges = {
+    hard: Number(algorithm.ratingLevelChanges.hard),
+    medium: Number(algorithm.ratingLevelChanges.medium),
+    easy: Number(algorithm.ratingLevelChanges.easy),
+  };
+  const isAlgorithmValid =
+    parsedIntervals.length === 6 &&
+    parsedIntervals.every(
+      (days) => Number.isInteger(days) && days >= 1 && days <= 3650,
+    ) &&
+    Object.values(parsedRatingChanges).every(
+      (change) => Number.isInteger(change) && change >= -5 && change <= 5,
+    );
+  const hasAlgorithmChanges =
+    isAlgorithmValid &&
+    (parsedIntervals.some(
+      (days, index) => days !== savedAlgorithm.intervalDays[index],
+    ) ||
+      (Object.keys(parsedRatingChanges) as Array<keyof typeof parsedRatingChanges>).some(
+        (rating) =>
+          parsedRatingChanges[rating] !== savedAlgorithm.ratingLevelChanges[rating],
+      ));
 
   return (
     <SettingsSection
@@ -1417,6 +1503,38 @@ function RevisionSection({
           ১ থেকে ৬০০ মিনিটের মধ্যে পূর্ণ সংখ্যা দিন।
         </div>
       ) : null}
+      <div className="border-t border-border-subtle px-5 py-5 dark:border-white/10">
+        <h3 className="text-sm font-semibold text-on-surface">রিভিশন অ্যালগরিদম</h3>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          প্রতিটি লেভেলের ব্যবধান এবং Hard, Medium, Easy অনুযায়ী লেভেল পরিবর্তন ঠিক করুন। পরিবর্তন শুধু পরের রিভিউ থেকে কাজ করবে।
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {algorithm.intervalDays.map((value, index) => (
+            <label key={index} className="rounded-2xl border border-border-subtle bg-gray-50/60 p-3 dark:border-white/10 dark:bg-white/[0.04]">
+              <span className="block text-xs font-semibold text-on-surface">লেভেল {index + 1}</span>
+              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">পরবর্তী রিভিউ (দিন)</span>
+              <input type="number" min={1} max={3650} value={value} onChange={(event) => {
+                const intervalDays = [...algorithm.intervalDays];
+                intervalDays[index] = event.target.value;
+                onAlgorithmChange({ ...algorithm, intervalDays });
+              }} className="mt-3 h-10 w-full rounded-full border border-border-medium bg-white px-3 text-sm text-on-surface outline-none transition-all focus:border-brand-green dark:border-white/20 dark:bg-surface-container dark:text-white" />
+            </label>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {(["hard", "medium", "easy"] as const).map((rating) => (
+            <label key={rating} className="rounded-2xl border border-border-subtle bg-gray-50/60 p-3 dark:border-white/10 dark:bg-white/[0.04]">
+              <span className="block text-sm font-semibold text-on-surface">{rating === "hard" ? "কঠিন" : rating === "medium" ? "মোটামুটি" : "সহজ"}</span>
+              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">লেভেল পরিবর্তন</span>
+              <input type="number" min={-5} max={5} value={algorithm.ratingLevelChanges[rating]} onChange={(event) => onAlgorithmChange({ ...algorithm, ratingLevelChanges: { ...algorithm.ratingLevelChanges, [rating]: event.target.value } })} className="mt-3 h-10 w-full rounded-full border border-border-medium bg-white px-3 text-sm text-on-surface outline-none transition-all focus:border-brand-green dark:border-white/20 dark:bg-surface-container dark:text-white" />
+            </label>
+          ))}
+        </div>
+        {!isAlgorithmValid ? <p className="mt-3 text-sm text-[#c54f41] dark:text-red-300">লেভেলের ব্যবধান ১–৩৬৫০ দিন এবং rating পরিবর্তন -৫ থেকে +৫ এর পূর্ণ সংখ্যা দিন।</p> : null}
+        <button type="button" disabled={!hasAlgorithmChanges || savingAlgorithm} onClick={onSaveAlgorithm} className="mt-4 h-10 rounded-full bg-on-surface px-4 text-sm font-semibold text-pure-white transition-opacity hover:bg-brand-green focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:focus-visible:ring-offset-surface-container">
+          {savingAlgorithm ? "সেভ হচ্ছে" : "অ্যালগরিদম সেভ করুন"}
+        </button>
+      </div>
     </SettingsSection>
   );
 }

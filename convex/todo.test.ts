@@ -117,7 +117,7 @@ async function createRevisionFixture(subject: string) {
     newNextReviewAt: date,
   });
 
-  return { t, date, conceptId };
+  return { t, date, chapterId, conceptId };
 }
 
 async function createConceptTodoFixture(subject: string) {
@@ -955,6 +955,28 @@ describe("todo", () => {
     });
   });
 
+  test("uses the saved revision algorithm for future concept reviews", async () => {
+    const { t, conceptId } = await createRevisionFixture(
+      "custom-revision-algorithm",
+    );
+    await t.mutation(api.mutations.setRevisionAlgorithm, {
+      intervalDays: [2, 4, 8, 16, 32, 64],
+      ratingLevelChanges: { hard: -2, medium: 2, easy: 3 },
+    });
+
+    const before = Date.now();
+    await t.mutation(api.mutations.reviewConcept, {
+      conceptId,
+      rating: "easy",
+    });
+    const after = Date.now();
+
+    const concept = await t.run((ctx) => ctx.db.get(conceptId));
+    expect(concept).toMatchObject({ repetitionLevel: 3 });
+    expect(concept?.nextReviewAt).toBeGreaterThanOrEqual(before + 16 * 86400000);
+    expect(concept?.nextReviewAt).toBeLessThanOrEqual(after + 16 * 86400000);
+  });
+
   test("searches study items with a two-character threshold", async () => {
     const { t, date, studyItemId } = await createStudyItemFixture(
       "todo-study-item-search",
@@ -1420,6 +1442,34 @@ describe("todo", () => {
 
     expect(results.map((result) => result._id)).toContain(includedConceptId);
     expect(results.map((result) => result._id)).not.toContain(excludedConceptId);
+  });
+
+  test("hides paused chapters from automatic revision surfaces but allows manual review", async () => {
+    const { t, date, chapterId, conceptId } = await createRevisionFixture(
+      "todo-paused-chapter-revision",
+    );
+    await t.mutation(api.mutations.toggleChapterRevision, {
+      chapterId,
+    });
+
+    const dashboard = await t.query(api.queries.getReviewsDashboardData, {
+      now: date + 12 * 60 * 60 * 1000,
+    });
+    expect(dashboard.stats.dueTodayCount).toBe(0);
+
+    const results = await t.query(api.todoQueries.searchConceptReviewsForTodo, {
+      date,
+      searchText: "Velocity",
+    });
+    expect(results).toEqual([]);
+
+    const before = Date.now();
+    await t.mutation(api.mutations.reviewConcept, {
+      conceptId,
+      rating: "medium",
+    });
+    const concept = await t.run((ctx) => ctx.db.get(conceptId));
+    expect(concept?.lastReviewedAt).toBeGreaterThanOrEqual(before);
   });
 
   test("creates a manual revision todo", async () => {

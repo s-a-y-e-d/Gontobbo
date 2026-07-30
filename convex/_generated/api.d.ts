@@ -18,6 +18,7 @@ import type * as ownershipMigration from "../ownershipMigration.js";
 import type * as planner from "../planner.js";
 import type * as plannerQueries from "../plannerQueries.js";
 import type * as queries from "../queries.js";
+import type * as revisionAlgorithm from "../revisionAlgorithm.js";
 import type * as studyItemSearch from "../studyItemSearch.js";
 import type * as syllabusSummaries from "../syllabusSummaries.js";
 import type * as todoQueries from "../todoQueries.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   planner: typeof planner;
   plannerQueries: typeof plannerQueries;
   queries: typeof queries;
+  revisionAlgorithm: typeof revisionAlgorithm;
   studyItemSearch: typeof studyItemSearch;
   syllabusSummaries: typeof syllabusSummaries;
   todoQueries: typeof todoQueries;
