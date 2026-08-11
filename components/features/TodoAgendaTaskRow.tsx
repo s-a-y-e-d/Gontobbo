@@ -137,6 +137,11 @@ export default function TodoAgendaTaskRow({
                 )}
               </span>
             ) : null}
+            {task.studyTargetId ? (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-mono-code uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300">
+                লক্ষ্য
+              </span>
+            ) : null}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs md:text-sm">

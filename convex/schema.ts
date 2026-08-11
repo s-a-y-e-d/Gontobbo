@@ -427,6 +427,31 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_userId_and_chapterId", ["userId", "chapterId"]),
 
+  studyTargets: defineTable({
+    userId: v.id("users"),
+    title: v.string(),
+    startDate: v.number(),
+    endDate: v.number(),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    scheduledTaskCount: v.number(),
+    scheduledMinutes: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_status", ["userId", "status"]),
+
+  studyTargetChapters: defineTable({
+    userId: v.id("users"),
+    studyTargetId: v.id("studyTargets"),
+    subjectId: v.id("subjects"),
+    chapterId: v.id("chapters"),
+    order: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_studyTargetId", ["userId", "studyTargetId"])
+    .index("by_userId_and_chapterId", ["userId", "chapterId"]),
+
   todoTasks: defineTable({
     userId: v.optional(v.id("users")),
     date: v.number(),              // unix ms (start of day in Dhaka)
@@ -439,7 +464,12 @@ export default defineSchema({
     startTimeMinutes: v.optional(v.number()),  // minutes from local day start
     sortOrder: v.optional(v.number()),
     durationMinutes: v.number(),
-    source: v.union(v.literal("manual"), v.literal("ai_accepted")),
+    source: v.union(
+      v.literal("manual"),
+      v.literal("ai_accepted"),
+      v.literal("target"),
+    ),
+    studyTargetId: v.optional(v.id("studyTargets")),
   })
     .index("by_date", ["date"])
     .index("by_date_and_sortOrder", ["date", "sortOrder"])

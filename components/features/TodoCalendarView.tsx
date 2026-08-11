@@ -56,6 +56,7 @@ type DragState = {
 
 type CreateSelectionState = {
   pointerId: number;
+  pointerType: string;
   originX: number;
   originY: number;
   date: number;
@@ -99,11 +100,18 @@ export default function TodoCalendarView({
       : days;
   const calendarDays = visibleDays.length > 0 ? visibleDays : days.slice(0, 1);
   const gridTemplateColumns = `${TIME_GUTTER_WIDTH}px repeat(${calendarDays.length}, minmax(${DAY_COLUMN_MIN_WIDTH}px, 1fr))`;
+  const responsiveGridTemplateColumns =
+    mode === "day"
+      ? `${TIME_GUTTER_WIDTH}px minmax(0, 1fr)`
+      : gridTemplateColumns;
   const calendarWidth =
     mode === "week"
       ? `${Math.max(calendarDays.length * DAY_COLUMN_MIN_WIDTH + TIME_GUTTER_WIDTH, 900)}px`
       : "100%";
   const timedGridRef = useRef<HTMLDivElement | null>(null);
+  const horizontalScrollerRef = useRef<HTMLDivElement | null>(null);
+  const timedScrollerRef = useRef<HTMLDivElement | null>(null);
+  const lastAutoScrolledDateRef = useRef<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [editingTask, setEditingTask] = useState<TodoAgendaTask | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -114,6 +122,30 @@ export default function TodoCalendarView({
   const updateCustomTodoTask = useMutation(api.mutations.updateCustomTodoTask);
   const today = getDhakaDayBucket(now);
   const currentTimeMinutes = getDhakaMinutes(now);
+  const selectedDayIndex = calendarDays.findIndex(
+    (day) => day.date === selectedDate,
+  );
+  const selectedDay = calendarDays[selectedDayIndex];
+  const mobileScrollAnchorMinutes = useMemo(() => {
+    const earliestScheduledStart = selectedDay?.tasks.reduce<number | null>(
+      (earliestStart, task) => {
+        if (task.startTimeMinutes === undefined) {
+          return earliestStart;
+        }
+
+        return earliestStart === null
+          ? task.startTimeMinutes
+          : Math.min(earliestStart, task.startTimeMinutes);
+      },
+      null,
+    );
+
+    if (earliestScheduledStart !== null && earliestScheduledStart !== undefined) {
+      return earliestScheduledStart;
+    }
+
+    return selectedDate === today ? currentTimeMinutes : 8 * 60;
+  }, [currentTimeMinutes, selectedDate, selectedDay?.tasks, today]);
 
   const unscheduledTasksByDate = useMemo(() => {
     const tasksByDate = new Map<number, TodoAgendaTask[]>();
@@ -134,6 +166,51 @@ export default function TodoCalendarView({
     const intervalId = window.setInterval(() => setNow(Date.now()), 60000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (
+      mode !== "day" ||
+      lastAutoScrolledDateRef.current === selectedDate ||
+      !window.matchMedia("(max-width: 767px)").matches
+    ) {
+      return;
+    }
+
+    const scrollElement = timedScrollerRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      scrollElement.scrollTo({
+        top: Math.max(0, (mobileScrollAnchorMinutes / 60) * HOUR_HEIGHT - 96),
+        behavior: "auto",
+      });
+      lastAutoScrolledDateRef.current = selectedDate;
+    }, 100);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [mobileScrollAnchorMinutes, mode, selectedDate]);
+
+  useEffect(() => {
+    if (mode !== "week" || !window.matchMedia("(max-width: 767px)").matches) {
+      return;
+    }
+
+    const scrollElement = horizontalScrollerRef.current;
+    if (selectedDayIndex < 0 || !scrollElement) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      scrollElement.scrollTo({
+        left: selectedDayIndex * DAY_COLUMN_MIN_WIDTH,
+        behavior: "auto",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [mode, selectedDate, selectedDayIndex]);
 
   const getPointerTarget = useCallback(
     (clientX: number, clientY: number) => {
@@ -275,9 +352,15 @@ export default function TodoCalendarView({
       });
     };
 
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (event.pointerId === dragState.pointerId) {
+        setDragState(null);
+      }
+    };
+
     document.addEventListener("pointermove", handlePointerMove);
     document.addEventListener("pointerup", handlePointerUp);
-    document.addEventListener("pointercancel", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerCancel);
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.cursor =
@@ -287,7 +370,7 @@ export default function TodoCalendarView({
     return () => {
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
-      document.removeEventListener("pointercancel", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerCancel);
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
     };
@@ -299,7 +382,10 @@ export default function TodoCalendarView({
     }
 
     const handlePointerMove = (event: PointerEvent) => {
-      if (event.pointerId !== createSelectionState.pointerId) {
+      if (
+        event.pointerId !== createSelectionState.pointerId ||
+        createSelectionState.pointerType === "touch"
+      ) {
         return;
       }
 
@@ -359,7 +445,7 @@ export default function TodoCalendarView({
 
       onSelectDate(finalState.date);
 
-      if (!finalState.hasMoved) {
+      if (!finalState.hasMoved || finalState.pointerType === "touch") {
         onCreateTask(
           finalState.date,
           Math.min(1440 - DEFAULT_DROP_DURATION, finalState.anchorMinutes),
@@ -375,14 +461,20 @@ export default function TodoCalendarView({
       );
     };
 
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (event.pointerId === createSelectionState.pointerId) {
+        setCreateSelectionState(null);
+      }
+    };
+
     document.addEventListener("pointermove", handlePointerMove);
     document.addEventListener("pointerup", handlePointerUp);
-    document.addEventListener("pointercancel", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerCancel);
 
     return () => {
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
-      document.removeEventListener("pointercancel", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerCancel);
     };
   }, [createSelectionState, getPointerTarget, onCreateTask, onSelectDate]);
 
@@ -396,10 +488,13 @@ export default function TodoCalendarView({
       return;
     }
 
-    event.preventDefault();
+    if (event.pointerType !== "touch") {
+      event.preventDefault();
+    }
 
     setCreateSelectionState({
       pointerId: event.pointerId,
+      pointerType: event.pointerType,
       originX: event.clientX,
       originY: event.clientY,
       date: target.date,
@@ -418,7 +513,7 @@ export default function TodoCalendarView({
     date: number,
     dragMode: DragMode,
   ) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || event.pointerType === "touch") {
       return;
     }
 
@@ -445,7 +540,7 @@ export default function TodoCalendarView({
     task: TodoAgendaTask,
     date: number,
   ) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || event.pointerType === "touch") {
       return;
     }
 
@@ -478,10 +573,22 @@ export default function TodoCalendarView({
           onGoToPreviousRange={onGoToPreviousRange}
           onGoToToday={onGoToToday}
           onGoToNextRange={onGoToNextRange}
+          onAddTask={() => {
+            const roundedCurrentTime =
+              Math.ceil(currentTimeMinutes / SNAP_MINUTES) * SNAP_MINUTES;
+            const startTimeMinutes =
+              selectedDate === today
+                ? Math.min(1440 - DEFAULT_DROP_DURATION, roundedCurrentTime)
+                : 8 * 60;
+            onCreateTask(selectedDate, startTimeMinutes, DEFAULT_DROP_DURATION);
+          }}
         />
 
-        <div className="min-h-0 flex-1 overflow-hidden border-t border-border-subtle bg-pure-white">
-          <div className="h-full overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-hidden border-t border-border-subtle bg-pure-white dark:border-white/10 dark:bg-neutral-950">
+          <div
+            ref={horizontalScrollerRef}
+            className="h-full overflow-x-auto overscroll-x-contain"
+          >
             <div
               className="flex h-full min-w-full flex-col"
               style={{ width: calendarWidth }}
@@ -491,7 +598,7 @@ export default function TodoCalendarView({
                   calendarDays={calendarDays}
                   selectedDate={selectedDate}
                   today={today}
-                  gridTemplateColumns={gridTemplateColumns}
+                  gridTemplateColumns={responsiveGridTemplateColumns}
                   unscheduledTasksByDate={unscheduledTasksByDate}
                   onSelectDate={onSelectDate}
                   onModeChange={onModeChange}
@@ -504,18 +611,27 @@ export default function TodoCalendarView({
                 />
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-                <div className="grid" style={{ gridTemplateColumns }}>
+              <div
+                ref={timedScrollerRef}
+                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
+              >
+                <div
+                  className="grid"
+                  style={{ gridTemplateColumns: responsiveGridTemplateColumns }}
+                >
                   <TimeGutter />
                   <div
                     ref={timedGridRef}
                     role="presentation"
                     onPointerDown={startCreateSelection}
-                    className="relative grid cursor-crosshair"
+                    className="relative grid cursor-crosshair touch-pan-y"
                     style={{
                       gridColumn: "2 / -1",
                       height: DAY_HEIGHT,
-                      gridTemplateColumns: `repeat(${calendarDays.length}, minmax(${DAY_COLUMN_MIN_WIDTH}px, 1fr))`,
+                      gridTemplateColumns:
+                        mode === "day"
+                          ? "minmax(0, 1fr)"
+                          : `repeat(${calendarDays.length}, minmax(${DAY_COLUMN_MIN_WIDTH}px, 1fr))`,
                     }}
                   >
                     {calendarDays.map((day) => (
@@ -562,6 +678,7 @@ function CalendarToolbar({
   onGoToPreviousRange,
   onGoToToday,
   onGoToNextRange,
+  onAddTask,
 }: {
   monthLabel: string;
   calendarMode: CalendarMode;
@@ -571,15 +688,16 @@ function CalendarToolbar({
   onGoToPreviousRange: () => void;
   onGoToToday: () => void;
   onGoToNextRange: () => void;
+  onAddTask: () => void;
 }) {
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border-subtle bg-pure-white px-3 py-3 md:px-5">
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="flex items-center rounded-full border border-border-subtle bg-pure-white p-1">
+    <div className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-b border-border-subtle bg-pure-white px-3 py-3 dark:border-white/10 dark:bg-neutral-950 sm:flex-row sm:items-center md:px-5">
+      <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+        <div className="flex shrink-0 items-center rounded-full border border-border-subtle bg-pure-white p-1 dark:border-white/10 dark:bg-neutral-900">
           <button
             type="button"
             onClick={onGoToPreviousRange}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-on-surface"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition-all hover:bg-gray-100 hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green active:scale-95 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-white"
             aria-label="আগের দিনগুলো"
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -589,14 +707,14 @@ function CalendarToolbar({
           <button
             type="button"
             onClick={onGoToToday}
-            className="rounded-full px-4 py-2 font-body text-sm font-medium text-on-surface transition-colors hover:bg-gray-100"
+            className="min-h-11 rounded-full px-3 py-2 font-body text-sm font-medium text-on-surface transition-all hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green active:scale-95 dark:text-neutral-100 dark:hover:bg-white/10 sm:px-4"
           >
             আজ
           </button>
           <button
             type="button"
             onClick={onGoToNextRange}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-on-surface"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-500 transition-all hover:bg-gray-100 hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green active:scale-95 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-white"
             aria-label="পরের দিনগুলো"
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -605,12 +723,20 @@ function CalendarToolbar({
           </button>
         </div>
 
-        <h1 className="truncate px-2 font-card-title text-lg text-on-surface md:text-xl">
+        <h1 className="min-w-0 flex-1 truncate px-1 font-card-title text-base text-on-surface dark:text-neutral-100 sm:px-2 md:text-xl">
           {monthLabel}
         </h1>
+        <button
+          type="button"
+          onClick={onAddTask}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-on-surface text-pure-white shadow-sm transition-all hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2 active:scale-95 dark:bg-white dark:text-neutral-950 dark:focus-visible:ring-offset-neutral-950 md:hidden"
+          aria-label="নতুন টাস্ক যোগ করুন"
+        >
+          <span className="material-symbols-outlined text-[20px]">add</span>
+        </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex w-full items-center gap-2 sm:w-auto">
         <SegmentedControl
           items={[
             { value: "agenda", label: "Agenda" },
@@ -642,16 +768,17 @@ function SegmentedControl<TValue extends string>({
   onChange: (value: TValue) => void;
 }) {
   return (
-    <div className="flex rounded-full border border-border-subtle bg-surface-container p-1">
+    <div className="flex min-w-0 flex-1 rounded-full border border-border-subtle bg-surface-container p-1 dark:border-white/10 dark:bg-neutral-900 sm:flex-none">
       {items.map((item) => (
         <button
           key={item.value}
           type="button"
           onClick={() => onChange(item.value)}
-          className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all md:px-4 md:text-sm ${
+          aria-pressed={value === item.value}
+          className={`min-h-11 min-w-0 flex-1 rounded-full px-2 py-2 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green active:scale-[0.97] sm:flex-none md:px-4 md:text-sm ${
             value === item.value
-              ? "bg-on-surface text-pure-white shadow-sm"
-              : "text-gray-500 hover:bg-pure-white hover:text-on-surface"
+              ? "bg-on-surface text-pure-white shadow-sm dark:bg-white dark:text-neutral-950"
+              : "text-gray-500 hover:bg-pure-white hover:text-on-surface dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-white"
           }`}
         >
           {item.label}
@@ -687,9 +814,9 @@ function CalendarGridHeader({
   ) => void;
 }) {
   return (
-    <div className="sticky top-0 z-40 shrink-0 border-b border-border-medium bg-pure-white shadow-[0_1px_0_rgba(0,0,0,0.03)]">
+    <div className="sticky top-0 z-40 shrink-0 border-b border-border-medium bg-pure-white shadow-[0_1px_0_rgba(0,0,0,0.03)] dark:border-white/15 dark:bg-neutral-950">
       <div className="grid" style={{ gridTemplateColumns }}>
-        <div className="border-r border-border-medium bg-pure-white" />
+        <div className="border-r border-border-medium bg-pure-white dark:border-white/15 dark:bg-neutral-950" />
         {calendarDays.map((day) => (
           <button
             key={day.date}
@@ -698,8 +825,9 @@ function CalendarGridHeader({
               onSelectDate(day.date);
               onModeChange("day");
             }}
-            className={`border-r border-border-subtle px-2 py-3 text-center transition-colors hover:bg-gray-50 ${
-              day.date === selectedDate ? "bg-brand-green/5" : ""
+            aria-pressed={day.date === selectedDate}
+            className={`border-r border-border-subtle px-2 py-3 text-center transition-colors hover:bg-gray-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-green dark:border-white/10 dark:hover:bg-white/10 ${
+              day.date === selectedDate ? "bg-brand-green/5 dark:bg-brand-green/10" : ""
             }`}
           >
             <div
@@ -725,13 +853,13 @@ function CalendarGridHeader({
       </div>
 
       <div className="grid min-h-12" style={{ gridTemplateColumns }}>
-        <div className="flex items-start justify-end border-r border-border-medium px-2 py-2 font-mono-code text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+        <div className="flex items-start justify-end border-r border-border-medium bg-pure-white px-2 py-2 font-mono-code text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:border-white/15 dark:bg-neutral-950 dark:text-neutral-400">
           সময়হীন
         </div>
         {calendarDays.map((day) => (
           <div
             key={`${day.date}-unscheduled`}
-            className="min-w-0 border-r border-border-subtle px-1.5 py-1.5"
+            className="min-w-0 border-r border-border-subtle px-1.5 py-1.5 dark:border-white/10"
           >
             <div className="flex max-h-24 flex-col gap-1 overflow-y-auto">
               {(unscheduledTasksByDate.get(day.date) ?? []).map((task) => (
@@ -773,7 +901,7 @@ function UnscheduledTaskChip({
       type="button"
       onClick={() => onEdit(task)}
       onPointerDown={(event) => onPointerDown(event, task, date)}
-      className={`group min-h-7 w-full overflow-hidden rounded-md border px-2 py-1 text-left transition-colors hover:bg-gray-50 ${
+      className={`group min-h-11 w-full touch-manipulation overflow-hidden rounded-md border px-2 py-1 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green active:scale-[0.99] dark:hover:bg-white/10 ${
         task.isCompleted ? "opacity-55" : ""
       }`}
       style={{
@@ -797,7 +925,7 @@ function UnscheduledTaskChip({
 function TimeGutter() {
   return (
     <div
-      className="relative border-r border-border-medium bg-pure-white"
+      className="relative border-r border-border-medium bg-pure-white dark:border-white/15 dark:bg-neutral-950"
       style={{ height: DAY_HEIGHT }}
     >
       {Array.from({ length: 24 }, (_, hour) => (
@@ -869,11 +997,11 @@ function CalendarDayColumn({
       : null;
 
   return (
-    <div className="relative border-r border-border-subtle bg-pure-white">
+    <div className="relative border-r border-border-subtle bg-pure-white dark:border-white/10 dark:bg-neutral-950">
       {Array.from({ length: 24 }, (_, hour) => (
         <div
           key={hour}
-          className="absolute left-0 right-0 border-t border-border-medium"
+          className="absolute left-0 right-0 border-t border-border-medium dark:border-white/15"
           style={{ top: hour * HOUR_HEIGHT }}
         />
       ))}
@@ -977,7 +1105,7 @@ function CalendarEvent({
         event.stopPropagation();
         onPointerDown(event, task, date, "move");
       }}
-      className={`absolute overflow-hidden rounded-lg border px-2 py-1.5 text-left shadow-sm transition-opacity ${
+      className={`absolute touch-manipulation overflow-hidden rounded-lg border px-2 py-1.5 text-left shadow-sm transition-all focus-visible:z-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green active:scale-[0.99] ${
         isPreview ? "opacity-70 ring-2 ring-brand-green" : "hover:opacity-90"
       } ${task.isCompleted ? "opacity-55" : ""}`}
       style={{

@@ -23,6 +23,7 @@ The web app contains these main areas:
 
 - Dashboard
 - Subjects
+- Study Target
 - AI Planner
 - Todo
 - Revision
@@ -167,6 +168,22 @@ Features include:
 - Search study items when creating Todo tasks.
 - Use subject colors for study tasks.
 - Accept AI planner suggestions into Todo.
+
+## Study Target
+
+The Study Target area connects a chapter-completion deadline to daily execution.
+
+Features include:
+
+- Keep one active, personally titled target at a time.
+- Set an inclusive start and end date.
+- Select chapters across multiple subjects.
+- Define completion from concept-level trackers; chapter-level trackers remain optional.
+- Create balanced daily Todo tasks from unfinished concept study items.
+- Link matching manual Todo tasks in the range instead of duplicating them.
+- Show target, subject, and chapter progress from existing study-item summaries.
+- Keep an overdue target open and extend its deadline.
+- Preserve completed Todo work while replanning unfinished target-generated tasks.
 
 ## AI Planner
 
@@ -352,4 +369,3 @@ These are marked as future sections and are not fully active yet.
 ## One-Line Product Description
 
 Gontobbo is a Bengali-first academic operating system that helps students track syllabus progress, plan daily study, manage revision, and keep a complete history of their study work.
-

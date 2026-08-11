@@ -99,6 +99,7 @@ export const getTodoAgenda = query({
                 startTimeMinutes: todoTask.startTimeMinutes,
                 durationMinutes: todoTask.durationMinutes,
                 source: todoTask.source,
+                studyTargetId: todoTask.studyTargetId,
                 sortOrder:
                   todoTask.sortOrder ??
                   todoTask.startTimeMinutes ??
@@ -142,6 +143,7 @@ export const getTodoAgenda = query({
                 startTimeMinutes: todoTask.startTimeMinutes,
                 durationMinutes: todoTask.durationMinutes,
                 source: todoTask.source,
+                studyTargetId: todoTask.studyTargetId,
                 sortOrder:
                   todoTask.sortOrder ??
                   todoTask.startTimeMinutes ??
@@ -183,6 +185,7 @@ export const getTodoAgenda = query({
               startTimeMinutes: todoTask.startTimeMinutes,
               durationMinutes: todoTask.durationMinutes,
               source: todoTask.source,
+              studyTargetId: todoTask.studyTargetId,
               sortOrder:
                 todoTask.sortOrder ??
                 todoTask.startTimeMinutes ??

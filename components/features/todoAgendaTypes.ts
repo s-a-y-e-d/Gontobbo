@@ -12,7 +12,8 @@ export type TodoAgendaTask = {
   customColor?: string;
   startTimeMinutes?: number;
   durationMinutes: number;
-  source: "manual" | "ai_accepted";
+  source: "manual" | "ai_accepted" | "target";
+  studyTargetId?: string;
   sortOrder: number;
 };
 

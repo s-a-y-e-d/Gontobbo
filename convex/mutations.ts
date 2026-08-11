@@ -1081,7 +1081,7 @@ async function ensureChapterStudyItemsForSubject(
   return null;
 }
 
-async function ensureConceptStudyItemsForChapter(
+export async function ensureConceptStudyItemsForChapter(
   ctx: MutationCtx,
   currentUser: CurrentUser,
   chapterId: Id<"chapters">,
@@ -2112,6 +2112,36 @@ async function deleteChapterForUser(
 
   await deleteStudyItemStatsForChapter(ctx, currentUser._id, chapter._id);
   await deleteSyllabusSummariesForChapter(ctx, currentUser._id, chapter._id);
+  const targetChapterRows = await ctx.db
+    .query("studyTargetChapters")
+    .withIndex("by_userId_and_chapterId", (q) =>
+      q.eq("userId", currentUser._id).eq("chapterId", chapter._id),
+    )
+    .take(501);
+  if (targetChapterRows.length > 500) {
+    throw new Error("Too many target links to delete this chapter safely");
+  }
+  for (const targetChapterRow of targetChapterRows) {
+    await ctx.db.delete(targetChapterRow._id);
+
+    const remainingTargetChapters = await ctx.db
+      .query("studyTargetChapters")
+      .withIndex("by_userId_and_studyTargetId", (q) =>
+        q
+          .eq("userId", currentUser._id)
+          .eq("studyTargetId", targetChapterRow.studyTargetId),
+      )
+      .take(1);
+    if (remainingTargetChapters.length === 0) {
+      const target = await ctx.db.get(targetChapterRow.studyTargetId);
+      if (target?.status === "active") {
+        await ctx.db.patch(target._id, {
+          status: "archived",
+          updatedAt: Date.now(),
+        });
+      }
+    }
+  }
   await ctx.db.delete(chapter._id);
 }
 
@@ -4386,7 +4416,17 @@ export const migrateAndSeed = internalMutation({
       await ctx.db.delete(todoTask._id);
     }
 
-    // 12. Delete all settings
+    // 12. Delete all study targets and their selected-chapter links
+    const studyTargetChapters = await ctx.db.query("studyTargetChapters").take(500);
+    for (const studyTargetChapter of studyTargetChapters) {
+      await ctx.db.delete(studyTargetChapter._id);
+    }
+    const studyTargets = await ctx.db.query("studyTargets").take(500);
+    for (const studyTarget of studyTargets) {
+      await ctx.db.delete(studyTarget._id);
+    }
+
+    // 13. Delete all settings
     const settings = await ctx.db.query("settings").take(500);
     for (const setting of settings) {
       await ctx.db.delete(setting._id);

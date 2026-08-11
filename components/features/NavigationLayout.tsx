@@ -28,6 +28,7 @@ function BrandWordmark({ compact = false }: { compact?: boolean }) {
 const primaryNavItems: NavItem[] = [
   { icon: "dashboard", label: "ড্যাশবোর্ড", href: "/" },
   { icon: "auto_stories", label: "বিষয়", href: "/subjects" },
+  { icon: "flag", label: "লক্ষ্য", href: "/target" },
   { icon: "psychology", label: "AI Planner", href: "/planner" },
   { icon: "calendar_today", label: "Todo", href: "/todo" },
   { icon: "history_edu", label: "রিভিশন", href: "/revision" },
@@ -84,6 +85,10 @@ function Breadcrumbs() {
     crumbs.push({ label: "রিভিশন", href: "/revision" });
   } else if (segments[0] === "todo") {
     crumbs.push({ label: "করণীয়", href: "/todo" });
+  }
+
+  if (segments[0] === "target") {
+    crumbs.push({ label: "লক্ষ্য", href: "/target" });
   }
 
   if (segments[0] === "planner") {
@@ -145,6 +150,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
   const isTodoActive = pathname === "/todo" || pathname.startsWith("/todo");
   const isTodoCalendarActive = isTodoActive && todoViewMode === "calendar";
   const isRevisionActive = pathname === "/revision";
+  const isTargetActive = pathname === "/target" || pathname.startsWith("/target");
   const isPlannerActive = pathname === "/planner" || pathname.startsWith("/planner");
   const isSettingsActive = pathname === "/settings" || pathname.startsWith("/settings");
 
@@ -155,6 +161,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
     if (href === "/todo") return isTodoActive;
     if (href === "/logs") return isLogsActive;
     if (href === "/revision") return isRevisionActive;
+    if (href === "/target") return isTargetActive;
     if (href === "/planner") return isPlannerActive;
     if (href === "/settings") return isSettingsActive;
     return pathname === href;

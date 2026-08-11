@@ -20,6 +20,7 @@ It is designed as an operational study system, not a gamified learning app. The 
 - **Subjects**: subject cards, dynamic tracker configuration, exam weight, colors, icons, and progress summaries.
 - **Subject page**: chapter-level tracker table split between next-term and full syllabus.
 - **Chapter page**: concept-level tracker table, concept progress, todo actions, and revision actions.
+- **Study Target**: one active, titled date-range target that turns selected chapters' unfinished concept trackers into daily Todo work.
 - **Todo**: agenda and calendar views for manual tasks, study items, and planner suggestions.
 - **AI Planner**: date-based study suggestions that can be accepted into Todo.
 - **Revision**: overdue, due-today, and upcoming concept reviews.

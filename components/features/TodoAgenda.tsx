@@ -21,6 +21,7 @@ import {
 
 const WEEK_OFFSET = DAY_COUNT * DAY_MS;
 const LAST_DAY_OFFSET = (DAY_COUNT - 1) * DAY_MS;
+const MOBILE_CALENDAR_QUERY = "(max-width: 767px)";
 
 export default function TodoAgenda() {
   const [now] = useState(() => Date.now());
@@ -125,6 +126,46 @@ export default function TodoAgenda() {
     goToRange(nextRangeStartDate, nextRangeStartDate);
   };
 
+  const handleCalendarViewModeChange = (nextViewMode: "agenda" | "calendar") => {
+    setViewMode(nextViewMode);
+
+    if (
+      nextViewMode === "calendar" &&
+      window.matchMedia(MOBILE_CALENDAR_QUERY).matches
+    ) {
+      setCalendarMode("day");
+    }
+  };
+
+  const handleGoToPreviousCalendarRange = () => {
+    if (calendarMode === "week") {
+      handleGoToPreviousRange();
+      return;
+    }
+
+    const previousDate = selectedDate - DAY_MS;
+    const nextRangeStartDate =
+      previousDate < rangeStartDate
+        ? rangeStartDate - WEEK_OFFSET
+        : rangeStartDate;
+
+    goToRange(nextRangeStartDate, previousDate);
+  };
+
+  const handleGoToNextCalendarRange = () => {
+    if (calendarMode === "week") {
+      handleGoToNextRange();
+      return;
+    }
+
+    const nextDate = selectedDate + DAY_MS;
+    const rangeEndDate = rangeStartDate + LAST_DAY_OFFSET;
+    const nextRangeStartDate =
+      nextDate > rangeEndDate ? rangeStartDate + WEEK_OFFSET : rangeStartDate;
+
+    goToRange(nextRangeStartDate, nextDate);
+  };
+
   const openAddTaskModal = (defaults?: {
     date?: number;
     startTimeMinutes?: number;
@@ -154,7 +195,7 @@ export default function TodoAgenda() {
           days={days}
           monthLabel={formatMonthLabel(selectedDate)}
           viewMode={viewMode}
-          onViewModeChange={setViewMode}
+          onViewModeChange={handleCalendarViewModeChange}
           onSelectDate={setSelectedDate}
           onGoToPreviousRange={handleGoToPreviousRange}
           onGoToToday={handleGoToToday}
@@ -177,11 +218,11 @@ export default function TodoAgenda() {
             mode={calendarMode}
             viewMode={viewMode}
             onModeChange={setCalendarMode}
-            onViewModeChange={setViewMode}
+            onViewModeChange={handleCalendarViewModeChange}
             onSelectDate={setSelectedDate}
-            onGoToPreviousRange={handleGoToPreviousRange}
+            onGoToPreviousRange={handleGoToPreviousCalendarRange}
             onGoToToday={handleGoToToday}
-            onGoToNextRange={handleGoToNextRange}
+            onGoToNextRange={handleGoToNextCalendarRange}
             onCreateTask={(date, startTimeMinutes, durationMinutes) =>
               openAddTaskModal({
                 date,

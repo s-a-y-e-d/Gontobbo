@@ -20,6 +20,7 @@ import type * as plannerQueries from "../plannerQueries.js";
 import type * as queries from "../queries.js";
 import type * as revisionAlgorithm from "../revisionAlgorithm.js";
 import type * as studyItemSearch from "../studyItemSearch.js";
+import type * as studyTargets from "../studyTargets.js";
 import type * as syllabusSummaries from "../syllabusSummaries.js";
 import type * as todoQueries from "../todoQueries.js";
 import type * as todoStudyItemSearchDigests from "../todoStudyItemSearchDigests.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   queries: typeof queries;
   revisionAlgorithm: typeof revisionAlgorithm;
   studyItemSearch: typeof studyItemSearch;
+  studyTargets: typeof studyTargets;
   syllabusSummaries: typeof syllabusSummaries;
   todoQueries: typeof todoQueries;
   todoStudyItemSearchDigests: typeof todoStudyItemSearchDigests;
