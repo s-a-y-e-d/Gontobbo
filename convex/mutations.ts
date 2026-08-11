@@ -4228,6 +4228,116 @@ export const reviewConcept = mutation({
   },
 });
 
+// ── Advance ready concept reviews ─────────────────────────────────
+export const advanceReadyConceptReviews = mutation({
+  args: {
+    chapterId: v.id("chapters"),
+  },
+  returns: v.object({
+    reviewedCount: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const currentUser = await requireCurrentUser(ctx);
+    const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
+    const subject = await getOwnedSubjectOrThrow(ctx, currentUser, chapter.subjectId);
+
+    const [concepts, conceptStats, revisionSettings, revisionMinutesSetting] =
+      await Promise.all([
+        ctx.db
+          .query("concepts")
+          .withIndex("by_userId_and_chapterId", (q) =>
+            q.eq("userId", currentUser._id).eq("chapterId", args.chapterId),
+          )
+          .take(501),
+        ctx.db
+          .query("studyItemConceptStats")
+          .withIndex("by_userId_and_chapterId", (q) =>
+            q.eq("userId", currentUser._id).eq("chapterId", args.chapterId),
+          )
+          .take(501),
+        Promise.all([
+          ...REVISION_INTERVAL_SETTING_KEYS.map((key) =>
+            getOwnedSettingByKey(ctx, currentUser, key),
+          ),
+          ...Object.values(REVISION_RATING_SETTING_KEYS).map((key) =>
+            getOwnedSettingByKey(ctx, currentUser, key),
+          ),
+        ]),
+        getOwnedSettingByKey(ctx, currentUser, "defaultRevisionMinutes"),
+      ]);
+
+    if (concepts.length > 500 || conceptStats.length > 500) {
+      throw new Error("Too many concepts to advance in one step");
+    }
+
+    const now = Date.now();
+    const statsByConceptId = new Map(
+      conceptStats.map((stat) => [stat.conceptId, stat]),
+    );
+    const readyConcepts = concepts.filter((concept) => {
+      const stat = statsByConceptId.get(concept._id);
+      return (
+        stat !== undefined &&
+        stat.totalItems > 0 &&
+        stat.completedItems === stat.totalItems &&
+        (concept.lastReviewedAt === undefined || concept.nextReviewAt === undefined || concept.nextReviewAt <= now)
+      );
+    });
+
+    const getRevisionSettingNumber = (index: number, defaultValue: number) => {
+      const setting = revisionSettings[index];
+      return typeof setting?.value === "number" ? setting.value : defaultValue;
+    };
+    const intervalDays = DEFAULT_REVISION_INTERVAL_DAYS.map(
+      (defaultDays, index) => getRevisionSettingNumber(index, defaultDays),
+    );
+    const mediumLevelChange = getRevisionSettingNumber(
+      REVISION_LEVEL_COUNT + 1,
+      DEFAULT_REVISION_RATING_LEVEL_CHANGES.medium,
+    );
+    const defaultRevisionMinutes =
+      typeof revisionMinutesSetting?.value === "number"
+        ? revisionMinutesSetting.value
+        : 10;
+    const dayBucket = getDhakaDayBucket(now);
+
+    for (const concept of readyConcepts) {
+      const level = Math.min(
+        Math.max(0, (concept.repetitionLevel ?? 0) + mediumLevelChange),
+        REVISION_LEVEL_COUNT - 1,
+      );
+      const daysToAdd = intervalDays[level]!;
+
+      await ctx.db.patch(concept._id, {
+        repetitionLevel: level,
+        nextReviewAt: now + daysToAdd * 86400000,
+        lastReviewedAt: now,
+        reviewCount: (concept.reviewCount ?? 0) + 1,
+      });
+      await ctx.db.insert("studyLogs", {
+        userId: currentUser._id,
+        eventType: "concept_review",
+        loggedAt: now,
+        dayBucket,
+        subjectId: chapter.subjectId,
+        chapterId: concept.chapterId,
+        conceptId: concept._id,
+        minutesSpent: defaultRevisionMinutes,
+        originalMinutesSpent: defaultRevisionMinutes,
+        minutesSource: "default_revision",
+        rating: "medium",
+        isEditable: true,
+        titleSnapshot: concept.name,
+        subjectNameSnapshot: subject.name,
+        chapterNameSnapshot: chapter.name,
+        conceptNameSnapshot: concept.name,
+      });
+    }
+
+    return { reviewedCount: readyConcepts.length };
+  },
+});
+
 // ── Reset concept progress ───────────────────────────────────────
 export const resetConceptProgress = mutation({
   args: { conceptId: v.id("concepts") },

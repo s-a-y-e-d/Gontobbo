@@ -977,6 +977,120 @@ describe("todo", () => {
     expect(concept?.nextReviewAt).toBeLessThanOrEqual(after + 16 * 86400000);
   });
 
+  test("advances only ready concepts in a chapter using the saved medium schedule", async () => {
+    const t = await createAuthenticatedTestContext("advance-ready-concepts");
+    const subjectId = await t.mutation(api.mutations.createSubject, {
+      name: "Physics",
+      slug: "physics-advance-ready-concepts",
+      order: 1,
+      chapterTrackers: [{ key: "mcq", label: "MCQ", avgMinutes: 30 }],
+      conceptTrackers: [
+        { key: "class", label: "Class", avgMinutes: 20 },
+        { key: "book", label: "Book", avgMinutes: 25 },
+      ],
+    });
+    const chapterId = await t.mutation(api.mutations.createChapter, {
+      subjectId,
+      name: "Motion",
+      slug: "motion",
+      order: 1,
+      inNextTerm: true,
+    });
+    const readyConceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Velocity",
+      order: 1,
+    });
+    const secondReadyConceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Acceleration",
+      order: 2,
+    });
+    const incompleteConceptId = await t.mutation(api.mutations.createConcept, {
+      chapterId,
+      name: "Displacement",
+      order: 3,
+    });
+
+    await t.mutation(api.mutations.ensureConceptStudyItems, { chapterId });
+    const pageData = await t.query(api.queries.getChapterPageData, {
+      subjectSlug: "physics-advance-ready-concepts",
+      chapterSlug: "motion",
+    });
+    const conceptItems = new Map(
+      pageData!.concepts.map((concept) => [
+        concept._id,
+        concept.trackerData.map((tracker) => tracker.studyItemId!),
+      ]),
+    );
+    for (const conceptId of [readyConceptId, secondReadyConceptId]) {
+      for (const studyItemId of conceptItems.get(conceptId)!) {
+        await t.mutation(api.mutations.toggleStudyItemCompletion, { studyItemId });
+      }
+    }
+    await t.mutation(api.mutations.toggleStudyItemCompletion, {
+      studyItemId: conceptItems.get(incompleteConceptId)![0]!,
+    });
+    await t.mutation(api.mutations.setRevisionAlgorithm, {
+      intervalDays: [2, 4, 8, 16, 32, 64],
+      ratingLevelChanges: { hard: -2, medium: 2, easy: 3 },
+    });
+
+    const before = Date.now();
+    const result = await t.mutation(api.mutations.advanceReadyConceptReviews, {
+      chapterId,
+    });
+    const after = Date.now();
+
+    expect(result).toEqual({ reviewedCount: 2 });
+    const concepts = await t.run(async (ctx) =>
+      await Promise.all([
+        ctx.db.get(readyConceptId),
+        ctx.db.get(secondReadyConceptId),
+        ctx.db.get(incompleteConceptId),
+      ]),
+    );
+    expect(concepts[0]).toMatchObject({ repetitionLevel: 2, reviewCount: 1 });
+    expect(concepts[1]).toMatchObject({ repetitionLevel: 2, reviewCount: 1 });
+    expect(concepts[0]?.nextReviewAt).toBeGreaterThanOrEqual(before + 8 * 86400000);
+    expect(concepts[1]?.nextReviewAt).toBeLessThanOrEqual(after + 8 * 86400000);
+    expect(concepts[2]?.nextReviewAt).toBeUndefined();
+    expect(concepts[2]?.reviewCount).toBeUndefined();
+
+    const reviewLogs = await t.run(async (ctx) =>
+      (
+        await Promise.all(
+          [readyConceptId, secondReadyConceptId].map((conceptId) =>
+            ctx.db
+              .query("studyLogs")
+              .withIndex("by_conceptId_and_loggedAt", (q) =>
+                q.eq("conceptId", conceptId),
+              )
+              .collect(),
+          ),
+        )
+      ).flat(),
+    );
+    const conceptReviewLogs = reviewLogs.filter(
+      (log) => log.eventType === "concept_review",
+    );
+    expect(conceptReviewLogs).toHaveLength(2);
+    expect(conceptReviewLogs.every((log) => log.rating === "medium")).toBe(true);
+
+    const secondResult = await t.mutation(api.mutations.advanceReadyConceptReviews, {
+      chapterId,
+    });
+    expect(secondResult).toEqual({ reviewedCount: 0 });
+    const conceptsAfterSecondRun = await t.run(async (ctx) =>
+      await Promise.all([
+        ctx.db.get(readyConceptId),
+        ctx.db.get(secondReadyConceptId),
+      ]),
+    );
+    expect(conceptsAfterSecondRun[0]).toMatchObject({ repetitionLevel: 2, reviewCount: 1 });
+    expect(conceptsAfterSecondRun[1]).toMatchObject({ repetitionLevel: 2, reviewCount: 1 });
+  });
+
   test("searches study items with a two-character threshold", async () => {
     const { t, date, studyItemId } = await createStudyItemFixture(
       "todo-study-item-search",

@@ -37,6 +37,7 @@ type ConceptRowData = {
   name: string;
   order: number;
   reviewCount?: number;
+  lastReviewedAt?: number;
   nextReviewAt?: number;
   repetitionLevel?: number;
   trackerData: Array<{ key: string; isCompleted: boolean; score?: number; studyItemId?: string }>;
@@ -77,6 +78,14 @@ type BulkConceptAction = "delete" | "reset";
 
 type BulkConceptActionDialogProps = {
   action: BulkConceptAction | null;
+  conceptCount: number;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+};
+
+type AdvanceReadyConceptReviewsDialogProps = {
+  isOpen: boolean;
   conceptCount: number;
   isSubmitting: boolean;
   onClose: () => void;
@@ -158,6 +167,79 @@ function BulkConceptActionDialog({
             className={`rounded-full px-5 py-2.5 font-label-uppercase text-label-uppercase text-pure-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 dark:focus-visible:ring-offset-neutral-950 ${isDelete ? "bg-error-red hover:bg-red-700" : "bg-warm-amber hover:bg-amber-600"}`}
           >
             {isSubmitting ? "কাজ হচ্ছে..." : actionLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdvanceReadyConceptReviewsDialog({
+  isOpen,
+  conceptCount,
+  isSubmitting,
+  onClose,
+  onConfirm,
+}: AdvanceReadyConceptReviewsDialogProps) {
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSubmitting) onClose();
+    };
+    if (isOpen) document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
+
+  if (!isOpen) return null;
+
+  const formattedCount = new Intl.NumberFormat("bn-BD").format(conceptCount);
+
+  return (
+    <div
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-neutral-950/45 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={() => !isSubmitting && onClose()}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="advance-ready-concepts-title"
+        className="w-full max-w-md overflow-hidden rounded-[28px] border border-border-subtle bg-pure-white shadow-[0_18px_60px_rgba(13,29,24,0.16)] animate-in zoom-in-95 duration-200 dark:border-white/10 dark:bg-neutral-950 dark:shadow-[0_18px_60px_rgba(0,0,0,0.45)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-border-subtle px-6 pb-5 pt-6 dark:border-white/10">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-green-light text-brand-green-deep dark:bg-brand-green/15 dark:text-brand-green">
+            <span className="material-symbols-outlined text-[25px]">trending_up</span>
+          </div>
+          <p className="mt-5 font-mono-code text-mono-code uppercase tracking-[0.12em] text-brand-green-deep dark:text-brand-green">
+            প্রস্তুত কনসেপ্ট
+          </p>
+          <h2 id="advance-ready-concepts-title" className="mt-2 font-card-title text-[22px] leading-tight text-on-surface dark:text-neutral-50">
+            রিভিশন সম্পন্ন করবেন?
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-neutral-400">
+            সম্পূর্ণ হওয়া {formattedCount}টি কনসেপ্টের রিভিশন সম্পন্ন হবে। আপনার রিভিশন সেটিংস অনুযায়ী নতুন তারিখ ঠিক হবে।
+          </p>
+        </div>
+        <div className="mx-6 mt-5 flex items-center gap-3 rounded-2xl border border-border-subtle bg-gray-50/70 px-4 py-3 dark:border-white/10 dark:bg-white/[0.045]">
+          <span className="material-symbols-outlined text-[20px] text-brand-green-deep dark:text-brand-green">auto_awesome</span>
+          <p className="text-sm text-gray-600 dark:text-neutral-300">অসম্পূর্ণ কনসেপ্টগুলো অপরিবর্তিত থাকবে।</p>
+        </div>
+        <div className="mt-6 flex flex-col-reverse gap-3 border-t border-border-subtle px-6 py-5 sm:flex-row sm:justify-end dark:border-white/10">
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={onClose}
+            className="rounded-full px-5 py-2.5 font-label-uppercase text-label-uppercase text-gray-700 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-white/[0.08]"
+          >
+            এখন নয়
+          </button>
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={onConfirm}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-on-surface px-5 py-2.5 font-label-uppercase text-label-uppercase text-pure-white shadow-sm transition-colors hover:bg-brand-green hover:text-on-primary-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-brand-green dark:focus-visible:ring-offset-neutral-950"
+          >
+            <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
+            {isSubmitting ? "সেট করা হচ্ছে..." : "রিভিশন সম্পন্ন করুন"}
           </button>
         </div>
       </div>
@@ -1045,11 +1127,14 @@ export default function ConceptTable({
   );
   const [bulkAction, setBulkAction] = React.useState<BulkConceptAction | null>(null);
   const [isBulkProcessing, setIsBulkProcessing] = React.useState(false);
+  const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = React.useState(false);
+  const [isAdvancingReadyReviews, setIsAdvancingReadyReviews] = React.useState(false);
   const [now] = React.useState(() => Date.now());
   const toast = useToast();
 
   const deleteConcept = useMutation(api.mutations.deleteConcept);
   const resetConcept = useMutation(api.mutations.resetConceptProgress);
+  const advanceReadyConceptReviews = useMutation(api.mutations.advanceReadyConceptReviews);
   const addConceptStudyItemsToTodayTodo = useMutation(
     api.mutations.addConceptStudyItemsToTodayTodo,
   );
@@ -1071,6 +1156,14 @@ export default function ConceptTable({
     .map((concept) => concept._id);
   const selectedCount = selectedConceptIdsInCurrentList.length;
   const areAllConceptsSelected = selectedCount === concepts.length;
+  const readyConceptCount = concepts.filter(
+    (concept) =>
+      concept.totalItems > 0 &&
+      concept.completedItems === concept.totalItems &&
+      (concept.lastReviewedAt === undefined ||
+        concept.nextReviewAt === undefined ||
+        concept.nextReviewAt <= now),
+  ).length;
 
   const setConceptSelected = (conceptId: Id<"concepts">, selected: boolean) => {
     setSelectedConceptIds((current) => {
@@ -1163,6 +1256,22 @@ export default function ConceptTable({
     setReviewingConcept(concept);
   };
 
+  const handleAdvanceReadyConceptReviews = async () => {
+    setIsAdvancingReadyReviews(true);
+    try {
+      const result = await advanceReadyConceptReviews({ chapterId });
+      setIsAdvanceDialogOpen(false);
+      toast.success(
+        `${numberFormatter.format(result.reviewedCount)}টি কনসেপ্টের রিভিশন সম্পন্ন হয়েছে।`,
+      );
+    } catch (error) {
+      console.error("Failed to advance ready concept reviews:", error);
+      toast.error("রিভিশন সম্পন্ন করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।");
+    } finally {
+      setIsAdvancingReadyReviews(false);
+    }
+  };
+
   const handleAddConceptToTodayTodo = async (concept: ConceptRowData) => {
     if (addingTodoConceptId) {
       return;
@@ -1251,6 +1360,19 @@ export default function ConceptTable({
         >
           <span className="material-symbols-outlined text-[19px]">edit_note</span>
           এডিট
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsAdvanceDialogOpen(true)}
+          disabled={readyConceptCount === 0}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border-medium bg-pure-white px-4 font-label-uppercase text-xs text-on-surface shadow-sm transition-colors hover:border-brand-green/40 hover:bg-brand-green-light/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-100 dark:hover:border-brand-green/40 dark:hover:bg-brand-green/10 sm:w-auto"
+          aria-label={`${numberFormatter.format(readyConceptCount)}টি প্রস্তুত কনসেপ্টের রিভিশন সম্পন্ন করুন`}
+        >
+          <span className="material-symbols-outlined text-[19px] text-brand-green-deep dark:text-brand-green">trending_up</span>
+          <span>রিভিশন সম্পন্ন করুন</span>
+          <span className="rounded-full bg-brand-green-light px-2 py-0.5 font-mono-code text-[10px] text-brand-green-deep dark:bg-brand-green/15 dark:text-brand-green">
+            {numberFormatter.format(readyConceptCount)}
+          </span>
         </button>
         <button
           onClick={handleAdd}
@@ -1439,6 +1561,16 @@ export default function ConceptTable({
         isSubmitting={isBulkProcessing}
         onClose={() => setBulkAction(null)}
         onConfirm={handleBulkAction}
+      />
+
+      <AdvanceReadyConceptReviewsDialog
+        isOpen={isAdvanceDialogOpen}
+        conceptCount={readyConceptCount}
+        isSubmitting={isAdvancingReadyReviews}
+        onClose={() => {
+          if (!isAdvancingReadyReviews) setIsAdvanceDialogOpen(false);
+        }}
+        onConfirm={handleAdvanceReadyConceptReviews}
       />
 
       {reviewingConcept && (
