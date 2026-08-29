@@ -7,19 +7,33 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { rebuildStudyItemStatsForChapter } from "./dashboardStudyItemStats";
 import {
   assertCanAccessOwnedDocument,
   isLegacyWorkspaceOwner,
   requireCurrentUser,
   type CurrentUser,
 } from "./auth";
+import {
+  getRequiredTrackerKeys,
+  summarizeRequiredStudyItems,
+} from "./trackerRequirements";
 
 const SYLLABUS_SUMMARY_MIGRATION_KEY = "syllabus_summary_backfill";
 const BACKFILL_BATCH_SIZE = 24;
+const TRACKER_CONFIG_REBUILD_BATCH_SIZE = 24;
 
 type SummaryAccess = {
   userId: Id<"users">;
   includeLegacy: boolean;
+};
+
+type ChapterSummaryRebuildOptions = {
+  /**
+   * Tracker-config rebuilds refresh chapter stats separately so completion-day
+   * stats are rebuilt as well. Avoid replacing the same chapter stat twice.
+   */
+  skipChapterStatsRebuild?: boolean;
 };
 
 function canUseDocument(access: SummaryAccess, doc: { userId?: Id<"users"> }) {
@@ -36,6 +50,93 @@ function getSubjectLazyKey(userId: Id<"users">, subjectId: Id<"subjects">) {
 
 function getChapterLazyKey(userId: Id<"users">, chapterId: Id<"chapters">) {
   return `chapter:${userId}:${chapterId}`;
+}
+
+async function getTrackerConfigRebuild(
+  ctx: Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">,
+  userId: Id<"users">,
+  subjectId: Id<"subjects">,
+) {
+  return await ctx.db
+    .query("trackerConfigRebuilds")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", userId).eq("subjectId", subjectId),
+    )
+    .unique();
+}
+
+export async function getTrackerConfigRebuildStatus(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  subjectId: Id<"subjects">,
+) {
+  return await getTrackerConfigRebuild(ctx, userId, subjectId);
+}
+
+async function upsertTrackerConfigRebuild(
+  ctx: MutationCtx,
+  fields: {
+    userId: Id<"users">;
+    subjectId: Id<"subjects">;
+    version: number;
+    status: "running" | "completed" | "failed";
+    processedChapters: number;
+    lastCursor?: string;
+    lastError?: string;
+  },
+) {
+  const existing = await getTrackerConfigRebuild(
+    ctx,
+    fields.userId,
+    fields.subjectId,
+  );
+  if (existing) {
+    await ctx.db.patch(existing._id, { ...fields, updatedAt: Date.now() });
+    return existing._id;
+  }
+
+  return await ctx.db.insert("trackerConfigRebuilds", {
+    ...fields,
+    updatedAt: Date.now(),
+  });
+}
+
+/** Queue a bounded rebuild after a subject tracker configuration edit. */
+export async function startTrackerConfigRebuild(
+  ctx: MutationCtx,
+  currentUser: CurrentUser,
+  subjectId: Id<"subjects">,
+) {
+  const existing = await getTrackerConfigRebuild(
+    ctx,
+    currentUser._id,
+    subjectId,
+  );
+  const version = (existing?.version ?? 0) + 1;
+  const includeLegacy = isLegacyWorkspaceOwner(currentUser);
+
+  await upsertTrackerConfigRebuild(ctx, {
+    userId: currentUser._id,
+    subjectId,
+    version,
+    status: "running",
+    processedChapters: 0,
+    lastCursor: undefined,
+    lastError: undefined,
+  });
+
+  await ctx.scheduler.runAfter(
+    0,
+    internal.syllabusSummaries.runTrackerConfigRebuildBatch,
+    {
+      ownerUserId: currentUser._id,
+      subjectId,
+      includeLegacy,
+      cursor: null,
+      processedChapters: 0,
+      version,
+    },
+  );
 }
 
 async function getCellForStudyItem(
@@ -212,13 +313,14 @@ async function rebuildConceptStatsForAccess(
   ctx: MutationCtx,
   access: SummaryAccess,
   concept: Doc<"concepts">,
+  chapter: Doc<"chapters">,
+  subject: Doc<"subjects">,
 ) {
   await deleteConceptStat(ctx, access.userId, concept._id);
   const studyItems = await getStudyItemsForConceptAccess(ctx, access, concept._id);
   if (studyItems.length === 0) return;
 
-  const chapter = await ctx.db.get(concept.chapterId);
-  if (!chapter) return;
+  const required = summarizeRequiredStudyItems(subject, studyItems);
 
   await ctx.db.insert("studyItemConceptStats", {
     userId: access.userId,
@@ -227,6 +329,8 @@ async function rebuildConceptStatsForAccess(
     conceptId: concept._id,
     totalItems: studyItems.length,
     completedItems: studyItems.filter((item) => item.isCompleted).length,
+    requiredTotalItems: required.total,
+    requiredCompletedItems: required.completed,
     updatedAt: Date.now(),
   });
 }
@@ -235,10 +339,13 @@ async function rebuildChapterStatsForAccess(
   ctx: MutationCtx,
   access: SummaryAccess,
   chapter: Doc<"chapters">,
+  subject: Doc<"subjects">,
 ) {
   await deleteChapterStat(ctx, access.userId, chapter._id);
   const studyItems = await getStudyItemsForChapterAccess(ctx, access, chapter._id);
   if (studyItems.length === 0) return;
+
+  const required = summarizeRequiredStudyItems(subject, studyItems);
 
   await ctx.db.insert("studyItemChapterStats", {
     userId: access.userId,
@@ -246,6 +353,8 @@ async function rebuildChapterStatsForAccess(
     chapterId: chapter._id,
     totalItems: studyItems.length,
     completedItems: studyItems.filter((item) => item.isCompleted).length,
+    requiredTotalItems: required.total,
+    requiredCompletedItems: required.completed,
     updatedAt: Date.now(),
   });
 }
@@ -270,6 +379,7 @@ export async function rebuildSyllabusSummariesForChapter(
   ctx: MutationCtx,
   currentUser: CurrentUser,
   chapterId: Id<"chapters">,
+  options: ChapterSummaryRebuildOptions = {},
 ) {
   const chapter = await ctx.db.get(chapterId);
   if (!chapter) {
@@ -278,12 +388,20 @@ export async function rebuildSyllabusSummariesForChapter(
   }
 
   assertCanAccessOwnedDocument(currentUser, chapter);
+  const subject = await ctx.db.get(chapter.subjectId);
+  if (!subject) {
+    await deleteChapterStat(ctx, currentUser._id, chapterId);
+    return;
+  }
+  assertCanAccessOwnedDocument(currentUser, subject);
   const access = {
     userId: currentUser._id,
     includeLegacy: isLegacyWorkspaceOwner(currentUser),
   };
 
-  await rebuildChapterStatsForAccess(ctx, access, chapter);
+  if (!options.skipChapterStatsRebuild) {
+    await rebuildChapterStatsForAccess(ctx, access, chapter, subject);
+  }
   await rebuildCellsForChapterAccess(ctx, access, chapterId);
 
   const concepts = (
@@ -294,7 +412,7 @@ export async function rebuildSyllabusSummariesForChapter(
   ).filter((concept) => canUseDocument(access, concept));
 
   for (const concept of concepts) {
-    await rebuildConceptStatsForAccess(ctx, access, concept);
+    await rebuildConceptStatsForAccess(ctx, access, concept, chapter, subject);
   }
 }
 
@@ -310,6 +428,17 @@ export async function rebuildSyllabusSummariesForConcept(
   }
 
   assertCanAccessOwnedDocument(currentUser, concept);
+  const chapter = await ctx.db.get(concept.chapterId);
+  if (!chapter) {
+    await deleteConceptStat(ctx, currentUser._id, conceptId);
+    return;
+  }
+  const subject = await ctx.db.get(chapter.subjectId);
+  if (!subject) {
+    await deleteConceptStat(ctx, currentUser._id, conceptId);
+    return;
+  }
+  assertCanAccessOwnedDocument(currentUser, subject);
   await rebuildConceptStatsForAccess(
     ctx,
     {
@@ -317,6 +446,8 @@ export async function rebuildSyllabusSummariesForConcept(
       includeLegacy: isLegacyWorkspaceOwner(currentUser),
     },
     concept,
+    chapter,
+    subject,
   );
 }
 
@@ -521,7 +652,11 @@ export const runSyllabusSummaryBackfillBatch = internalMutation({
 
       for (const chapter of page.page) {
         if (!canUseDocument(access, chapter)) continue;
-        await rebuildChapterStatsForAccess(ctx, access, chapter);
+        const subject = await ctx.db.get(chapter.subjectId);
+        if (!subject || !canUseDocument(access, subject)) {
+          continue;
+        }
+        await rebuildChapterStatsForAccess(ctx, access, chapter, subject);
         await rebuildCellsForChapterAccess(ctx, access, chapter._id);
 
         const concepts = (
@@ -531,7 +666,7 @@ export const runSyllabusSummaryBackfillBatch = internalMutation({
             .collect()
         ).filter((concept) => canUseDocument(access, concept));
         for (const concept of concepts) {
-          await rebuildConceptStatsForAccess(ctx, access, concept);
+          await rebuildConceptStatsForAccess(ctx, access, concept, chapter, subject);
         }
 
         processedChapters += 1;
@@ -573,6 +708,166 @@ export const runSyllabusSummaryBackfillBatch = internalMutation({
         status: "failed",
         ownerUserId: args.ownerUserId,
         includeLegacy: args.includeLegacy,
+        processedChapters: args.processedChapters,
+        lastCursor: args.cursor ?? undefined,
+        lastError: error instanceof Error ? error.message : "Unknown error",
+      });
+      throw error;
+    }
+  },
+});
+
+async function reconcileInitialConceptReviewsForChapter(
+  ctx: MutationCtx,
+  access: SummaryAccess,
+  chapter: Doc<"chapters">,
+  subject: Doc<"subjects">,
+) {
+  const requiredTrackerCount = getRequiredTrackerKeys(subject, "concept").size;
+  if (requiredTrackerCount === 0) {
+    return;
+  }
+
+  const concepts = (
+    await ctx.db
+      .query("concepts")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+      .collect()
+  ).filter((concept) => canUseDocument(access, concept));
+
+  for (const concept of concepts) {
+    if (concept.nextReviewAt !== undefined) {
+      continue;
+    }
+    const studyItems = await getStudyItemsForConceptAccess(ctx, access, concept._id);
+    const required = summarizeRequiredStudyItems(subject, studyItems);
+    if (
+      required.total < requiredTrackerCount ||
+      required.completed !== required.total
+    ) {
+      continue;
+    }
+
+    await ctx.db.patch(concept._id, {
+      repetitionLevel: 0,
+      nextReviewAt: Date.now() + 86400000,
+    });
+  }
+}
+
+/** Rebuild one subject's derived required-only stats in bounded batches. */
+export const runTrackerConfigRebuildBatch = internalMutation({
+  args: {
+    ownerUserId: v.id("users"),
+    subjectId: v.id("subjects"),
+    includeLegacy: v.boolean(),
+    cursor: v.union(v.string(), v.null()),
+    processedChapters: v.number(),
+    version: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const status = await getTrackerConfigRebuild(
+      ctx,
+      args.ownerUserId,
+      args.subjectId,
+    );
+    if (!status || status.version !== args.version) {
+      return null;
+    }
+
+    try {
+      const subject = await ctx.db.get(args.subjectId);
+      if (!subject || !canUseDocument({
+        userId: args.ownerUserId,
+        includeLegacy: args.includeLegacy,
+      }, subject)) {
+        await upsertTrackerConfigRebuild(ctx, {
+          userId: args.ownerUserId,
+          subjectId: args.subjectId,
+          version: args.version,
+          status: "completed",
+          processedChapters: args.processedChapters,
+          lastCursor: undefined,
+          lastError: undefined,
+        });
+        return null;
+      }
+
+      const page = await ctx.db
+        .query("chapters")
+        .withIndex("by_subject", (q) => q.eq("subjectId", args.subjectId))
+        .order("asc")
+        .paginate({
+          numItems: TRACKER_CONFIG_REBUILD_BATCH_SIZE,
+          cursor: args.cursor,
+        });
+      const access = {
+        userId: args.ownerUserId,
+        includeLegacy: args.includeLegacy,
+      };
+      const currentUser = {
+        _id: args.ownerUserId,
+        legacyWorkspaceOwner: args.includeLegacy,
+      } as CurrentUser;
+      let processedChapters = args.processedChapters;
+
+      for (const chapter of page.page) {
+        if (!canUseDocument(access, chapter)) {
+          continue;
+        }
+        await rebuildStudyItemStatsForChapter(ctx, currentUser, chapter._id);
+        await rebuildSyllabusSummariesForChapter(
+          ctx,
+          currentUser,
+          chapter._id,
+          { skipChapterStatsRebuild: true },
+        );
+        await reconcileInitialConceptReviewsForChapter(ctx, access, chapter, subject);
+        processedChapters += 1;
+      }
+
+      if (page.isDone) {
+        await upsertTrackerConfigRebuild(ctx, {
+          userId: args.ownerUserId,
+          subjectId: args.subjectId,
+          version: args.version,
+          status: "completed",
+          processedChapters,
+          lastCursor: undefined,
+          lastError: undefined,
+        });
+        return null;
+      }
+
+      await upsertTrackerConfigRebuild(ctx, {
+        userId: args.ownerUserId,
+        subjectId: args.subjectId,
+        version: args.version,
+        status: "running",
+        processedChapters,
+        lastCursor: page.continueCursor,
+        lastError: undefined,
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.syllabusSummaries.runTrackerConfigRebuildBatch,
+        {
+          ownerUserId: args.ownerUserId,
+          subjectId: args.subjectId,
+          includeLegacy: args.includeLegacy,
+          cursor: page.continueCursor,
+          processedChapters,
+          version: args.version,
+        },
+      );
+      return null;
+    } catch (error) {
+      await upsertTrackerConfigRebuild(ctx, {
+        userId: args.ownerUserId,
+        subjectId: args.subjectId,
+        version: args.version,
+        status: "failed",
         processedChapters: args.processedChapters,
         lastCursor: args.cursor ?? undefined,
         lastError: error instanceof Error ? error.message : "Unknown error",

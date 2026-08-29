@@ -32,6 +32,9 @@ export default defineSchema({
         key: v.string(),       // e.g. "mcq", "board"
         label: v.string(),     // e.g. "MCQ", "বোর্ড"
         avgMinutes: v.number(),
+        // Optional work remains completable and contributes to Study Volume,
+        // but is excluded from formal syllabus progress and revision gates.
+        isOptional: v.optional(v.boolean()),
       })
     ),
 
@@ -41,6 +44,7 @@ export default defineSchema({
         key: v.string(),       // e.g. "class", "book"
         label: v.string(),     // e.g. "ক্লাস", "বই"
         avgMinutes: v.number(),
+        isOptional: v.optional(v.boolean()),
       })
     ),
 
@@ -185,6 +189,10 @@ export default defineSchema({
     chapterId: v.id("chapters"),
     totalItems: v.number(),
     completedItems: v.number(),
+    // Optional fields keep the existing summary rows readable while the
+    // required-only backfill runs. Missing values mean the row is stale.
+    requiredTotalItems: v.optional(v.number()),
+    requiredCompletedItems: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
@@ -197,6 +205,9 @@ export default defineSchema({
     chapterId: v.id("chapters"),
     dayBucket: v.number(),
     completedCount: v.number(),
+    // New rows are required-only. Legacy rows without this marker are not
+    // trusted for formal progression until the derived rebuild completes.
+    requiredOnly: v.optional(v.boolean()),
     updatedAt: v.number(),
   })
     .index("by_userId_and_dayBucket", ["userId", "dayBucket"])
@@ -246,6 +257,8 @@ export default defineSchema({
     conceptId: v.id("concepts"),
     totalItems: v.number(),
     completedItems: v.number(),
+    requiredTotalItems: v.optional(v.number()),
+    requiredCompletedItems: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
@@ -426,6 +439,25 @@ export default defineSchema({
     .index("by_chapterId", ["chapterId"])
     .index("by_userId", ["userId"])
     .index("by_userId_and_chapterId", ["userId", "chapterId"]),
+
+  // A tracker config edit invalidates derived required-only summaries. The
+  // rebuild is cursor-based and resumable so the edit mutation stays bounded.
+  trackerConfigRebuilds: defineTable({
+    userId: v.id("users"),
+    subjectId: v.id("subjects"),
+    version: v.number(),
+    status: v.union(
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    processedChapters: v.number(),
+    lastCursor: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_userId_and_subjectId", ["userId", "subjectId"])
+    .index("by_subjectId", ["subjectId"]),
 
   studyTargets: defineTable({
     userId: v.id("users"),

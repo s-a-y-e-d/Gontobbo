@@ -20,8 +20,8 @@ export type SubjectCardProps = {
   icon?: string;
   color?: string;
   examWeight?: number;
-  chapterTrackers: { key: string; label: string; avgMinutes: number }[];
-  conceptTrackers: { key: string; label: string; avgMinutes: number }[];
+  chapterTrackers: { key: string; label: string; avgMinutes: number; isOptional?: boolean }[];
+  conceptTrackers: { key: string; label: string; avgMinutes: number; isOptional?: boolean }[];
   stats?: SubjectStats;
 };
 

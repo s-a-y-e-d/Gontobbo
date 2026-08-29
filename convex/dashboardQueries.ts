@@ -16,6 +16,13 @@ import {
   getDashboardStudyItemChapterStats,
   getDashboardStudyItemStatsMigrationStatus,
 } from "./dashboardStudyItemStats";
+import { getTrackerConfigRebuildStatus } from "./syllabusSummaries";
+import {
+  hasOptionalTrackers,
+  isRequiredTracker,
+  isStudyItemRequired,
+  summarizeRequiredStudyItems,
+} from "./trackerRequirements";
 
 const DAY_MS = 86400000;
 const DASHBOARD_TODO_LIMIT = 5;
@@ -503,6 +510,14 @@ export const getDashboardPageData = query({
         : Promise.resolve(null),
     ]);
 
+    const trackerRebuildStatuses = needsWorkload
+      ? await Promise.all(
+          subjects.map((subject) =>
+            getTrackerConfigRebuildStatus(ctx, currentUser._id, subject._id),
+          ),
+        )
+      : [];
+
     const settingByKey = new Map(settings.map((setting) => [setting.key, setting]));
     const subjectById = new Map(subjects.map((subject) => [subject._id, subject]));
     const chapterById = new Map(chapters.map((chapter) => [chapter._id, chapter]));
@@ -522,32 +537,72 @@ export const getDashboardPageData = query({
     const hasTermDates =
       termStartDate !== undefined && nextTermExamDate !== undefined;
 
-    const shouldUseSummaryStats = summaryMigrationStatus?.status === "completed";
-    const fallbackStudyItems = !needsWorkload || shouldUseSummaryStats
-      ? null
-      : await getDashboardStudyItems(ctx, currentUser);
+    const trackerRebuildBySubjectId = new Map(
+      subjects.map((subject, index) => [subject._id, trackerRebuildStatuses[index]]),
+    );
     const summaryStatByChapterId = new Map(
       summaryStats.map((stat) => [stat.chapterId, stat]),
     );
-
+    const shouldUseSummaryStats =
+      summaryMigrationStatus?.status === "completed" &&
+      chapters.every((chapter) => {
+        const subject = subjectById.get(chapter.subjectId);
+        const summaryStat = summaryStatByChapterId.get(chapter._id);
+        // Legacy all-item stats are equivalent to required-only stats when a
+        // subject has no optional trackers. Optional subjects need the new
+        // fields (and a row) before the summary path is trusted.
+        return (
+          !subject ||
+          !hasOptionalTrackers(subject) ||
+          (summaryStat?.requiredTotalItems !== undefined &&
+            summaryStat.requiredCompletedItems !== undefined)
+        );
+      }) &&
+      subjects.every((subject) => {
+        const rebuild = trackerRebuildBySubjectId.get(subject._id);
+        return rebuild === null || rebuild?.status === "completed";
+      });
+    const fallbackStudyItems = !needsWorkload || shouldUseSummaryStats
+      ? null
+      : await getDashboardStudyItems(ctx, currentUser);
     const chapterCountStats = chapters.map((chapter) => {
       const summaryStat = summaryStatByChapterId.get(chapter._id);
-      if (summaryStat) {
+      const trackerRebuild = trackerRebuildBySubjectId.get(chapter.subjectId);
+      const subject = subjectById.get(chapter.subjectId);
+      const rebuildIsCurrent =
+        trackerRebuild === null || trackerRebuild?.status === "completed";
+      if (
+        summaryStat &&
+        rebuildIsCurrent &&
+        (
+          (summaryStat.requiredTotalItems !== undefined &&
+            summaryStat.requiredCompletedItems !== undefined) ||
+          (subject !== undefined && !hasOptionalTrackers(subject))
+        )
+      ) {
         return {
           chapterId: chapter._id,
           subjectId: chapter.subjectId,
-          totalItems: summaryStat.totalItems,
-          completedItems: summaryStat.completedItems,
+          totalItems:
+            summaryStat.requiredTotalItems ?? summaryStat.totalItems,
+          completedItems:
+            summaryStat.requiredCompletedItems ?? summaryStat.completedItems,
         };
       }
 
       const chapterItems =
         fallbackStudyItems?.filter((item) => item.chapterId === chapter._id) ?? [];
+      const required = subject
+        ? summarizeRequiredStudyItems(
+            subject,
+            chapterItems.filter((item) => item.chapterId === chapter._id),
+          )
+        : { total: 0, completed: 0 };
       return {
         chapterId: chapter._id,
         subjectId: chapter.subjectId,
-        totalItems: chapterItems.length,
-        completedItems: chapterItems.filter((item) => item.isCompleted).length,
+        totalItems: required.total,
+        completedItems: required.completed,
       };
     });
 
@@ -793,22 +848,52 @@ export const getDashboardPageData = query({
                 startDate: termStartDate,
                 endDate: chartEndDate,
               });
+              const dayStatsAreCurrent =
+                completionDayStats.every((stat) => {
+                  const chapter = chapterById.get(stat.chapterId);
+                  const subject = chapter
+                    ? subjectById.get(chapter.subjectId)
+                    : undefined;
+                  return !subject || !hasOptionalTrackers(subject) || stat.requiredOnly === true;
+                });
 
-              for (const stat of completionDayStats) {
-                if (!nextTermChapterIds.has(stat.chapterId)) {
-                  continue;
+              if (dayStatsAreCurrent) {
+                for (const stat of completionDayStats) {
+                  if (!nextTermChapterIds.has(stat.chapterId)) {
+                    continue;
+                  }
+                  const completionDay =
+                    stat.dayBucket === 0
+                      ? termStartDate
+                      : Math.max(termStartDate, stat.dayBucket);
+                  for (let index = 0; index < stat.completedCount; index += 1) {
+                    completionDays.push(completionDay);
+                  }
                 }
-                const completionDay =
-                  stat.dayBucket === 0
-                    ? termStartDate
-                    : Math.max(termStartDate, stat.dayBucket);
-                for (let index = 0; index < stat.completedCount; index += 1) {
-                  completionDays.push(completionDay);
+              } else {
+                const fallbackItems =
+                  fallbackStudyItems ?? (await getDashboardStudyItems(ctx, currentUser));
+                for (const item of fallbackItems) {
+                  const subject = subjectById.get(item.subjectId);
+                  if (
+                    item.isCompleted &&
+                    subject &&
+                    nextTermChapterIds.has(item.chapterId) &&
+                    isStudyItemRequired(subject, item)
+                  ) {
+                    completionDays.push(getCompletionDay(item, termStartDate));
+                  }
                 }
               }
             } else {
               for (const item of fallbackStudyItems ?? []) {
-                if (item.isCompleted && nextTermChapterIds.has(item.chapterId)) {
+                const subject = subjectById.get(item.subjectId);
+                if (
+                  item.isCompleted &&
+                  subject &&
+                  nextTermChapterIds.has(item.chapterId) &&
+                  isStudyItemRequired(subject, item)
+                ) {
                   completionDays.push(getCompletionDay(item, termStartDate));
                 }
               }
@@ -875,13 +960,38 @@ export const getDashboardPageData = query({
         );
         totalRecentActivities += 1;
       }
-      minutesBySubjectId.set(
-        log.subjectId,
-        (minutesBySubjectId.get(log.subjectId) ?? 0) + log.minutesSpent,
-      );
-      totalRecentMinutes += log.minutesSpent;
-    }
 
+      // Keep optional completions in Study Volume, but exclude their minutes
+      // from the separate Effort-vs-Weightage analytics. Concept reviews do
+      // not belong to a tracker category and continue to count as effort.
+      const countsForEffort =
+        log.eventType === "concept_review" ||
+        (() => {
+          if (
+            log.eventType !== "study_item_completed" &&
+            log.eventType !== "study_item_uncompleted"
+          ) {
+            return false;
+          }
+          const subject = subjectById.get(log.subjectId);
+          if (!subject || !log.trackerType) {
+            return true;
+          }
+          return isRequiredTracker(
+            subject,
+            log.conceptId === undefined ? "chapter" : "concept",
+            log.trackerType,
+          );
+        })();
+
+      if (countsForEffort) {
+        minutesBySubjectId.set(
+          log.subjectId,
+          (minutesBySubjectId.get(log.subjectId) ?? 0) + log.minutesSpent,
+        );
+        totalRecentMinutes += log.minutesSpent;
+      }
+    }
     const studyVolumeDays = Array.from({ length: STUDY_VOLUME_DAYS }, (_, index) => {
       const date = today - (STUDY_VOLUME_DAYS - 1 - index) * DAY_MS;
       const activityCount = activitiesByDay.get(date) ?? 0;

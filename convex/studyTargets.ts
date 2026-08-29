@@ -13,6 +13,11 @@ import {
   type CurrentUser,
 } from "./auth";
 import { ensureConceptStudyItemsForChapter } from "./mutations";
+import {
+  getRequiredTrackerKeys,
+  summarizeRequiredStudyItems,
+} from "./trackerRequirements";
+import { getTrackerConfigRebuildStatus } from "./syllabusSummaries";
 
 const DAY_MS = 86_400_000;
 const MAX_SUBJECTS = 64;
@@ -230,7 +235,7 @@ async function getAccessibleConceptsForChapter(
 }
 
 async function getAccessibleStudyItemsForChapter(
-  ctx: MutationCtx,
+  ctx: DatabaseCtx,
   currentUser: CurrentUser,
   chapterId: Id<"chapters">,
 ) {
@@ -565,7 +570,8 @@ export const getStudyTargetPageData = query({
     const chapters = (
       await Promise.all(
         targetChapterRows.map(async (targetChapter) => {
-          const [chapter, subject, conceptStats] = await Promise.all([
+          const [chapter, subject, conceptStats, trackerRebuild] =
+            await Promise.all([
             ctx.db.get(targetChapter.chapterId),
             ctx.db.get(targetChapter.subjectId),
             ctx.db
@@ -576,6 +582,11 @@ export const getStudyTargetPageData = query({
                   .eq("chapterId", targetChapter.chapterId),
               )
               .take(MAX_CONCEPTS_PER_CHAPTER + 1),
+            getTrackerConfigRebuildStatus(
+              ctx,
+              currentUser._id,
+              targetChapter.subjectId,
+            ),
           ]);
           assertWithinLimit(
             conceptStats,
@@ -586,18 +597,67 @@ export const getStudyTargetPageData = query({
             return null;
           }
 
-          const totalTrackerItems = conceptStats.reduce(
-            (total, stat) => total + stat.totalItems,
-            0,
-          );
-          const completedTrackerItems = conceptStats.reduce(
-            (total, stat) => total + stat.completedItems,
-            0,
-          );
-          const completedConcepts = conceptStats.filter(
-            (stat) =>
-              stat.totalItems > 0 && stat.completedItems === stat.totalItems,
-          ).length;
+          const requiredConceptCount = getRequiredTrackerKeys(subject, "concept").size;
+          const hasCurrentStats =
+            (trackerRebuild === null || trackerRebuild.status === "completed") &&
+            conceptStats.every(
+              (stat) =>
+                stat.requiredTotalItems !== undefined &&
+                stat.requiredCompletedItems !== undefined,
+            );
+          let totalTrackerItems = 0;
+          let completedTrackerItems = 0;
+          let completedConcepts = 0;
+          if (hasCurrentStats) {
+            totalTrackerItems = conceptStats.reduce(
+              (total, stat) => total + (stat.requiredTotalItems ?? 0),
+              0,
+            );
+            completedTrackerItems = conceptStats.reduce(
+              (total, stat) => total + (stat.requiredCompletedItems ?? 0),
+              0,
+            );
+            completedConcepts = conceptStats.filter(
+              (stat) =>
+                requiredConceptCount > 0 &&
+                (stat.requiredTotalItems ?? 0) >= requiredConceptCount &&
+                stat.requiredCompletedItems === stat.requiredTotalItems,
+            ).length;
+          } else {
+            const studyItems = await getAccessibleStudyItemsForChapter(
+              ctx,
+              currentUser,
+              targetChapter.chapterId,
+            );
+            const required = summarizeRequiredStudyItems(
+              subject,
+              studyItems.filter((studyItem) => studyItem.conceptId !== undefined),
+            );
+            totalTrackerItems = required.total;
+            completedTrackerItems = required.completed;
+            const requiredByConcept = new Map<
+              Id<"concepts">,
+              { total: number; completed: number }
+            >();
+            for (const studyItem of studyItems) {
+              if (!studyItem.conceptId) continue;
+              if (!requiredByConcept.has(studyItem.conceptId)) {
+                const conceptItems = studyItems.filter(
+                  (candidate) => candidate.conceptId === studyItem.conceptId,
+                );
+                requiredByConcept.set(
+                  studyItem.conceptId,
+                  summarizeRequiredStudyItems(subject, conceptItems),
+                );
+              }
+            }
+            completedConcepts = Array.from(requiredByConcept.values()).filter(
+              (required) =>
+                requiredConceptCount > 0 &&
+                required.total >= requiredConceptCount &&
+                required.completed === required.total,
+            ).length;
+          }
 
           return {
             chapterId: chapter._id,

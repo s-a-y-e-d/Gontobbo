@@ -53,7 +53,15 @@ import {
   rebuildSyllabusSummariesForChapter,
   rebuildSyllabusSummariesForConcept,
   upsertSyllabusStudyItemCell,
+  getTrackerConfigRebuildStatus,
+  startTrackerConfigRebuild,
 } from "./syllabusSummaries";
+import {
+  hasRequiredTrackers,
+  getRequiredTrackerKeys,
+  isStudyItemRequired,
+  summarizeRequiredStudyItems,
+} from "./trackerRequirements";
 import {
   getDashboardComponentSettingKey,
   isDashboardComponentKey,
@@ -1190,6 +1198,7 @@ export const createSubject = mutation({
         key: v.string(),
         label: v.string(),
         avgMinutes: v.number(),
+        isOptional: v.optional(v.boolean()),
       })
     ),
     conceptTrackers: v.array(
@@ -1197,6 +1206,7 @@ export const createSubject = mutation({
         key: v.string(),
         label: v.string(),
         avgMinutes: v.number(),
+        isOptional: v.optional(v.boolean()),
       })
     ),
     examWeight: v.optional(v.number()),
@@ -1245,11 +1255,13 @@ export const updateSubject = mutation({
       key: v.string(),
       label: v.string(),
       avgMinutes: v.number(),
+      isOptional: v.optional(v.boolean()),
     }))),
     conceptTrackers: v.optional(v.array(v.object({
       key: v.string(),
       label: v.string(),
       avgMinutes: v.number(),
+      isOptional: v.optional(v.boolean()),
     }))),
   },
   handler: async (ctx, args) => {
@@ -1362,6 +1374,12 @@ export const updateSubject = mutation({
         );
       }
     }
+    if (updates.chapterTrackers !== undefined || updates.conceptTrackers !== undefined) {
+      // Optionality is part of the subject configuration. Queue a bounded
+      // required-only summary/stat rebuild even when no tracker key was added
+      // or removed; existing completion marks must be reclassified.
+      await startTrackerConfigRebuild(ctx, currentUser, subjectId);
+    }
     for (const chapterId of affectedChapterIds) {
       await rebuildStudyItemStatsForChapter(ctx, currentUser, chapterId);
       await rebuildSyllabusSummariesForChapter(ctx, currentUser, chapterId);
@@ -1473,6 +1491,16 @@ async function deleteSubjectForUser(
     .collect();
   for (const status of lazyStatuses) {
     await ctx.db.delete(status._id);
+  }
+
+  const trackerConfigRebuilds = await ctx.db
+    .query("trackerConfigRebuilds")
+    .withIndex("by_userId_and_subjectId", (q) =>
+      q.eq("userId", currentUser._id).eq("subjectId", subject._id),
+    )
+    .collect();
+  for (const rebuild of trackerConfigRebuilds) {
+    await ctx.db.delete(rebuild._id);
   }
 
   const chapterStats = await ctx.db
@@ -2689,6 +2717,7 @@ export const fixInvalidTrackerKeys = internalMutation({
       key: string;
       label: string;
       avgMinutes: number;
+      isOptional?: boolean;
     };
 
     type TrackerWithOldKey = TrackerConfig & {
@@ -2699,6 +2728,7 @@ export const fixInvalidTrackerKeys = internalMutation({
       key: tracker.key,
       label: tracker.label,
       avgMinutes: tracker.avgMinutes,
+      isOptional: tracker.isOptional,
     });
 
     const subjects = await ctx.db.query("subjects").collect();
@@ -3570,10 +3600,22 @@ export const generatePlannerSuggestions = mutation({
       Id<"concepts">
     >();
     for (const [chapterId, chapterConcepts] of conceptsByChapter) {
-      const firstUnfinishedConcept = chapterConcepts.find((concept) => {
+      const chapter = chapterById.get(chapterId);
+      const subject = chapter ? subjectById.get(chapter.subjectId) : undefined;
+      const firstRequiredUnfinishedConcept = chapterConcepts.find((concept) => {
         const conceptItems = studyItemsByConcept.get(concept._id) ?? [];
-        return conceptItems.some((studyItem) => !studyItem.isCompleted);
+        const requiredConceptItems = subject
+          ? conceptItems.filter((studyItem) => isStudyItemRequired(subject, studyItem))
+          : [];
+        return requiredConceptItems.some((studyItem) => !studyItem.isCompleted);
       });
+      const firstUnfinishedConcept =
+        firstRequiredUnfinishedConcept ??
+        chapterConcepts.find((concept) =>
+          (studyItemsByConcept.get(concept._id) ?? []).some(
+            (studyItem) => !studyItem.isCompleted,
+          ),
+        );
 
       if (firstUnfinishedConcept) {
         firstUnfinishedConceptByChapter.set(chapterId, firstUnfinishedConcept._id);
@@ -3588,10 +3630,10 @@ export const generatePlannerSuggestions = mutation({
       const subjectStudyItems = subjectNextTermChapters.flatMap(
         (chapter) => studyItemsByChapter.get(chapter._id) ?? [],
       );
-      const completedCount = subjectStudyItems.filter((item) => item.isCompleted).length;
+      const required = summarizeRequiredStudyItems(subject, subjectStudyItems);
       nextTermCompletionBySubject.set(
         subject._id,
-        subjectStudyItems.length === 0 ? 0 : completedCount / subjectStudyItems.length,
+        required.total === 0 ? 0 : required.completed / required.total,
       );
     }
 
@@ -3615,8 +3657,20 @@ export const generatePlannerSuggestions = mutation({
 
       if (weeklyTarget.kind === "chapter") {
         const chapterItems = studyItemsByChapter.get(weeklyTarget.chapterId) ?? [];
+        const chapter = chapterById.get(weeklyTarget.chapterId);
+        const subject = chapter ? subjectById.get(chapter.subjectId) : undefined;
+        const required = subject
+          ? summarizeRequiredStudyItems(subject, chapterItems)
+          : { total: 0, completed: 0 };
+        const expectedRequiredCount = subject
+          ? getRequiredTrackerKeys(subject, "chapter").size +
+            (conceptsByChapter.get(weeklyTarget.chapterId) ?? []).length *
+              getRequiredTrackerKeys(subject, "concept").size
+          : 0;
         const isComplete =
-          chapterItems.length > 0 && chapterItems.every((studyItem) => studyItem.isCompleted);
+          expectedRequiredCount > 0 &&
+          required.total >= expectedRequiredCount &&
+          required.completed === required.total;
         if (!isComplete) {
           activeChapterTargetIds.add(weeklyTarget.chapterId);
         }
@@ -3628,8 +3682,21 @@ export const generatePlannerSuggestions = mutation({
       }
 
       const conceptItems = studyItemsByConcept.get(weeklyTarget.conceptId) ?? [];
+      const concept = conceptsById.get(weeklyTarget.conceptId);
+      const conceptChapter = concept ? chapterById.get(concept.chapterId) : undefined;
+      const subject = conceptChapter
+        ? subjectById.get(conceptChapter.subjectId)
+        : undefined;
+      const required = subject
+        ? summarizeRequiredStudyItems(subject, conceptItems)
+        : { total: 0, completed: 0 };
+      const expectedRequiredCount = subject
+        ? getRequiredTrackerKeys(subject, "concept").size
+        : 0;
       const isComplete =
-        conceptItems.length > 0 && conceptItems.every((studyItem) => studyItem.isCompleted);
+        expectedRequiredCount > 0 &&
+        required.total >= expectedRequiredCount &&
+        required.completed === required.total;
       if (!isComplete) {
         activeConceptTargetIds.add(weeklyTarget.conceptId);
       }
@@ -3767,11 +3834,15 @@ export const generatePlannerSuggestions = mutation({
       const chapterLevelItems = chapterStudyItems.filter(
         (studyItem) => studyItem.conceptId === undefined,
       );
-      const hasUnfinishedConceptItem = chapterConceptItems.some(
-        (studyItem) => !studyItem.isCompleted,
+      const requiredChapterItems = chapterStudyItems.filter((studyItem) =>
+        isStudyItemRequired(subject, studyItem),
       );
-      const chapterHasProgress = chapterStudyItems.some((studyItem) => studyItem.isCompleted);
-      const chapterHasPending = chapterStudyItems.some((studyItem) => !studyItem.isCompleted);
+      const hasUnfinishedConceptItem = chapterConceptItems.some(
+        (studyItem) =>
+          isStudyItemRequired(subject, studyItem) && !studyItem.isCompleted,
+      );
+      const chapterHasProgress = requiredChapterItems.some((studyItem) => studyItem.isCompleted);
+      const chapterHasPending = requiredChapterItems.some((studyItem) => !studyItem.isCompleted);
       const chapterInProgress = chapterHasProgress && chapterHasPending;
 
       for (const studyItem of chapterStudyItems) {
@@ -3805,10 +3876,13 @@ export const generatePlannerSuggestions = mutation({
         const conceptStudyItems = studyItem.conceptId
           ? studyItemsByConcept.get(studyItem.conceptId) ?? []
           : [];
-        const conceptHasProgress = conceptStudyItems.some(
+        const requiredConceptStudyItems = conceptStudyItems.filter((conceptItem) =>
+          isStudyItemRequired(subject, conceptItem),
+        );
+        const conceptHasProgress = requiredConceptStudyItems.some(
           (conceptItem) => conceptItem.isCompleted,
         );
-        const conceptHasPending = conceptStudyItems.some(
+        const conceptHasPending = requiredConceptStudyItems.some(
           (conceptItem) => !conceptItem.isCompleted,
         );
         const conceptInProgress = conceptHasProgress && conceptHasPending;
@@ -4094,9 +4168,16 @@ export const toggleStudyItemCompletion = mutation({
           .collect();
         const scopedConceptItems = filterOwnedDocuments(currentUser, conceptItems);
         
-        const allDone = scopedConceptItems.every(si => si.isCompleted);
+        const requiredConceptItems = scopedConceptItems.filter((studyItem) =>
+          isStudyItemRequired(subject, studyItem),
+        );
+        const allRequiredDone =
+          isStudyItemRequired(subject, item) &&
+          hasRequiredTrackers(subject, "concept") &&
+          requiredConceptItems.length >= getRequiredTrackerKeys(subject, "concept").size &&
+          requiredConceptItems.every((studyItem) => studyItem.isCompleted);
         
-        if (allDone) {
+        if (allRequiredDone) {
           const conceptRecord = await ctx.db.get(item.conceptId);
           if (conceptRecord && conceptRecord.nextReviewAt === undefined) {
             await ctx.db.patch(item.conceptId, {
@@ -4241,7 +4322,14 @@ export const advanceReadyConceptReviews = mutation({
     const chapter = await getOwnedChapterOrThrow(ctx, currentUser, args.chapterId);
     const subject = await getOwnedSubjectOrThrow(ctx, currentUser, chapter.subjectId);
 
-    const [concepts, conceptStats, revisionSettings, revisionMinutesSetting] =
+    const [
+      concepts,
+      conceptStats,
+      chapterStudyItems,
+      trackerRebuild,
+      revisionSettings,
+      revisionMinutesSetting,
+    ] =
       await Promise.all([
         ctx.db
           .query("concepts")
@@ -4255,6 +4343,11 @@ export const advanceReadyConceptReviews = mutation({
             q.eq("userId", currentUser._id).eq("chapterId", args.chapterId),
           )
           .take(501),
+        ctx.db
+          .query("studyItems")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", args.chapterId))
+          .collect(),
+        getTrackerConfigRebuildStatus(ctx, currentUser._id, subject._id),
         Promise.all([
           ...REVISION_INTERVAL_SETTING_KEYS.map((key) =>
             getOwnedSettingByKey(ctx, currentUser, key),
@@ -4274,12 +4367,37 @@ export const advanceReadyConceptReviews = mutation({
     const statsByConceptId = new Map(
       conceptStats.map((stat) => [stat.conceptId, stat]),
     );
+    const studyItemsByConceptId = new Map<Id<"concepts">, Doc<"studyItems">[]>();
+    for (const studyItem of filterOwnedDocuments(currentUser, chapterStudyItems)) {
+      if (!studyItem.conceptId) continue;
+      const conceptItems = studyItemsByConceptId.get(studyItem.conceptId) ?? [];
+      conceptItems.push(studyItem);
+      studyItemsByConceptId.set(studyItem.conceptId, conceptItems);
+    }
+    const requiredTrackerCount = getRequiredTrackerKeys(subject, "concept").size;
+    const rebuildIsCurrent =
+      trackerRebuild === null || trackerRebuild.status === "completed";
     const readyConcepts = concepts.filter((concept) => {
       const stat = statsByConceptId.get(concept._id);
+      const fallback = summarizeRequiredStudyItems(
+        subject,
+        studyItemsByConceptId.get(concept._id) ?? [],
+      );
+      let requiredTotal = fallback.total;
+      let requiredCompleted = fallback.completed;
+      if (
+        rebuildIsCurrent &&
+        stat?.requiredTotalItems !== undefined &&
+        stat.requiredCompletedItems !== undefined
+      ) {
+        requiredTotal = stat.requiredTotalItems;
+        requiredCompleted = stat.requiredCompletedItems;
+      }
       return (
-        stat !== undefined &&
-        stat.totalItems > 0 &&
-        stat.completedItems === stat.totalItems &&
+        hasRequiredTrackers(subject, "concept") &&
+        requiredTotal >= requiredTrackerCount &&
+        requiredTotal > 0 &&
+        requiredCompleted === requiredTotal &&
         (concept.lastReviewedAt === undefined || concept.nextReviewAt === undefined || concept.nextReviewAt <= now)
       );
     });
@@ -4462,6 +4580,13 @@ export const migrateAndSeed = internalMutation({
       .take(500);
     for (const status of lazyStatuses) {
       await ctx.db.delete(status._id);
+    }
+
+    const trackerConfigRebuilds = await ctx.db
+      .query("trackerConfigRebuilds")
+      .take(500);
+    for (const rebuild of trackerConfigRebuilds) {
+      await ctx.db.delete(rebuild._id);
     }
 
     // 2. Delete all concepts

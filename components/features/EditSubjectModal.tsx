@@ -16,8 +16,8 @@ type EditSubjectModalProps = {
     name: string;
     icon?: string;
     color?: string;
-    chapterTrackers: { key: string; label: string; avgMinutes: number }[];
-    conceptTrackers: { key: string; label: string; avgMinutes: number }[];
+    chapterTrackers: { key: string; label: string; avgMinutes: number; isOptional?: boolean }[];
+    conceptTrackers: { key: string; label: string; avgMinutes: number; isOptional?: boolean }[];
     slug: string; // Add slug here
     examWeight?: number;
   };
@@ -27,6 +27,7 @@ type TrackerEntry = {
   key?: string;
   label: string;
   avgMinutes: number;
+  isOptional?: boolean;
 };
 
 function toKey(label: string): string {
@@ -48,10 +49,11 @@ function ensureUniqueKeys(trackers: TrackerEntry[]) {
       counter++;
     }
     keys.add(key);
-    return { 
+    return {
         key,
         label: t.label,
-        avgMinutes: roundToNearestPresetDuration(t.avgMinutes)
+        avgMinutes: roundToNearestPresetDuration(t.avgMinutes),
+        isOptional: t.isOptional === true,
     };
   });
 }
@@ -147,7 +149,7 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
   };
 
   const addTracker = (type: "chapter" | "concept") => {
-    const newTracker = { label: "", avgMinutes: 30 };
+    const newTracker = { label: "", avgMinutes: 30, isOptional: false };
     if (type === "chapter") {
       setChapterTrackers([...chapterTrackers, newTracker]);
     } else {
@@ -193,7 +195,12 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
     setPendingRemoval(null);
   };
 
-  const updateTracker = (type: "chapter" | "concept", index: number, field: keyof TrackerEntry, value: string | number) => {
+  const updateTracker = (
+    type: "chapter" | "concept",
+    index: number,
+    field: keyof TrackerEntry,
+    value: string | number | boolean,
+  ) => {
     if (type === "chapter") {
       const updated = [...chapterTrackers];
       updated[index] = { ...updated[index], [field]: value };
@@ -322,7 +329,12 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
           {/* Chapter Trackers Section */}
           <div>
             <div className="flex justify-between items-center mb-4">
-              <label className="block font-label-uppercase text-label-uppercase text-gray-500">অধ্যায় ট্র্যাকার (Subject Page)</label>
+              <div>
+                <label className="block font-label-uppercase text-label-uppercase text-gray-500">অধ্যায় ট্র্যাকার (Subject Page)</label>
+                <p className="mt-1 text-xs text-gray-400 dark:text-neutral-500">
+                  ঐচ্ছিক কাজ Study Volume-এ থাকবে, তবে সিলেবাস অগ্রগতি ও রিভিশনে গণনা হবে না।
+                </p>
+              </div>
               <button 
                 type="button" 
                 onClick={() => addTracker("chapter")}
@@ -335,14 +347,14 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
             <div className="flex flex-col gap-3">
               {chapterTrackers.map((tracker, index) => (
                 <div key={index} className="flex flex-col gap-2">
-                  <div className="flex gap-3 items-center">
+                  <div className="flex flex-wrap gap-3 items-center">
                     <input 
                       type="text" 
                       placeholder="লেবেল"
                       required
                       value={tracker.label}
                       onChange={(e) => updateTracker("chapter", index, "label", e.target.value)}
-                      className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
+                      className="min-w-[10rem] flex-1 px-4 py-2 border border-border-medium rounded-full bg-pure-white text-on-surface focus:outline-none focus:border-brand-green dark:border-white/15 dark:bg-white/[0.04] dark:text-neutral-100"
                     />
                     <DurationPresetSelect
                       value={tracker.avgMinutes}
@@ -350,11 +362,26 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
                         updateTracker("chapter", index, "avgMinutes", minutes)
                       }
                     />
+                    <label
+                      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border-subtle bg-surface-container px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-brand-green/40 hover:bg-brand-green-light/40 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-300 dark:hover:border-brand-green/40 dark:hover:bg-brand-green/10"
+                      title="ঐচ্ছিক ট্র্যাকার সিলেবাস অগ্রগতি বা রিভিশনে গণনা হবে না"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={tracker.isOptional === true}
+                        onChange={(e) =>
+                          updateTracker("chapter", index, "isOptional", e.target.checked)
+                        }
+                        className="h-4 w-4 accent-brand-green focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40"
+                        aria-label={`${tracker.label || "অধ্যায় ট্র্যাকার"} ঐচ্ছিক`}
+                      />
+                      ঐচ্ছিক
+                    </label>
                     <button 
                       type="button" 
                       disabled={isCheckingRemoval}
                       onClick={() => initiateRemoval("chapter", index)}
-                      className="p-2 text-error-red hover:bg-red-50 rounded-full transition-colors disabled:opacity-50"
+                      className="rounded-full p-2 text-error-red transition-colors hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
                     >
                       <span className="material-symbols-outlined">delete</span>
                     </button>
@@ -391,7 +418,12 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
           {/* Concept Trackers Section */}
           <div>
             <div className="flex justify-between items-center mb-4">
-              <label className="block font-label-uppercase text-label-uppercase text-gray-500">কনসেপ্ট ট্র্যাকার (Chapter Page)</label>
+              <div>
+                <label className="block font-label-uppercase text-label-uppercase text-gray-500">কনসেপ্ট ট্র্যাকার (Chapter Page)</label>
+                <p className="mt-1 text-xs text-gray-400 dark:text-neutral-500">
+                  ঐচ্ছিক কাজ Study Volume-এ থাকবে, তবে সিলেবাস অগ্রগতি ও রিভিশনে গণনা হবে না।
+                </p>
+              </div>
               <button 
                 type="button" 
                 onClick={() => addTracker("concept")}
@@ -404,14 +436,14 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
             <div className="flex flex-col gap-3">
               {conceptTrackers.map((tracker, index) => (
                 <div key={index} className="flex flex-col gap-2">
-                  <div className="flex gap-3 items-center">
+                  <div className="flex flex-wrap gap-3 items-center">
                     <input 
                       type="text" 
                       placeholder="লেবেল"
                       required
                       value={tracker.label}
                       onChange={(e) => updateTracker("concept", index, "label", e.target.value)}
-                      className="flex-1 px-4 py-2 border border-border-medium rounded-full focus:outline-none focus:border-brand-green"
+                      className="min-w-[10rem] flex-1 px-4 py-2 border border-border-medium rounded-full bg-pure-white text-on-surface focus:outline-none focus:border-brand-green dark:border-white/15 dark:bg-white/[0.04] dark:text-neutral-100"
                     />
                     <DurationPresetSelect
                       value={tracker.avgMinutes}
@@ -419,11 +451,26 @@ export default function EditSubjectModal({ isOpen, onClose, subject }: EditSubje
                         updateTracker("concept", index, "avgMinutes", minutes)
                       }
                     />
+                    <label
+                      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border-subtle bg-surface-container px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-brand-green/40 hover:bg-brand-green-light/40 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-300 dark:hover:border-brand-green/40 dark:hover:bg-brand-green/10"
+                      title="ঐচ্ছিক ট্র্যাকার সিলেবাস অগ্রগতি বা রিভিশনে গণনা হবে না"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={tracker.isOptional === true}
+                        onChange={(e) =>
+                          updateTracker("concept", index, "isOptional", e.target.checked)
+                        }
+                        className="h-4 w-4 accent-brand-green focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40"
+                        aria-label={`${tracker.label || "কনসেপ্ট ট্র্যাকার"} ঐচ্ছিক`}
+                      />
+                      ঐচ্ছিক
+                    </label>
                     <button 
                       type="button" 
                       disabled={isCheckingRemoval}
                       onClick={() => initiateRemoval("concept", index)}
-                      className="p-2 text-error-red hover:bg-red-50 rounded-full transition-colors disabled:opacity-50"
+                      className="rounded-full p-2 text-error-red transition-colors hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950/30"
                     >
                       <span className="material-symbols-outlined">delete</span>
                     </button>

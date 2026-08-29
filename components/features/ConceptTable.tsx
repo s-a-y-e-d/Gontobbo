@@ -30,6 +30,7 @@ type TrackerConfig = {
   key: string;
   label: string;
   avgMinutes: number;
+  isOptional?: boolean;
 };
 
 type ConceptRowData = {
@@ -880,8 +881,16 @@ function MobileConceptCard({
               key={trackerConfig.key}
               className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-pure-white px-3 py-2"
             >
-              <span className="min-w-0 truncate font-mono-code text-mono-code uppercase text-gray-500">
-                {trackerConfig.label}
+              <span className="flex min-w-0 items-center gap-1.5 truncate font-mono-code text-mono-code uppercase text-gray-500">
+                <span className="truncate">{trackerConfig.label}</span>
+                {trackerConfig.isOptional ? (
+                  <span
+                    className="shrink-0 rounded-full border border-warm-amber/20 bg-warm-amber/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-normal text-warm-amber dark:border-warm-amber/30 dark:bg-warm-amber/10"
+                    title="ঐচ্ছিক ট্র্যাকার"
+                  >
+                    ঐচ্ছিক
+                  </span>
+                ) : null}
               </span>
               <TrackerCell
                 isCompleted={tracker?.isCompleted ?? false}
@@ -1080,7 +1089,7 @@ function SortableConceptRow({
           <button
             disabled={!isUnlocked}
             onClick={onReview}
-            title={!isUnlocked ? "সবগুলো ট্র্যাকার শেষ করুন" : ""}
+            title={!isUnlocked ? "প্রয়োজনীয় ট্র্যাকারগুলো শেষ করুন" : ""}
             className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${!isUnlocked
                 ? "cursor-not-allowed bg-gray-100 text-gray-300 dark:bg-white/[0.06] dark:text-neutral-600"
                 : isDue
@@ -1485,7 +1494,17 @@ export default function ConceptTable({
                       key={t.key}
                       className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
                     >
-                      {t.label}
+                      <span className="inline-flex items-center justify-center gap-1.5">
+                        <span>{t.label}</span>
+                        {t.isOptional ? (
+                          <span
+                            className="rounded-full border border-warm-amber/20 bg-warm-amber/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-normal text-warm-amber dark:border-warm-amber/30 dark:bg-warm-amber/10"
+                            title="ঐচ্ছিক ট্র্যাকার"
+                          >
+                            ঐচ্ছিক
+                          </span>
+                        ) : null}
+                      </span>
                     </th>
                   ))}
                   <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">

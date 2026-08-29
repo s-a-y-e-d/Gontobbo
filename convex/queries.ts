@@ -12,8 +12,14 @@ import {
 import {
   getChapterLazyCreationStatus,
   getSubjectLazyCreationStatus,
+  getTrackerConfigRebuildStatus,
   getSyllabusSummaryMigrationStatus,
 } from "./syllabusSummaries";
+import {
+  getRequiredTrackerKeys,
+  hasOptionalTrackers,
+  summarizeRequiredStudyItems,
+} from "./trackerRequirements";
 
 function paginateResults<T>(
   items: T[],
@@ -426,16 +432,16 @@ export const getSubjectPageData = query({
         left.order - right.order || left._creationTime - right._creationTime,
     );
 
-    const summaryStatus = await getSyllabusSummaryMigrationStatus(
-      ctx,
-      currentUser._id,
-    );
-    const lazyStatus = await getSubjectLazyCreationStatus(
-      ctx,
-      currentUser._id,
-      subject._id,
-    );
-    const needsSummaryBackfill = summaryStatus?.status !== "completed";
+    const [summaryStatus, trackerConfigRebuildStatus, lazyStatus] =
+      await Promise.all([
+        getSyllabusSummaryMigrationStatus(ctx, currentUser._id),
+        getTrackerConfigRebuildStatus(ctx, currentUser._id, subject._id),
+        getSubjectLazyCreationStatus(ctx, currentUser._id, subject._id),
+      ]);
+    const needsSummaryBackfill =
+      summaryStatus?.status !== "completed" ||
+      (trackerConfigRebuildStatus !== null &&
+        trackerConfigRebuildStatus.status !== "completed");
     const needsEnsureChapterStudyItems =
       subject.chapterTrackers.length > 0 && lazyStatus?.status !== "completed";
 
@@ -465,10 +471,13 @@ export const getSubjectPageData = query({
               const conceptItems = conceptLevelItems.filter(
                 (studyItem) => studyItem.conceptId === concept._id,
               );
-              const allDone =
-                conceptItems.length >= subject.conceptTrackers.length &&
-                conceptItems.every((studyItem) => studyItem.isCompleted);
-              if (allDone) {
+              const required = summarizeRequiredStudyItems(subject, conceptItems);
+              const requiredCount = getRequiredTrackerKeys(subject, "concept").size;
+              if (
+                requiredCount > 0 &&
+                required.total >= requiredCount &&
+                required.completed === required.total
+              ) {
                 completedConceptCount += 1;
               }
             }
@@ -486,10 +495,9 @@ export const getSubjectPageData = query({
             };
           });
 
-          const totalItems = chapterStudyItems.length;
-          const completedItems = chapterStudyItems.filter(
-            (studyItem) => studyItem.isCompleted,
-          ).length;
+          const required = summarizeRequiredStudyItems(subject, chapterStudyItems);
+          const totalItems = required.total;
+          const completedItems = required.completed;
 
           let status: "NOT_STARTED" | "IN_PROGRESS" | "READY" = "NOT_STARTED";
           if (totalItems > 0 && completedItems === totalItems) {
@@ -599,25 +607,44 @@ export const getSubjectPageData = query({
         if (subject.conceptTrackers.length > 0) {
           for (const concept of concepts) {
             const conceptStat = conceptStatByConcept.get(concept._id);
-            if (!conceptStat) {
-              hasMissingSummary = true;
-              continue;
-            }
             if (
-              conceptStat.totalItems >= subject.conceptTrackers.length &&
-              conceptStat.completedItems === conceptStat.totalItems
+              !conceptStat ||
+              (hasOptionalTrackers(subject) &&
+                (conceptStat.requiredTotalItems === undefined ||
+                  conceptStat.requiredCompletedItems === undefined))
+            ) {
+              hasMissingSummary = true;
+              if (!conceptStat) {
+                continue;
+              }
+            }
+            const requiredCount = getRequiredTrackerKeys(subject, "concept").size;
+            if (
+              requiredCount > 0 &&
+              (conceptStat.requiredTotalItems ?? 0) >= requiredCount &&
+              conceptStat.requiredCompletedItems === conceptStat.requiredTotalItems
             ) {
               completedConceptCount += 1;
             }
           }
         }
 
-        if (!stat && (subject.chapterTrackers.length > 0 || subject.conceptTrackers.length > 0)) {
+        if (
+          (!stat ||
+            (hasOptionalTrackers(subject) &&
+              (stat.requiredTotalItems === undefined ||
+                stat.requiredCompletedItems === undefined))) &&
+          (subject.chapterTrackers.length > 0 || subject.conceptTrackers.length > 0)
+        ) {
           hasMissingSummary = true;
         }
 
-        const totalItems = stat?.totalItems ?? 0;
-        const completedItems = stat?.completedItems ?? 0;
+        const totalItems =
+          stat?.requiredTotalItems ??
+          (hasOptionalTrackers(subject) ? 0 : stat?.totalItems ?? 0);
+        const completedItems =
+          stat?.requiredCompletedItems ??
+          (hasOptionalTrackers(subject) ? 0 : stat?.completedItems ?? 0);
         let status: "NOT_STARTED" | "IN_PROGRESS" | "READY" = "NOT_STARTED";
         if (totalItems > 0 && completedItems === totalItems) {
           status = "READY";
@@ -691,12 +718,13 @@ export const getSubjectsWithStats = query({
           chapter._id,
         );
 
-        totalItems += studyItems.length;
-        completedItems += studyItems.filter((studyItem) => studyItem.isCompleted).length;
+        const required = summarizeRequiredStudyItems(subject, studyItems);
+        totalItems += required.total;
+        completedItems += required.completed;
 
         if (
-          studyItems.length > 0 &&
-          studyItems.every((studyItem) => studyItem.isCompleted)
+          required.total > 0 &&
+          required.completed === required.total
         ) {
           completedChapters += 1;
         }
@@ -718,7 +746,8 @@ export const getSubjectsWithStats = query({
       return await Promise.all(subjects.map(buildFallbackSubject));
     }
 
-    const [chaptersBySubject, chapterStatsBySubject] = await Promise.all([
+    const [chaptersBySubject, chapterStatsBySubject, trackerRebuildStatuses] =
+      await Promise.all([
       Promise.all(
         subjects.map(async (subject) => ({
           subjectId: subject._id,
@@ -729,10 +758,18 @@ export const getSubjectsWithStats = query({
         .query("studyItemChapterStats")
         .withIndex("by_userId", (q) => q.eq("userId", currentUser._id))
         .collect(),
+      Promise.all(
+        subjects.map((subject) =>
+          getTrackerConfigRebuildStatus(ctx, currentUser._id, subject._id),
+        ),
+      ),
     ]);
 
     const chaptersBySubjectId = new Map(
       chaptersBySubject.map((entry) => [entry.subjectId, entry.chapters]),
+    );
+    const trackerRebuildBySubjectId = new Map(
+      subjects.map((subject, index) => [subject._id, trackerRebuildStatuses[index]]),
     );
     const statsBySubjectId = new Map<Id<"subjects">, typeof chapterStatsBySubject>();
     for (const stat of chapterStatsBySubject) {
@@ -745,20 +782,46 @@ export const getSubjectsWithStats = query({
       subjects.map(async (subject) => {
         const chapters = chaptersBySubjectId.get(subject._id) ?? [];
         const chapterStats = statsBySubjectId.get(subject._id) ?? [];
+        const trackerRebuild = trackerRebuildBySubjectId.get(subject._id);
         const statChapterIds = new Set(chapterStats.map((stat) => stat.chapterId));
-        const hasMissingStats = chapters.some((chapter) => !statChapterIds.has(chapter._id));
+        const hasMissingStats =
+          (trackerRebuild !== null && trackerRebuild?.status !== "completed") ||
+          chapters.some((chapter) => {
+            const stat = chapterStats.find((entry) => entry.chapterId === chapter._id);
+            return (
+              !statChapterIds.has(chapter._id) ||
+              (hasOptionalTrackers(subject) &&
+                (stat?.requiredTotalItems === undefined ||
+                  stat.requiredCompletedItems === undefined))
+            );
+          });
 
         if (hasMissingStats) {
           return await buildFallbackSubject(subject);
         }
 
-        const totalItems = chapterStats.reduce((sum, stat) => sum + stat.totalItems, 0);
+        const totalItems = chapterStats.reduce(
+          (sum, stat) =>
+            sum +
+            (stat.requiredTotalItems ??
+              (hasOptionalTrackers(subject) ? 0 : stat.totalItems)),
+          0,
+        );
         const completedItems = chapterStats.reduce(
-          (sum, stat) => sum + stat.completedItems,
+          (sum, stat) =>
+            sum +
+            (stat.requiredCompletedItems ??
+              (hasOptionalTrackers(subject) ? 0 : stat.completedItems)),
           0,
         );
         const completedChapters = chapterStats.filter(
-          (stat) => stat.totalItems > 0 && stat.completedItems === stat.totalItems,
+          (stat) =>
+            (stat.requiredTotalItems ??
+              (hasOptionalTrackers(subject) ? 0 : stat.totalItems)) > 0 &&
+            (stat.requiredCompletedItems ??
+              (hasOptionalTrackers(subject) ? 0 : stat.completedItems)) ===
+              (stat.requiredTotalItems ??
+                (hasOptionalTrackers(subject) ? 0 : stat.totalItems)),
         ).length;
 
         return {
@@ -913,6 +976,9 @@ export const getReviewsDashboardData = query({
           }
 
           const subject = chapter ? await ctx.db.get(chapter.subjectId) : null;
+          if (!subject) {
+            return null;
+          }
           return {
             ...concept,
             chapterName: chapter?.name ?? "Unknown",
@@ -1023,16 +1089,16 @@ export const getChapterPageData = query({
         left.order - right.order || left._creationTime - right._creationTime,
     );
 
-    const summaryStatus = await getSyllabusSummaryMigrationStatus(
-      ctx,
-      currentUser._id,
-    );
-    const lazyStatus = await getChapterLazyCreationStatus(
-      ctx,
-      currentUser._id,
-      chapter._id,
-    );
-    const needsSummaryBackfill = summaryStatus?.status !== "completed";
+    const [summaryStatus, trackerConfigRebuildStatus, lazyStatus] =
+      await Promise.all([
+        getSyllabusSummaryMigrationStatus(ctx, currentUser._id),
+        getTrackerConfigRebuildStatus(ctx, currentUser._id, subject._id),
+        getChapterLazyCreationStatus(ctx, currentUser._id, chapter._id),
+      ]);
+    const needsSummaryBackfill =
+      summaryStatus?.status !== "completed" ||
+      (trackerConfigRebuildStatus !== null &&
+        trackerConfigRebuildStatus.status !== "completed");
     const needsEnsureConceptStudyItems =
       subject.conceptTrackers.length > 0 && lazyStatus?.status !== "completed";
 
@@ -1057,13 +1123,17 @@ export const getChapterPageData = query({
             };
           });
 
-          const totalItems = subject.conceptTrackers.length;
-          const completedItems = studyItems.filter(
-            (studyItem) => studyItem.isCompleted,
-          ).length;
+          const required = summarizeRequiredStudyItems(subject, studyItems);
+          const requiredCount = getRequiredTrackerKeys(subject, "concept").size;
+          const totalItems = required.total;
+          const completedItems = required.completed;
 
           let status: "NOT_STARTED" | "IN_PROGRESS" | "READY" = "NOT_STARTED";
-          if (totalItems > 0 && completedItems === totalItems) {
+          if (
+            requiredCount > 0 &&
+            totalItems >= requiredCount &&
+            completedItems === totalItems
+          ) {
             status = "READY";
           } else if (completedItems > 0) {
             status = "IN_PROGRESS";
@@ -1137,14 +1207,28 @@ export const getChapterPageData = query({
           };
         });
         const stat = statByConcept.get(concept._id);
-        if (!stat && subject.conceptTrackers.length > 0) {
+        if (
+          !stat ||
+          (hasOptionalTrackers(subject) &&
+            (stat.requiredTotalItems === undefined ||
+              stat.requiredCompletedItems === undefined))
+        ) {
           hasMissingSummary = true;
         }
-        const totalItems = stat?.totalItems ?? subject.conceptTrackers.length;
-        const completedItems = stat?.completedItems ?? 0;
+        const totalItems =
+          stat?.requiredTotalItems ??
+          (hasOptionalTrackers(subject) ? 0 : stat?.totalItems ?? 0);
+        const completedItems =
+          stat?.requiredCompletedItems ??
+          (hasOptionalTrackers(subject) ? 0 : stat?.completedItems ?? 0);
 
         let status: "NOT_STARTED" | "IN_PROGRESS" | "READY" = "NOT_STARTED";
-        if (totalItems > 0 && completedItems === totalItems) {
+        const requiredCount = getRequiredTrackerKeys(subject, "concept").size;
+        if (
+          requiredCount > 0 &&
+          totalItems >= requiredCount &&
+          completedItems === totalItems
+        ) {
           status = "READY";
         } else if (completedItems > 0) {
           status = "IN_PROGRESS";

@@ -24,6 +24,7 @@ import type * as studyTargets from "../studyTargets.js";
 import type * as syllabusSummaries from "../syllabusSummaries.js";
 import type * as todoQueries from "../todoQueries.js";
 import type * as todoStudyItemSearchDigests from "../todoStudyItemSearchDigests.js";
+import type * as trackerRequirements from "../trackerRequirements.js";
 
 import type {
   ApiFromModules,
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   syllabusSummaries: typeof syllabusSummaries;
   todoQueries: typeof todoQueries;
   todoStudyItemSearchDigests: typeof todoStudyItemSearchDigests;
+  trackerRequirements: typeof trackerRequirements;
 }>;
 
 /**

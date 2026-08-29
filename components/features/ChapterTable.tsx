@@ -29,6 +29,7 @@ type TrackerConfig = {
   key: string;
   label: string;
   avgMinutes: number;
+  isOptional?: boolean;
 };
 
 type ChapterRowData = {
@@ -619,8 +620,16 @@ function MobileChapterCard({
               key={trackerConfig.key}
               className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-pure-white px-3 py-2"
             >
-              <span className="min-w-0 truncate font-mono-code text-mono-code uppercase text-gray-500">
-                {trackerConfig.label}
+              <span className="flex min-w-0 items-center gap-1.5 truncate font-mono-code text-mono-code uppercase text-gray-500">
+                <span className="truncate">{trackerConfig.label}</span>
+                {trackerConfig.isOptional ? (
+                  <span
+                    className="shrink-0 rounded-full border border-warm-amber/20 bg-warm-amber/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-normal text-warm-amber dark:border-warm-amber/30 dark:bg-warm-amber/10"
+                    title="ঐচ্ছিক ট্র্যাকার"
+                  >
+                    ঐচ্ছিক
+                  </span>
+                ) : null}
               </span>
               <TrackerCell
                 isCompleted={tracker?.isCompleted ?? false}
@@ -1028,7 +1037,17 @@ export default function ChapterTable({
                       key={t.key}
                       className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase"
                     >
-                      {t.label}
+                      <span className="inline-flex items-center justify-center gap-1.5">
+                        <span>{t.label}</span>
+                        {t.isOptional ? (
+                          <span
+                            className="rounded-full border border-warm-amber/20 bg-warm-amber/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-normal text-warm-amber dark:border-warm-amber/30 dark:bg-warm-amber/10"
+                            title="ঐচ্ছিক ট্র্যাকার"
+                          >
+                            ঐচ্ছিক
+                          </span>
+                        ) : null}
+                      </span>
                     </th>
                   ))}
                   <th className="text-center py-3.5 px-5 font-mono-code text-mono-code text-gray-500 uppercase">

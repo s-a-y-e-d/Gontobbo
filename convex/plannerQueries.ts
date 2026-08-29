@@ -9,7 +9,6 @@ import {
   REVISION_RATING_SETTING_KEYS,
 } from "./revisionAlgorithm";
 import {
-  filterOwnedDocuments,
   isLegacyWorkspaceOwner,
   requireCurrentUser,
   type CurrentUser,
@@ -19,6 +18,11 @@ import {
   getDashboardComponentSettingKey,
   resolveDashboardComponentVisibility,
 } from "./dashboardComponents";
+import {
+  getRequiredTrackerKeys,
+  summarizeRequiredStudyItems,
+} from "./trackerRequirements";
+import { getTrackerConfigRebuildStatus } from "./syllabusSummaries";
 
 function getDhakaDayBucket(timestamp: number) {
   const dhakaOffset = 6 * 60 * 60 * 1000;
@@ -29,18 +33,35 @@ function getDhakaDayBucket(timestamp: number) {
 
 function isConceptTargetComplete(
   conceptId: Id<"concepts">,
+  subject: Doc<"subjects">,
   conceptStatsById: Map<Id<"concepts">, Doc<"studyItemConceptStats">>,
 ) {
   const stat = conceptStatsById.get(conceptId);
-  return Boolean(stat && stat.totalItems > 0 && stat.completedItems === stat.totalItems);
+  const requiredCount = getRequiredTrackerKeys(subject, "concept").size;
+  return Boolean(
+    stat &&
+      requiredCount > 0 &&
+      (stat.requiredTotalItems ?? 0) >= requiredCount &&
+      stat.requiredCompletedItems === stat.requiredTotalItems,
+  );
 }
 
 function isChapterTargetComplete(
   chapterId: Id<"chapters">,
+  subject: Doc<"subjects">,
+  conceptCount: number,
   chapterStatsById: Map<Id<"chapters">, Doc<"studyItemChapterStats">>,
 ) {
   const stat = chapterStatsById.get(chapterId);
-  return Boolean(stat && stat.totalItems > 0 && stat.completedItems === stat.totalItems);
+  const requiredCount =
+    getRequiredTrackerKeys(subject, "chapter").size +
+    conceptCount * getRequiredTrackerKeys(subject, "concept").size;
+  return Boolean(
+    stat &&
+      requiredCount > 0 &&
+      (stat.requiredTotalItems ?? 0) >= requiredCount &&
+      stat.requiredCompletedItems === stat.requiredTotalItems,
+  );
 }
 
 async function getNumberSettingValue(
@@ -248,6 +269,8 @@ async function isChapterTargetCompleteFallback(
   ctx: QueryCtx,
   currentUser: CurrentUser,
   chapterId: Id<"chapters">,
+  subject: Doc<"subjects">,
+  conceptCount: number,
 ) {
   const ownedItems = await ctx.db
     .query("studyItems")
@@ -264,13 +287,22 @@ async function isChapterTargetCompleteFallback(
         .collect()
     : [];
   const studyItems = [...ownedItems, ...legacyItems];
-  return studyItems.length > 0 && studyItems.every((studyItem) => studyItem.isCompleted);
+  const required = summarizeRequiredStudyItems(subject, studyItems);
+  const requiredCount =
+    getRequiredTrackerKeys(subject, "chapter").size +
+    conceptCount * getRequiredTrackerKeys(subject, "concept").size;
+  return (
+    requiredCount > 0 &&
+    required.total >= requiredCount &&
+    required.completed === required.total
+  );
 }
 
 async function isConceptTargetCompleteFallback(
   ctx: QueryCtx,
   currentUser: CurrentUser,
   conceptId: Id<"concepts">,
+  subject: Doc<"subjects">,
 ) {
   const ownedItems = await ctx.db
     .query("studyItems")
@@ -287,7 +319,13 @@ async function isConceptTargetCompleteFallback(
         .collect()
     : [];
   const studyItems = [...ownedItems, ...legacyItems];
-  return studyItems.length > 0 && studyItems.every((studyItem) => studyItem.isCompleted);
+  const required = summarizeRequiredStudyItems(subject, studyItems);
+  const requiredCount = getRequiredTrackerKeys(subject, "concept").size;
+  return (
+    requiredCount > 0 &&
+    required.total >= requiredCount &&
+    required.completed === required.total
+  );
 }
 
 async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUser) {
@@ -312,6 +350,12 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
       getPlannerConceptStats(ctx, currentUser),
     ]);
 
+  const trackerRebuildStatuses = await Promise.all(
+    subjects.map((subject) =>
+      getTrackerConfigRebuildStatus(ctx, currentUser._id, subject._id),
+    ),
+  );
+
   subjects.sort((a, b) => a.order - b.order);
   chapters.sort((a, b) => a.order - b.order);
   concepts.sort((a, b) => a.order - b.order);
@@ -328,6 +372,9 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
   );
   const conceptStatsById = new Map(
     conceptStats.map((stat) => [stat.conceptId, stat]),
+  );
+  const trackerRebuildBySubjectId = new Map(
+    subjects.map((subject, index) => [subject._id, trackerRebuildStatuses[index]]),
   );
 
   const chapterTargetsById = new Map<Id<"chapters">, Doc<"weeklyTargets">>();
@@ -349,10 +396,23 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
           .filter((concept) => concept.chapterId === chapter._id)
           .map(async (concept) => {
             const weeklyTarget = conceptTargetsById.get(concept._id) ?? null;
+            const trackerRebuild = trackerRebuildBySubjectId.get(subject._id);
             const isComplete = weeklyTarget
-              ? conceptStatsById.has(concept._id)
-                ? isConceptTargetComplete(concept._id, conceptStatsById)
-                : await isConceptTargetCompleteFallback(ctx, currentUser, concept._id)
+              ? (() => {
+                  const stat = conceptStatsById.get(concept._id);
+                  return stat &&
+                    (trackerRebuild === null || trackerRebuild?.status === "completed") &&
+                    stat.requiredTotalItems !== undefined &&
+                    stat.requiredCompletedItems !== undefined
+                    ? isConceptTargetComplete(concept._id, subject, conceptStatsById)
+                    : undefined;
+                })() ??
+                (await isConceptTargetCompleteFallback(
+                  ctx,
+                  currentUser,
+                  concept._id,
+                  subject,
+                ))
               : false;
 
             return {
@@ -366,10 +426,29 @@ async function getPlannerSettingsSubjects(ctx: QueryCtx, currentUser: CurrentUse
           }));
 
         const weeklyTarget = chapterTargetsById.get(chapter._id) ?? null;
+        const trackerRebuild = trackerRebuildBySubjectId.get(subject._id);
         const isChapterComplete = weeklyTarget
-          ? chapterStatsById.has(chapter._id)
-            ? isChapterTargetComplete(chapter._id, chapterStatsById)
-            : await isChapterTargetCompleteFallback(ctx, currentUser, chapter._id)
+          ? (() => {
+              const stat = chapterStatsById.get(chapter._id);
+              return stat &&
+                (trackerRebuild === null || trackerRebuild?.status === "completed") &&
+                stat.requiredTotalItems !== undefined &&
+                stat.requiredCompletedItems !== undefined
+                ? isChapterTargetComplete(
+                    chapter._id,
+                    subject,
+                    chapterConcepts.length,
+                    chapterStatsById,
+                  )
+                : undefined;
+            })() ??
+            (await isChapterTargetCompleteFallback(
+              ctx,
+              currentUser,
+              chapter._id,
+              subject,
+              chapterConcepts.length,
+            ))
           : false;
 
         return {

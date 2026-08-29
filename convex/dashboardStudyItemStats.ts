@@ -14,6 +14,7 @@ import {
   requireCurrentUser,
   type CurrentUser,
 } from "./auth";
+import { isStudyItemRequired, summarizeRequiredStudyItems } from "./trackerRequirements";
 
 const DASHBOARD_STATS_MIGRATION_KEY = "dashboard_study_item_stats_backfill";
 const BACKFILL_BATCH_SIZE = 32;
@@ -85,6 +86,8 @@ async function incrementChapterStat(
     chapterId: Id<"chapters">;
     totalDelta: number;
     completedDelta: number;
+    requiredTotalDelta: number;
+    requiredCompletedDelta: number;
   },
 ) {
   const existing = await getChapterStat(ctx, args.userId, args.chapterId);
@@ -93,7 +96,14 @@ async function incrementChapterStat(
   if (!existing) {
     const totalItems = Math.max(0, args.totalDelta);
     const completedItems = Math.max(0, args.completedDelta);
-    if (totalItems === 0 && completedItems === 0) {
+    const requiredTotalItems = Math.max(0, args.requiredTotalDelta);
+    const requiredCompletedItems = Math.max(0, args.requiredCompletedDelta);
+    if (
+      totalItems === 0 &&
+      completedItems === 0 &&
+      requiredTotalItems === 0 &&
+      requiredCompletedItems === 0
+    ) {
       return;
     }
     await ctx.db.insert("studyItemChapterStats", {
@@ -102,17 +112,44 @@ async function incrementChapterStat(
       chapterId: args.chapterId,
       totalItems,
       completedItems,
+      requiredTotalItems,
+      requiredCompletedItems,
       updatedAt: now,
     });
     return;
   }
 
-  await ctx.db.patch(existing._id, {
+  const patch: {
+    subjectId: Id<"subjects">;
+    totalItems: number;
+    completedItems: number;
+    requiredTotalItems?: number;
+    requiredCompletedItems?: number;
+    updatedAt: number;
+  } = {
     subjectId: args.subjectId,
     totalItems: Math.max(0, existing.totalItems + args.totalDelta),
     completedItems: Math.max(0, existing.completedItems + args.completedDelta),
     updatedAt: now,
-  });
+  };
+
+  // A legacy row without required fields is deliberately left stale. Readers
+  // fall back to the live config until the resumable rebuild fills it in.
+  if (
+    existing.requiredTotalItems !== undefined &&
+    existing.requiredCompletedItems !== undefined
+  ) {
+    patch.requiredTotalItems = Math.max(
+      0,
+      existing.requiredTotalItems + args.requiredTotalDelta,
+    );
+    patch.requiredCompletedItems = Math.max(
+      0,
+      existing.requiredCompletedItems + args.requiredCompletedDelta,
+    );
+  }
+
+  await ctx.db.patch(existing._id, patch);
 }
 
 async function incrementCompletionDayStat(
@@ -142,6 +179,7 @@ async function incrementCompletionDayStat(
       chapterId: args.chapterId,
       dayBucket: args.dayBucket,
       completedCount: args.completedDelta,
+      requiredOnly: true,
       updatedAt: now,
     });
     return;
@@ -156,6 +194,7 @@ async function incrementCompletionDayStat(
   await ctx.db.patch(existing._id, {
     subjectId: args.subjectId,
     completedCount,
+    requiredOnly: true,
     updatedAt: now,
   });
 }
@@ -165,15 +204,19 @@ export async function recordStudyItemCreatedInStats(
   currentUser: CurrentUser,
   item: Doc<"studyItems">,
 ) {
+  const subject = await ctx.db.get(item.subjectId);
+  const isRequired = subject ? isStudyItemRequired(subject, item) : false;
   await incrementChapterStat(ctx, {
     userId: currentUser._id,
     subjectId: item.subjectId,
     chapterId: item.chapterId,
     totalDelta: 1,
     completedDelta: item.isCompleted ? 1 : 0,
+    requiredTotalDelta: isRequired ? 1 : 0,
+    requiredCompletedDelta: isRequired && item.isCompleted ? 1 : 0,
   });
 
-  if (item.isCompleted) {
+  if (item.isCompleted && isRequired) {
     await incrementCompletionDayStat(ctx, {
       userId: currentUser._id,
       subjectId: item.subjectId,
@@ -190,21 +233,27 @@ export async function recordStudyItemCompletionInStats(
   item: Doc<"studyItems">,
   completedDelta: 1 | -1,
 ) {
+  const subject = await ctx.db.get(item.subjectId);
+  const isRequired = subject ? isStudyItemRequired(subject, item) : false;
   await incrementChapterStat(ctx, {
     userId: currentUser._id,
     subjectId: item.subjectId,
     chapterId: item.chapterId,
     totalDelta: 0,
     completedDelta,
+    requiredTotalDelta: 0,
+    requiredCompletedDelta: isRequired ? completedDelta : 0,
   });
 
-  await incrementCompletionDayStat(ctx, {
-    userId: currentUser._id,
-    subjectId: item.subjectId,
-    chapterId: item.chapterId,
-    dayBucket: getCompletionDayBucket(item),
-    completedDelta,
-  });
+  if (isRequired) {
+    await incrementCompletionDayStat(ctx, {
+      userId: currentUser._id,
+      subjectId: item.subjectId,
+      chapterId: item.chapterId,
+      dayBucket: getCompletionDayBucket(item),
+      completedDelta,
+    });
+  }
 }
 
 export async function deleteStudyItemStatsForChapter(
@@ -266,6 +315,10 @@ async function rebuildStudyItemStatsForChapterAccess(
   }
 
   const completedItems = studyItems.filter((item) => item.isCompleted);
+  const subject = await ctx.db.get(chapter.subjectId);
+  const required = subject
+    ? summarizeRequiredStudyItems(subject, studyItems)
+    : { total: 0, completed: 0 };
   const now = Date.now();
   await ctx.db.insert("studyItemChapterStats", {
     userId: access.userId,
@@ -273,11 +326,15 @@ async function rebuildStudyItemStatsForChapterAccess(
     chapterId: chapter._id,
     totalItems: studyItems.length,
     completedItems: completedItems.length,
+    requiredTotalItems: required.total,
+    requiredCompletedItems: required.completed,
     updatedAt: now,
   });
 
   const completedByDay = new Map<number, number>();
-  for (const item of completedItems) {
+  for (const item of completedItems.filter((candidate) =>
+    subject ? isStudyItemRequired(subject, candidate) : false,
+  )) {
     const dayBucket = getCompletionDayBucket(item);
     completedByDay.set(dayBucket, (completedByDay.get(dayBucket) ?? 0) + 1);
   }
@@ -289,6 +346,7 @@ async function rebuildStudyItemStatsForChapterAccess(
       chapterId: chapter._id,
       dayBucket,
       completedCount,
+      requiredOnly: true,
       updatedAt: now,
     });
   }
@@ -345,6 +403,10 @@ export async function getDashboardCompletionDayStats(
     )
     .collect();
 
+  // Callers decide whether the required-only marker is current for their
+  // subject set. Rows from before this feature remain valid for subjects that
+  // have no optional trackers; rows with optional trackers are rebuilt before
+  // they are used for formal progression.
   return [...missingDateStats, ...rangedStats];
 }
 
