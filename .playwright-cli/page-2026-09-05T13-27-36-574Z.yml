@@ -1,0 +1,63 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - region "Notifications (F8)":
+      - list
+    - generic [ref=e4]:
+      - main [ref=e5]:
+        - generic [ref=e9]:
+          - generic [ref=e10]:
+            - generic [ref=e11]:
+              - link [ref=e13] [cursor=pointer]:
+                - /url: https://dashboard.clerk.com/
+                - img "Clerk" [ref=e14]
+              - generic [ref=e15]:
+                - heading "Sign in to Clerk" [level=1] [ref=e16]
+                - paragraph [ref=e17]: Welcome back! Please sign in to continue
+            - generic [ref=e18]:
+              - generic [ref=e20]:
+                - button "Sign in with GitHub GitHub" [ref=e21] [cursor=pointer]:
+                  - generic [ref=e22]:
+                    - generic "Sign in with GitHub" [ref=e24]
+                    - generic [ref=e25]: GitHub
+                - button "Sign in with Google Google" [ref=e26] [cursor=pointer]:
+                  - generic [ref=e27]:
+                    - generic "Sign in with Google" [ref=e29]
+                    - generic [ref=e30]: Google
+              - paragraph [ref=e33]: or
+              - generic [ref=e35]:
+                - generic [ref=e36]:
+                  - generic [ref=e39]:
+                    - generic [ref=e40]: Email address
+                    - textbox "Email address" [ref=e42]:
+                      - /placeholder: Enter your email address
+                  - generic:
+                    - generic: Password
+                    - generic:
+                      - textbox:
+                        - /placeholder: Enter your password
+                      - button
+                - button "Continue" [ref=e45] [cursor=pointer]
+            - link "Use passkey instead" [ref=e50] [cursor=pointer]:
+              - /url: https://dashboard.clerk.com/sign-in
+          - generic [ref=e51]:
+            - generic [ref=e52]:
+              - generic [ref=e53]: Don’t have an account?
+              - link "Sign up" [ref=e54] [cursor=pointer]:
+                - /url: https://dashboard.clerk.com/sign-up#/?redirect_url=https%3A%2F%2Fdashboard.clerk.com%2F
+            - generic [ref=e58]:
+              - paragraph [ref=e59]: Secured by
+              - link "Clerk logo" [ref=e60] [cursor=pointer]:
+                - /url: https://go.clerk.com/components
+      - contentinfo [ref=e66]:
+        - paragraph [ref=e67]: © 2026 Clerk
+        - list [ref=e68]:
+          - listitem [ref=e69]:
+            - link "Support" [ref=e70] [cursor=pointer]:
+              - /url: https://clerk.com/contact/support
+          - listitem [ref=e71]:
+            - link "Privacy" [ref=e72] [cursor=pointer]:
+              - /url: https://www.clerk.com/privacy
+          - listitem [ref=e73]:
+            - link "Terms" [ref=e74] [cursor=pointer]:
+              - /url: https://www.clerk.com/terms
+  - alert [ref=e75]

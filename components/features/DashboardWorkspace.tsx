@@ -1277,10 +1277,12 @@ function GroupedShareBar({
 }
 
 function getHeatmapColor(intensity: number) {
-  if (intensity >= 4) return "bg-brand-green-deep";
-  if (intensity === 3) return "bg-brand-green";
-  if (intensity === 2) return "bg-[#8cf2c7]";
-  if (intensity === 1) return "bg-brand-green-light dark:bg-emerald-500/35";
+  // In dark mode, activity increases from the deepest green to the brightest.
+  // Keeping the highest bucket bright prevents the scale from visually looping back.
+  if (intensity >= 4) return "bg-brand-green-deep dark:bg-emerald-300";
+  if (intensity === 3) return "bg-brand-green dark:bg-emerald-400";
+  if (intensity === 2) return "bg-[#8cf2c7] dark:bg-emerald-500";
+  if (intensity === 1) return "bg-brand-green-light dark:bg-emerald-700";
   return "bg-surface-container dark:bg-white/10 dark:ring-1 dark:ring-white/5";
 }
 
