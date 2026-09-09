@@ -4180,9 +4180,17 @@ export const toggleStudyItemCompletion = mutation({
         if (allRequiredDone) {
           const conceptRecord = await ctx.db.get(item.conceptId);
           if (conceptRecord && conceptRecord.nextReviewAt === undefined) {
+            const initialInterval = await getOwnedSettingByKey(
+              ctx,
+              currentUser,
+              REVISION_INTERVAL_SETTING_KEYS[0],
+            );
+            const daysToAdd = typeof initialInterval?.value === "number"
+              ? initialInterval.value
+              : DEFAULT_REVISION_INTERVAL_DAYS[0];
             await ctx.db.patch(item.conceptId, {
               repetitionLevel: 0,
-              nextReviewAt: Date.now() + 86400000, // 1 day
+              nextReviewAt: Date.now() + daysToAdd * 86400000,
             });
           }
         }

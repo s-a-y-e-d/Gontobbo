@@ -102,6 +102,33 @@ function getItem(
 }
 
 describe("optional tracker categories", () => {
+  test.each([undefined, 7])("uses Level 1 for new completions (configured days: %s) and preserves existing dates", async (days) => {
+    const { t, conceptId, studyItems } = await createFixture(`initial-${days}`);
+    if (days !== undefined) {
+      await t.mutation(api.mutations.setRevisionAlgorithm, {
+        intervalDays: [days, 15, 30, 60, 90, 120],
+        ratingLevelChanges: { hard: -1, medium: 1, easy: 2 },
+      });
+    }
+    const item = getItem(studyItems, "book", conceptId);
+    const before = Date.now();
+    await t.mutation(api.mutations.toggleStudyItemCompletion, { studyItemId: item._id });
+    const after = Date.now();
+    const concept = await t.run((ctx) => ctx.db.get(conceptId));
+    expect(concept?.repetitionLevel).toBe(0);
+    expect(concept?.nextReviewAt).toBeGreaterThanOrEqual(before + (days ?? 1) * DAY_MS);
+    expect(concept?.nextReviewAt).toBeLessThanOrEqual(after + (days ?? 1) * DAY_MS);
+
+    await t.mutation(api.mutations.setRevisionAlgorithm, {
+      intervalDays: [14, 15, 30, 60, 90, 120],
+      ratingLevelChanges: { hard: -1, medium: 1, easy: 2 },
+    });
+    await t.mutation(api.mutations.toggleStudyItemCompletion, { studyItemId: item._id });
+    await t.mutation(api.mutations.toggleStudyItemCompletion, { studyItemId: item._id });
+    const repeated = await t.run((ctx) => ctx.db.get(conceptId));
+    expect(repeated?.nextReviewAt).toBe(concept?.nextReviewAt);
+  });
+
   test("excludes optional completions from formal progress and revision while keeping Study Volume activity", async () => {
     const { t, subjectId, conceptId, studyItems } = await createFixture("progress");
     const today = getDhakaDayBucket(Date.now());
