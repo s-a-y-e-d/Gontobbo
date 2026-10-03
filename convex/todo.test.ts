@@ -977,7 +977,7 @@ describe("todo", () => {
     expect(concept?.nextReviewAt).toBeLessThanOrEqual(after + 16 * 86400000);
   });
 
-  test("advances only ready concepts in a chapter using the saved medium schedule", async () => {
+  test("revises all completed concepts including future reviews using the saved medium schedule", async () => {
     const t = await createAuthenticatedTestContext("advance-ready-concepts");
     const subjectId = await t.mutation(api.mutations.createSubject, {
       name: "Physics",
@@ -1077,18 +1077,32 @@ describe("todo", () => {
     expect(conceptReviewLogs).toHaveLength(2);
     expect(conceptReviewLogs.every((log) => log.rating === "medium")).toBe(true);
 
+    const beforeEarlyReview = Date.now();
     const secondResult = await t.mutation(api.mutations.advanceReadyConceptReviews, {
       chapterId,
     });
-    expect(secondResult).toEqual({ reviewedCount: 0 });
+    const afterEarlyReview = Date.now();
+    expect(secondResult).toEqual({ reviewedCount: 2 });
     const conceptsAfterSecondRun = await t.run(async (ctx) =>
       await Promise.all([
         ctx.db.get(readyConceptId),
         ctx.db.get(secondReadyConceptId),
       ]),
     );
-    expect(conceptsAfterSecondRun[0]).toMatchObject({ repetitionLevel: 2, reviewCount: 1 });
-    expect(conceptsAfterSecondRun[1]).toMatchObject({ repetitionLevel: 2, reviewCount: 1 });
+    expect(conceptsAfterSecondRun[0]).toMatchObject({ repetitionLevel: 4, reviewCount: 2 });
+    expect(conceptsAfterSecondRun[1]).toMatchObject({ repetitionLevel: 4, reviewCount: 2 });
+    for (const concept of conceptsAfterSecondRun) {
+      expect(concept?.nextReviewAt).toBeGreaterThanOrEqual(beforeEarlyReview + 32 * 86400000);
+      expect(concept?.nextReviewAt).toBeLessThanOrEqual(afterEarlyReview + 32 * 86400000);
+    }
+    const incompleteAfterEarlyReview = await t.run((ctx) => ctx.db.get(incompleteConceptId));
+    expect(incompleteAfterEarlyReview?.reviewCount).toBeUndefined();
+    const earlyReviewLogs = await t.run((ctx) =>
+      ctx.db.query("studyLogs")
+        .withIndex("by_conceptId_and_loggedAt", (q) => q.eq("conceptId", readyConceptId))
+        .collect(),
+    );
+    expect(earlyReviewLogs.filter((log) => log.eventType === "concept_review")).toHaveLength(2);
   });
 
   test("searches study items with a two-character threshold", async () => {

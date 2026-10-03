@@ -4317,7 +4317,7 @@ export const reviewConcept = mutation({
   },
 });
 
-// ── Advance ready concept reviews ─────────────────────────────────
+// ── Complete revisions for all completed concepts ─────────────────────────────────
 export const advanceReadyConceptReviews = mutation({
   args: {
     chapterId: v.id("chapters"),
@@ -4405,8 +4405,7 @@ export const advanceReadyConceptReviews = mutation({
         hasRequiredTrackers(subject, "concept") &&
         requiredTotal >= requiredTrackerCount &&
         requiredTotal > 0 &&
-        requiredCompleted === requiredTotal &&
-        (concept.lastReviewedAt === undefined || concept.nextReviewAt === undefined || concept.nextReviewAt <= now)
+        requiredCompleted === requiredTotal
       );
     });
 

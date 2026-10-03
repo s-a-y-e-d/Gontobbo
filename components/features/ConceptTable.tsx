@@ -211,13 +211,13 @@ function AdvanceReadyConceptReviewsDialog({
             <span className="material-symbols-outlined text-[25px]">trending_up</span>
           </div>
           <p className="mt-5 font-mono-code text-mono-code uppercase tracking-[0.12em] text-brand-green-deep dark:text-brand-green">
-            প্রস্তুত কনসেপ্ট
+            সম্পূর্ণ কনসেপ্ট
           </p>
           <h2 id="advance-ready-concepts-title" className="mt-2 font-card-title text-[22px] leading-tight text-on-surface dark:text-neutral-50">
             রিভিশন সম্পন্ন করবেন?
           </h2>
           <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-neutral-400">
-            সম্পূর্ণ হওয়া {formattedCount}টি কনসেপ্টের রিভিশন সম্পন্ন হবে। আপনার রিভিশন সেটিংস অনুযায়ী নতুন তারিখ ঠিক হবে।
+            সম্পূর্ণ হওয়া {formattedCount}টি কনসেপ্টের রিভিশন সম্পন্ন হবে। নির্ধারিত তারিখ না এলেও রিভিশন করা যাবে। আপনার রিভিশন সেটিংস অনুযায়ী আজ থেকে নতুন তারিখ ঠিক হবে।
           </p>
         </div>
         <div className="mx-6 mt-5 flex items-center gap-3 rounded-2xl border border-border-subtle bg-gray-50/70 px-4 py-3 dark:border-white/10 dark:bg-white/[0.045]">
@@ -1165,13 +1165,10 @@ export default function ConceptTable({
     .map((concept) => concept._id);
   const selectedCount = selectedConceptIdsInCurrentList.length;
   const areAllConceptsSelected = selectedCount === concepts.length;
-  const readyConceptCount = concepts.filter(
+  const completedConceptCount = concepts.filter(
     (concept) =>
       concept.totalItems > 0 &&
-      concept.completedItems === concept.totalItems &&
-      (concept.lastReviewedAt === undefined ||
-        concept.nextReviewAt === undefined ||
-        concept.nextReviewAt <= now),
+      concept.completedItems === concept.totalItems,
   ).length;
 
   const setConceptSelected = (conceptId: Id<"concepts">, selected: boolean) => {
@@ -1373,14 +1370,14 @@ export default function ConceptTable({
         <button
           type="button"
           onClick={() => setIsAdvanceDialogOpen(true)}
-          disabled={readyConceptCount === 0}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border-medium bg-pure-white px-4 font-label-uppercase text-xs text-on-surface shadow-sm transition-colors hover:border-brand-green/40 hover:bg-brand-green-light/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-100 dark:hover:border-brand-green/40 dark:hover:bg-brand-green/10 sm:w-auto"
-          aria-label={`${numberFormatter.format(readyConceptCount)}টি প্রস্তুত কনসেপ্টের রিভিশন সম্পন্ন করুন`}
+          disabled={completedConceptCount === 0 || isAdvancingReadyReviews}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border-medium bg-pure-white px-4 font-label-uppercase text-xs text-on-surface shadow-sm transition-colors hover:border-brand-green/40 hover:bg-brand-green-light/45 active:bg-brand-green-light/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-100 dark:hover:border-brand-green/40 dark:hover:bg-brand-green/10 dark:active:bg-brand-green/15 sm:w-auto"
+          aria-label={`${numberFormatter.format(completedConceptCount)}টি সম্পূর্ণ কনসেপ্টের রিভিশন সম্পন্ন করুন`}
         >
           <span className="material-symbols-outlined text-[19px] text-brand-green-deep dark:text-brand-green">trending_up</span>
           <span>রিভিশন সম্পন্ন করুন</span>
           <span className="rounded-full bg-brand-green-light px-2 py-0.5 font-mono-code text-[10px] text-brand-green-deep dark:bg-brand-green/15 dark:text-brand-green">
-            {numberFormatter.format(readyConceptCount)}
+            {numberFormatter.format(completedConceptCount)}
           </span>
         </button>
         <button
@@ -1584,7 +1581,7 @@ export default function ConceptTable({
 
       <AdvanceReadyConceptReviewsDialog
         isOpen={isAdvanceDialogOpen}
-        conceptCount={readyConceptCount}
+        conceptCount={completedConceptCount}
         isSubmitting={isAdvancingReadyReviews}
         onClose={() => {
           if (!isAdvancingReadyReviews) setIsAdvanceDialogOpen(false);
