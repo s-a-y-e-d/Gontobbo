@@ -248,14 +248,6 @@ function AdvanceReadyConceptReviewsDialog({
   );
 }
 
-function stripListMarker(line: string) {
-  return line
-    .trim()
-    .replace(/^[>*\-\s•]+/u, "")
-    .replace(/^[\d০-৯]+[.)।:\-\s]+/u, "")
-    .trim();
-}
-
 function BulkRenameConceptModal({
   isOpen,
   concepts,
@@ -295,7 +287,7 @@ function BulkRenameConceptModal({
 
   const parsedNames = value
     .split(/\r?\n/)
-    .map(stripListMarker)
+    .map((name) => name.trim())
     .filter(Boolean);
   const existingNames = concepts.map((concept) => concept.name);
   const hasChanges =
