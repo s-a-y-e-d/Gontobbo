@@ -2,6 +2,50 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  revisionReminderPreferences: defineTable({
+    userId: v.id("users"),
+    enabled: v.boolean(),
+    morningMinutes: v.number(),
+    eveningEnabled: v.boolean(),
+    eveningMinutes: v.number(),
+    showDetails: v.boolean(),
+    generation: v.number(),
+    scheduledJobId: v.optional(v.id("_scheduled_functions")),
+    snoozeJobId: v.optional(v.id("_scheduled_functions")),
+    snoozedUntil: v.optional(v.number()),
+    nextReminderAt: v.optional(v.number()),
+  }).index("by_userId", ["userId"]),
+
+  revisionPushDevices: defineTable({
+    userId: v.id("users"),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    snoozeToken: v.string(),
+    deviceName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSuccessAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_endpoint", ["endpoint"]),
+
+  revisionReminderDeliveries: defineTable({
+    userId: v.id("users"),
+    deviceId: v.id("revisionPushDevices"),
+    key: v.string(),
+    generation: v.number(),
+    kind: v.union(v.literal("morning"), v.literal("evening"), v.literal("snooze"), v.literal("test")),
+    scheduledAt: v.number(),
+    status: v.union(v.literal("queued"), v.literal("sent"), v.literal("skipped"), v.literal("failed")),
+    completedAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_userId_and_key", ["userId", "key"])
+    .index("by_userId", ["userId"])
+    .index("by_scheduledAt", ["scheduledAt"]),
+
   users: defineTable({
     tokenIdentifier: v.string(),
     clerkUserId: v.string(),

@@ -9,9 +9,11 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as crons from "../crons.js";
 import type * as dashboardComponents from "../dashboardComponents.js";
 import type * as dashboardQueries from "../dashboardQueries.js";
 import type * as dashboardStudyItemStats from "../dashboardStudyItemStats.js";
+import type * as http from "../http.js";
 import type * as mutations from "../mutations.js";
 import type * as onboarding from "../onboarding.js";
 import type * as ownershipMigration from "../ownershipMigration.js";
@@ -19,6 +21,9 @@ import type * as planner from "../planner.js";
 import type * as plannerQueries from "../plannerQueries.js";
 import type * as queries from "../queries.js";
 import type * as revisionAlgorithm from "../revisionAlgorithm.js";
+import type * as revisionPush from "../revisionPush.js";
+import type * as revisionReminderSchedule from "../revisionReminderSchedule.js";
+import type * as revisionReminders from "../revisionReminders.js";
 import type * as studyItemSearch from "../studyItemSearch.js";
 import type * as studyTargets from "../studyTargets.js";
 import type * as syllabusSummaries from "../syllabusSummaries.js";
@@ -34,9 +39,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  crons: typeof crons;
   dashboardComponents: typeof dashboardComponents;
   dashboardQueries: typeof dashboardQueries;
   dashboardStudyItemStats: typeof dashboardStudyItemStats;
+  http: typeof http;
   mutations: typeof mutations;
   onboarding: typeof onboarding;
   ownershipMigration: typeof ownershipMigration;
@@ -44,6 +51,9 @@ declare const fullApi: ApiFromModules<{
   plannerQueries: typeof plannerQueries;
   queries: typeof queries;
   revisionAlgorithm: typeof revisionAlgorithm;
+  revisionPush: typeof revisionPush;
+  revisionReminderSchedule: typeof revisionReminderSchedule;
+  revisionReminders: typeof revisionReminders;
   studyItemSearch: typeof studyItemSearch;
   studyTargets: typeof studyTargets;
   syllabusSummaries: typeof syllabusSummaries;
@@ -78,4 +88,7 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  revisionPushPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"revisionPushPool">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+};

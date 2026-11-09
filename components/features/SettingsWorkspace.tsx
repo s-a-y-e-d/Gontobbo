@@ -17,6 +17,7 @@ import PwaInstallAction, {
 import { SettingsPageSkeleton } from "./LoadingSkeletons";
 import { getSubjectTheme } from "./subjectTheme";
 import { useSnapshotQuery } from "./useSnapshotQuery";
+import RevisionReminderSettings from "./RevisionReminderSettings";
 
 type ThemeMode = "light" | "system" | "dark";
 type CoachingStatus = "not_started" | "running" | "finished";
@@ -151,9 +152,8 @@ const navItems: NavItem[] = [
   {
     id: "notifications",
     label: "নোটিফিকেশন",
-    description: "শীঘ্রই আসছে",
+    description: "রিভিশন রিমাইন্ডার",
     icon: "notifications",
-    disabled: true,
   },
   {
     id: "account",
@@ -535,7 +535,10 @@ export default function SettingsWorkspace() {
     api.onboarding.importHscSyllabusForCurrentUser,
   );
   const { theme, setTheme } = useTheme();
-  const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
+  const [activeSection, setActiveSection] = useState<SectionId>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("section") === "notifications"
+      ? "notifications" : "dashboard",
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [revisionMinutesDraft, setRevisionMinutesDraft] = useState<string | null>(
@@ -748,6 +751,7 @@ export default function SettingsWorkspace() {
   };
 
   const renderSection = () => {
+    if (activeSection === "notifications") return <RevisionReminderSettings />;
     if (activeSection === "dashboard") {
       return (
         <DashboardSettingsSection
@@ -910,6 +914,7 @@ export default function SettingsWorkspace() {
         onImportHsc={handleImportHscSyllabus}
         sectionOptions={{ collapsible: true }}
       />
+      <RevisionReminderSettings mobile />
       <FutureSettingsSection sectionOptions={{ collapsible: true }} />
     </div>
   );

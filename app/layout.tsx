@@ -4,6 +4,7 @@ import { Geist, Geist_Mono, Inter, Baloo_Da_2 } from "next/font/google";
 import "./globals.css";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import AuthGate from "@/components/features/AuthGate";
+import PushAccountBinding from "@/components/features/PushAccountBinding";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ToastProvider } from "@/components/ui/Toast";
 import { Analytics } from "@vercel/analytics/next";
@@ -71,6 +72,7 @@ export default function RootLayout({
         <ClerkProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             <ConvexClientProvider>
+              <PushAccountBinding />
               <ToastProvider>
                 <AuthGate>{children}</AuthGate>
               </ToastProvider>
