@@ -149,7 +149,7 @@ export default function RevisionDashboard() {
           <h2 className="font-section-heading text-lg text-on-surface mb-6">
             আসন্ন রিভিশন
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4">
             {upcoming.map((concept) => (
               <ReviewItemCard
                 key={concept._id}
@@ -259,18 +259,20 @@ function ReviewItemCard({
 
   return (
     <div
-      className="bg-white rounded-2xl border border-border-subtle p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 group hover:shadow-lg transition-all border-l-4"
+      className={`min-w-0 bg-white dark:bg-pure-white rounded-2xl border border-border-subtle p-5 flex flex-col ${
+        isUpcoming ? "" : "md:flex-row md:flex-wrap md:items-center"
+      } justify-between gap-4 group hover:shadow-lg dark:hover:shadow-none transition-all border-l-4`}
       style={{ borderLeftColor: borderColor }}
     >
-      <div className="flex items-start gap-4">
+      <div className={`flex min-w-0 items-start gap-4 ${isUpcoming ? "" : "md:flex-1 md:basis-64"}`}>
         <div className="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center shrink-0">
           <span className="material-symbols-outlined text-slate-400">
             {concept.subjectIcon ?? "menu_book"}
           </span>
         </div>
 
-        <div>
-          <div className="flex items-center gap-2 mb-1">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1 break-words [overflow-wrap:anywhere]">
             <span className="text-[10px] font-mono-code text-gray-400 uppercase tracking-tighter">
               {concept.subjectName}
             </span>
@@ -280,17 +282,17 @@ function ReviewItemCard({
             </span>
           </div>
 
-          <h3 className="text-base font-sub-heading text-on-surface">
+          <h3 className="text-base font-sub-heading text-on-surface break-words [overflow-wrap:anywhere]">
             {concept.name}
           </h3>
 
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <span
               className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                 isOverdue
                   ? "bg-red-100 text-red-600"
                   : isUpcoming
-                    ? "bg-slate-100 text-slate-500"
+                    ? "bg-slate-100 text-slate-500 dark:bg-surface-container dark:text-gray-500"
                     : "bg-emerald-100 text-brand-green"
               }`}
             >
@@ -303,11 +305,12 @@ function ReviewItemCard({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className={`flex w-full min-w-0 items-center gap-2 ${isUpcoming ? "mt-auto" : "md:w-auto md:max-w-full md:shrink-0"}`}>
         <button
           onClick={onReschedule}
-          className="w-10 h-10 rounded-full border border-border-subtle flex items-center justify-center text-slate-400 hover:bg-slate-50 hover:text-on-surface transition-all"
+          className="w-10 h-10 shrink-0 rounded-full border border-border-subtle flex items-center justify-center text-slate-500 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green active:bg-surface-container dark:active:bg-surface-container transition-all"
           title="রিশিডিউল"
+          aria-label="রিশিডিউল"
         >
           <span className="material-symbols-outlined text-[20px]">
             calendar_month
@@ -315,12 +318,12 @@ function ReviewItemCard({
         </button>
         <button
           onClick={onReview}
-          className="flex-1 md:flex-none px-6 py-2.5 bg-on-surface text-pure-white rounded-full text-sm font-label-uppercase hover:bg-brand-green transition-all shadow-sm flex items-center justify-center gap-2"
+          className={`min-w-0 flex-1 ${isUpcoming ? "" : "md:flex-none"} px-4 py-2.5 bg-on-surface text-pure-white rounded-full text-sm font-label-uppercase hover:bg-brand-green hover:text-near-black dark:hover:bg-brand-green dark:hover:text-pure-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green active:bg-brand-green-deep dark:active:bg-brand-green-deep transition-all shadow-sm flex items-center justify-center gap-2`}
         >
-          <span className="material-symbols-outlined text-sm">
+          <span className="material-symbols-outlined shrink-0 text-sm" aria-hidden="true">
             history_edu
           </span>
-          রিভিশন শুরু করি
+          <span className="min-w-0 break-words">রিভিশন শুরু করি</span>
         </button>
       </div>
     </div>
