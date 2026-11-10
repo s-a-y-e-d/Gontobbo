@@ -28,7 +28,6 @@ function BrandWordmark({ compact = false }: { compact?: boolean }) {
 const primaryNavItems: NavItem[] = [
   { icon: "dashboard", label: "ড্যাশবোর্ড", href: "/" },
   { icon: "auto_stories", label: "বিষয়", href: "/subjects" },
-  { icon: "flag", label: "লক্ষ্য", href: "/target" },
   { icon: "psychology", label: "AI Planner", href: "/planner" },
   { icon: "calendar_today", label: "Todo", href: "/todo" },
   { icon: "history_edu", label: "রিভিশন", href: "/revision" },
