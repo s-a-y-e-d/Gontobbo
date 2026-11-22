@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { type CSSProperties, useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import ConceptReviewModal from "./ConceptReviewModal";
@@ -252,7 +252,7 @@ function ReviewItemCard({
   onReschedule: () => void;
   formatDate: (ts: number) => string;
 }) {
-  const borderColor = getSubjectTheme(concept.subjectColor).accentHex;
+  const subjectAccent = getSubjectTheme(concept.subjectColor).accentHex;
   const upcomingLabel = concept.nextReviewAt
     ? `আসন্ন: ${formatDate(concept.nextReviewAt)}`
     : "আসন্ন";
@@ -262,7 +262,7 @@ function ReviewItemCard({
       className={`min-w-0 bg-white dark:bg-pure-white rounded-2xl border border-border-subtle p-5 flex flex-col ${
         isUpcoming ? "" : "md:flex-row md:flex-wrap md:items-center"
       } justify-between gap-4 group hover:shadow-lg dark:hover:shadow-none transition-all border-l-4`}
-      style={{ borderLeftColor: borderColor }}
+      style={{ borderLeftColor: subjectAccent, "--subject-accent": subjectAccent } as CSSProperties}
     >
       <div className={`flex min-w-0 items-start gap-4 ${isUpcoming ? "" : "md:flex-1 md:basis-64"}`}>
         <div className="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center shrink-0">
@@ -273,7 +273,7 @@ function ReviewItemCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1 break-words [overflow-wrap:anywhere]">
-            <span className="text-[10px] font-mono-code text-gray-400 uppercase tracking-tighter">
+            <span className="rounded-full px-2 py-0.5 text-xs font-medium leading-tight bg-[color-mix(in_srgb,var(--subject-accent)_14%,white)] text-[color:color-mix(in_srgb,var(--subject-accent)_45%,black)] dark:bg-[color-mix(in_srgb,var(--subject-accent)_20%,#121212)] dark:text-[color:color-mix(in_srgb,var(--subject-accent)_55%,white)]">
               {concept.subjectName}
             </span>
             <span className="w-1 h-1 rounded-full bg-gray-200" />
