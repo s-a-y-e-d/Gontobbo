@@ -25,6 +25,16 @@ function BrandWordmark({ compact = false }: { compact?: boolean }) {
   );
 }
 
+function BrandIcon() {
+  return (
+    <span
+      aria-hidden="true"
+      className="size-6 shrink-0 bg-emerald-700 dark:bg-brand-green"
+      style={{ mask: "url(/gontobbo-mark.svg) center / contain no-repeat" }}
+    />
+  );
+}
+
 const primaryNavItems: NavItem[] = [
   { icon: "dashboard", label: "ড্যাশবোর্ড", href: "/" },
   { icon: "auto_stories", label: "বিষয়", href: "/subjects" },
@@ -354,7 +364,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
           </button>
         )}
         <div className={`flex items-center py-6 mb-4 ${isSidebarCollapsed ? "justify-center px-0" : "gap-3 px-4 pr-12"}`}>
-          <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
+          <BrandIcon />
           <div className={isSidebarCollapsed ? "sr-only" : "min-w-0"}>
             <div className="flex items-baseline gap-1.5">
               <BrandWordmark />
@@ -437,7 +447,7 @@ export default function NavigationLayout({ children }: { children: React.ReactNo
           <div className="pt-safe absolute left-0 top-0 bottom-0 w-[280px] bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-in slide-in-from-left duration-300 ease-out">
             <div className="flex items-center justify-between px-6 py-6 border-b border-black/5 dark:border-white/5">
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-brand-green" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
+                <BrandIcon />
                 <BrandWordmark compact />
               </div>
               <button 

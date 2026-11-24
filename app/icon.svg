@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="icon-title">
+  <title id="icon-title">Gontobbo planning and revision</title>
+  <defs>
+    <linearGradient id="gontobbo-tile" gradientUnits="userSpaceOnUse" x1="45" y1="22" x2="460" y2="491">
+      <stop stop-color="#105B42"/>
+      <stop offset="1" stop-color="#002B1E"/>
+    </linearGradient>
+  </defs>
+  <rect id="tile" x="12" y="12" width="488" height="488" rx="112" fill="url(#gontobbo-tile)"/>
+  <g id="checklist">
+    <rect id="paper" x="108" y="111" width="228" height="269" rx="40" fill="#B8F8D9"/>
+    <g id="checklist-rows" fill="none" stroke="#0B523A" stroke-width="19" stroke-linecap="round" stroke-linejoin="round">
+      <path id="first-row" d="m149 170 13 13 25-26m28 13h69"/>
+      <path id="second-row" d="m149 218 13 13 25-26m28 13h50"/>
+      <path id="third-row" d="m149 266 13 13 25-26m28 13h14"/>
+    </g>
+  </g>
+  <g id="revision-loop">
+    <circle id="loop-backplate" cx="325" cy="327" r="98" fill="url(#gontobbo-tile)"/>
+    <g fill="none" stroke="#18E299" stroke-width="23" stroke-linecap="round" stroke-linejoin="round">
+      <path id="loop-arc" d="M386 307a65 65 0 1 1-36-39"/>
+      <path id="loop-arrowhead" d="m333 245 20 24-28 14"/>
+    </g>
+  </g>
+</svg>
